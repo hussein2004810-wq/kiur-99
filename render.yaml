@@ -1,0 +1,69 @@
+services:
+  - type: web
+    name: nabd-backend
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DEBUG
+        value: "false"
+      # Set to your own email so only you can claim admin on a fresh database.
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      # Render's free disk is wiped on every deploy, so a SQLite file here
+      # would lose every account, booklet and sold code on each push. This
+      # points at the managed Postgres defined at the bottom of this file.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nabd-db
+          property: connectionString
+      - key: ALLOWED_UNIVERSITY_DOMAINS
+        value: ""
+      # Password reset needs these to actually deliver a link. Until they're
+      # set the feature reports itself as unavailable rather than silently
+      # failing. See .env.example for host/port per provider.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # Uploads go to an S3-compatible bucket, because the instance disk is
+      # wiped on every deploy the same way the SQLite file was. Cloudflare R2
+      # is the cheap choice for this workload — lecture video is mostly
+      # egress, and R2 doesn't charge for it. Set these in the dashboard.
+      - key: STORAGE_BACKEND
+        value: "s3"
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      # Set these in the Render dashboard after the first deploy, once you
+      # know the service's real onrender.com URL (see README "Deploying").
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+
+databases:
+  - name: nabd-db
+    plan: free
+    databaseName: nabd
+    user: nabd

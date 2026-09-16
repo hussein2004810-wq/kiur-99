@@ -1,0 +1,464 @@
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    email: str
+    full_name: str
+    role: str
+    is_banned: bool = False
+    phone: Optional[str] = None
+    university_id: Optional[str] = None
+    section_id: Optional[str] = None
+    stage_id: Optional[str] = None
+    is_graduate: Optional[bool] = None
+    totp_enabled: bool = False
+    photo_url: Optional[str] = None
+    caption: Optional[str] = None
+    theme: str = "light"
+    language: str = "ar"
+    password_hash: Optional[str] = Field(default=None, exclude=True)
+    # None for an account that has never set one.
+    password_changed_at: Optional[datetime] = None
+
+    @computed_field
+    @property
+    def has_password(self) -> bool:
+        """Drives the account page's real password status — was showing a
+        fixed, fake "last changed 3 months ago" for every account regardless
+        of whether it ever had one (Google-only accounts never do)."""
+        return bool(self.password_hash)
+
+    @computed_field
+    @property
+    def profile_complete(self) -> bool:
+        """Drives the student app's "complete your profile" gate. Professors/
+        admins/resellers are created directly by an admin and never need it."""
+        if self.role != "student":
+            return True
+        if not self.phone or not self.university_id or not self.section_id:
+            return False
+        if self.is_graduate is None:
+            return False
+        if self.is_graduate is False and not self.stage_id:
+            return False
+        return True
+
+
+class ProfileUpdateIn(BaseModel):
+    full_name: str
+    phone: str
+    section_id: str
+    university_id: str
+    is_graduate: bool
+    stage_id: Optional[str] = None
+
+
+class CaptionUpdateIn(BaseModel):
+    caption: str = ""
+
+
+class SkillIn(BaseModel):
+    text: str
+
+
+class PreferencesUpdateIn(BaseModel):
+    theme: Optional[str] = None
+    language: Optional[str] = None
+
+
+class RecentViewIn(BaseModel):
+    content_type: str
+    content_id: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
+class UserCreateIn(BaseModel):
+    email: str
+    full_name: str
+    role: str
+    password: Optional[str] = None
+    # Required when role == "professor": a professor with no teaching profile
+    # can sign in but every screen of their dashboard 404s, because the
+    # profile is what ties them to a subject.
+    subject_id: Optional[str] = None
+    title: Optional[str] = None
+
+
+class ProfessorAssignIn(BaseModel):
+    subject_id: str
+    title: str = "أستاذ مساعد"
+
+
+class UserUpdateIn(BaseModel):
+    email: str
+    full_name: str
+    role: str
+    password: Optional[str] = None  # leave empty to keep the current password unchanged
+
+
+class PasswordLoginIn(BaseModel):
+    email: str
+    password: str
+
+
+class RegisterIn(BaseModel):
+    email: str
+    password: str
+    full_name: str
+
+
+class SubjectOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+
+
+class StageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    subjects: list[SubjectOut] = []
+
+
+class UniversityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    stages: list[StageOut] = []
+
+
+class SectionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    universities: list[UniversityOut] = []
+
+
+class ChoiceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    text: str
+
+
+class ChoiceWithAnswerOut(ChoiceOut):
+    is_correct: bool
+
+
+class QuestionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    text: str
+    eyebrow: str
+    image_url: Optional[str] = None
+    choices: list[ChoiceOut]
+
+
+class AnswerIn(BaseModel):
+    choice_id: str
+
+
+class AnswerResult(BaseModel):
+    is_correct: bool
+    correct_choice_id: str
+    rationale: str
+
+
+class BookletOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    title: str
+    pages: int
+    file_url: Optional[str] = None
+
+
+class BookletIn(BaseModel):
+    title: str
+    pages: int = 0
+
+
+class ExamOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    title: str
+    question_count: int
+    duration_minutes: int
+
+
+class ExamIn(BaseModel):
+    title: str
+    question_count: int = 0
+    duration_minutes: int = 30
+
+
+class ProfessorOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    title: str
+    name: str
+    subject_name: str
+    university_name: str = ""
+    bio: str = ""
+    photo_url: Optional[str] = None
+    booklets: list[BookletOut] = []
+    exams: list[ExamOut] = []
+
+
+class ProfessorProfileUpdateIn(BaseModel):
+    title: str
+    bio: str = ""
+    photo_url: Optional[str] = None
+
+
+class LectureOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    title: str
+    duration_seconds: int
+    video_url: Optional[str] = None
+    done: bool = False
+
+
+class LectureIn(BaseModel):
+    title: str
+    duration_seconds: int = 0
+
+
+class CourseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    title: str
+    instructor: str
+    subject_id: Optional[str] = None
+    lectures: list[LectureOut] = []
+
+
+class CourseIn(BaseModel):
+    title: str
+
+
+class ChoiceIn(BaseModel):
+    text: str
+    is_correct: bool = False
+
+
+class QuestionAdminIn(BaseModel):
+    subject_id: str
+    text: str
+    eyebrow: str = ""
+    rationale: str = ""
+    image_url: Optional[str] = None
+    choices: list[ChoiceIn]
+
+
+class QuestionAdminOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    subject_id: str
+    text: str
+    eyebrow: str
+    rationale: str
+    image_url: Optional[str] = None
+    choices: list[ChoiceWithAnswerOut]
+
+
+class ProductOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    price: int
+    type: str
+
+
+class ProductAdminOut(ProductOut):
+    is_activation_code: bool = False
+    grants_subject_id: Optional[str] = None
+
+
+class OrderItemIn(BaseModel):
+    product_id: str
+    # Bounded on purpose: an unbounded int let a negative qty produce a
+    # negative order total (which fed straight into the admin revenue KPI),
+    # and a huge one would loop that many times issuing activation codes.
+    qty: int = Field(1, ge=1, le=50)
+
+
+class OrderIn(BaseModel):
+    items: list[OrderItemIn]
+    payment_method: str  # "zaincash" | "cod"
+    delivery_name: Optional[str] = None
+    delivery_phone: Optional[str] = None
+    delivery_address: Optional[str] = None
+
+
+class OrderOut(BaseModel):
+    id: str
+    total: int
+    status: str
+    payment_method: str
+    created_at: datetime
+    granted_activation_codes: list[str] = []
+
+
+class StudentStatsOut(BaseModel):
+    answered_today: int
+    streak_days: int
+    rank: Optional[int] = None
+    total_ranked: int
+    # None until the student has answered anything — the home ring shows a
+    # dash in that case rather than a made-up percentage.
+    accuracy_pct: Optional[int] = None
+
+
+class RedeemCodeIn(BaseModel):
+    code: str
+
+
+class ActivationOut(BaseModel):
+    id: str
+    code_masked: str
+    subject_name: str  # "VIP — جميع المواد" when the code isn't scoped to one subject
+    activated_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str = ""
+    new_password: str
+
+
+class TOTPSetupOut(BaseModel):
+    secret: str
+    otpauth_uri: str
+
+
+class TOTPCodeIn(BaseModel):
+    code: str
+
+
+class TOTPVerifyIn(BaseModel):
+    pending_token: str
+    code: str
+
+
+class SessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    device_label: str
+    created_at: datetime
+
+
+class AppealIn(BaseModel):
+    message: str
+
+
+class BanStatusOut(BaseModel):
+    is_banned: bool
+    reason: Optional[str] = None
+    status: Optional[str] = None
+    appeal_message: Optional[str] = None
+    appealed_at: Optional[datetime] = None
+
+
+class ProductIn(BaseModel):
+    name: str
+    price: int
+    type: str  # "digital" | "physical" | "course"
+    is_activation_code: bool = False
+    grants_subject_id: Optional[str] = None
+
+
+class OrderAdminItemOut(BaseModel):
+    product_name: str
+    qty: int
+    price: int
+
+
+class OrderAdminOut(BaseModel):
+    id: str
+    buyer_name: str
+    buyer_email: str
+    total: int
+    status: str
+    payment_method: str
+    created_at: datetime
+    delivery_name: Optional[str] = None
+    delivery_phone: Optional[str] = None
+    delivery_address: Optional[str] = None
+    items: list[OrderAdminItemOut] = []
+
+
+# ------------------------------------------------------------------ exams
+class ExamAttemptAnswerIn(BaseModel):
+    choice_id: str
+
+
+class NotificationCreateIn(BaseModel):
+    title: str
+    body: str = ""
+    user_id: Optional[str] = None  # null = broadcast to every student
+
+
+class ClinicalPearlIn(BaseModel):
+    title: str
+    tag: str = ""
+    body: str = ""
+
+
+class ClinicalPearlOut(BaseModel):
+    id: str
+    tag: str = ""
+    title: str
+    body: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClinicalPearlPreviewOut(BaseModel):
+    """What an unauthenticated visitor gets: enough to see a case exists,
+    never its content. No `body` field at all — not an empty one."""
+    id: str
+    tag: str = ""
+    title: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ForgotPasswordIn(BaseModel):
+    email: str
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str
+
+class CatalogBulkIn(BaseModel):
+    # "root" creates sections; the rest create children of parent_id.
+    parent_type: str
+    parent_id: Optional[str] = None
+    names: list[str]
+
+
+class CatalogDuplicateIn(BaseModel):
+    type: str
+    id: str
+    # Defaults to the source name, which is what you want when copying into
+    # a different parent (the same stage name under another university).
+    new_name: Optional[str] = None
+    # One copy per name, in a single request — how you get twenty
+    # universities out of one properly-built one.
+    new_names: Optional[list[str]] = None
+    target_parent_id: Optional[str] = None
+
+class CatalogImportIn(BaseModel):
+    # The whole curriculum as indented text. preview=True parses and counts
+    # without writing anything.
+    text: str
+    preview: bool = False
