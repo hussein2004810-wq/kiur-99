@@ -971,19 +971,11 @@ authRouter.post('/forgot-password', forgotPasswordRateLimiter, async (c) => {
       const isAdminRole = ADMIN_DASHBOARD_ROLES.has(user.role ?? '');
       const resetLink = isAdminRole ? `${base}/admin#reset_token=${rawToken}` : `${base}/#reset_token=${rawToken}`;
 
-      // Send in background (waitUntil doesn't block response)
-      c.executionCtx.waitUntil(
-        sendPasswordReset(mailerConfig, email, user.full_name ?? '', resetLink, PASSWORD_RESET_TTL_MINUTES)
-      );
       const mailPromise = sendPasswordReset(mailerConfig, email, user.full_name ?? '', resetLink, PASSWORD_RESET_TTL_MINUTES);
       try {
-        if (c.executionCtx) {
-          c.executionCtx.waitUntil(mailPromise);
-        } else {
-          mailPromise.catch(console.error);
-        }
+        c.executionCtx.waitUntil(mailPromise);
       } catch {
-        mailPromise.catch(console.error);
+        mailPromise.catch(() => {});
       }
     }
   }

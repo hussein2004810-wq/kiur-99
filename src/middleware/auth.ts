@@ -106,19 +106,7 @@ export async function startNewSession(
   userId: string,
   deviceLabel: string
 ): Promise<typeof schema.userSessions.$inferSelect> {
-  // Deactivate all existing sessions for this user
-  await db
-    .update(schema.userSessions)
-    .set({ is_active: false })
-    .where(eq(schema.userSessions.user_id, userId));
-
   const id = schema.genId();
-  await db.insert(schema.userSessions).values({
-    id,
-    user_id: userId,
-    device_label: deviceLabel,
-    is_active: true,
-  });
 
   // Atomically deactivate all existing sessions and create the new session in one transaction
   await db.batch([
