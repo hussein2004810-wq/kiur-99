@@ -1,0 +1,5 @@
+# Local secrets (not committed to git)
+# Copy to .dev.vars for local wrangler dev execution
+JWT_SECRET=dev-secret-change-me-to-a-very-long-and-secure-random-token-nabd-2026
+GOOGLE_CLIENT_SECRET=
+SMTP_PASSWORD=

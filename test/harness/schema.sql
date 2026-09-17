@@ -1,0 +1,366 @@
+PRAGMA foreign_keys = ON;
+
+-- 1. sections
+CREATE TABLE IF NOT EXISTS sections (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL
+);
+
+-- 2. universities
+CREATE TABLE IF NOT EXISTS universities (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    section_id TEXT NOT NULL REFERENCES sections(id)
+);
+CREATE INDEX IF NOT EXISTS universities_section_id_idx ON universities(section_id);
+
+-- 3. stages
+CREATE TABLE IF NOT EXISTS stages (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    university_id TEXT NOT NULL REFERENCES universities(id)
+);
+CREATE INDEX IF NOT EXISTS stages_university_id_idx ON stages(university_id);
+
+-- 4. subjects
+CREATE TABLE IF NOT EXISTS subjects (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    stage_id TEXT NOT NULL REFERENCES stages(id)
+);
+CREATE INDEX IF NOT EXISTS subjects_stage_id_idx ON subjects(stage_id);
+
+-- 5. users
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY NOT NULL,
+    email TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    google_sub TEXT,
+    password_hash TEXT,
+    role TEXT NOT NULL DEFAULT 'student',
+    university_id TEXT REFERENCES universities(id),
+    stage_id TEXT REFERENCES stages(id),
+    section_id TEXT REFERENCES sections(id),
+    phone TEXT,
+    is_graduate INTEGER,
+    is_banned INTEGER NOT NULL DEFAULT 0,
+    totp_secret TEXT,
+    totp_enabled INTEGER NOT NULL DEFAULT 0,
+    photo_url TEXT,
+    caption TEXT,
+    failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until TEXT,
+    failed_redeem_attempts INTEGER NOT NULL DEFAULT 0,
+    reset_token_hash TEXT,
+    reset_token_expires_at TEXT,
+    reset_requested_at TEXT,
+    password_changed_at TEXT,
+    redeem_locked_until TEXT,
+    theme TEXT NOT NULL DEFAULT 'light',
+    language TEXT NOT NULL DEFAULT 'ar',
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email);
+CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx ON users(google_sub);
+CREATE INDEX IF NOT EXISTS users_university_id_idx ON users(university_id);
+CREATE INDEX IF NOT EXISTS users_stage_id_idx ON users(stage_id);
+CREATE INDEX IF NOT EXISTS users_section_id_idx ON users(section_id);
+
+-- 6. user_sessions
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_label TEXT NOT NULL DEFAULT 'جهاز غير معروف',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS user_sessions_user_id_idx ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS user_sessions_user_active_idx ON user_sessions(user_id, is_active);
+
+-- 7. professor_profiles
+CREATE TABLE IF NOT EXISTS professor_profiles (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    title TEXT NOT NULL DEFAULT 'أستاذ مساعد',
+    subject_id TEXT NOT NULL REFERENCES subjects(id),
+    bio TEXT NOT NULL DEFAULT '',
+    photo_url TEXT
+);
+CREATE INDEX IF NOT EXISTS professor_profiles_user_id_idx ON professor_profiles(user_id);
+CREATE INDEX IF NOT EXISTS professor_profiles_subject_id_idx ON professor_profiles(subject_id);
+
+-- 8. booklets
+CREATE TABLE IF NOT EXISTS booklets (
+    id TEXT PRIMARY KEY NOT NULL,
+    professor_id TEXT NOT NULL REFERENCES professor_profiles(id),
+    title TEXT NOT NULL,
+    file_url TEXT NOT NULL DEFAULT '',
+    pages INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS booklets_professor_id_idx ON booklets(professor_id);
+
+-- 9. questions
+CREATE TABLE IF NOT EXISTS questions (
+    id TEXT PRIMARY KEY NOT NULL,
+    subject_id TEXT NOT NULL REFERENCES subjects(id),
+    professor_id TEXT REFERENCES professor_profiles(id),
+    text TEXT NOT NULL,
+    image_url TEXT,
+    rationale TEXT NOT NULL DEFAULT '',
+    eyebrow TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS questions_subject_id_idx ON questions(subject_id);
+CREATE INDEX IF NOT EXISTS questions_professor_id_idx ON questions(professor_id);
+
+-- 10. choices
+CREATE TABLE IF NOT EXISTS choices (
+    id TEXT PRIMARY KEY NOT NULL,
+    question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    is_correct INTEGER NOT NULL DEFAULT 0,
+    order_index INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS choices_question_id_idx ON choices(question_id);
+
+-- 11. student_answers
+CREATE TABLE IF NOT EXISTS student_answers (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    question_id TEXT NOT NULL REFERENCES questions(id),
+    choice_id TEXT NOT NULL REFERENCES choices(id),
+    is_correct INTEGER NOT NULL,
+    answered_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS student_answers_user_id_idx ON student_answers(user_id);
+CREATE INDEX IF NOT EXISTS student_answers_question_id_idx ON student_answers(question_id);
+CREATE INDEX IF NOT EXISTS student_answers_user_answered_idx ON student_answers(user_id, answered_at);
+
+-- 12. exams
+CREATE TABLE IF NOT EXISTS exams (
+    id TEXT PRIMARY KEY NOT NULL,
+    subject_id TEXT NOT NULL REFERENCES subjects(id),
+    professor_id TEXT REFERENCES professor_profiles(id),
+    title TEXT NOT NULL,
+    question_count INTEGER NOT NULL DEFAULT 0,
+    duration_minutes INTEGER NOT NULL DEFAULT 30
+);
+CREATE INDEX IF NOT EXISTS exams_subject_id_idx ON exams(subject_id);
+CREATE INDEX IF NOT EXISTS exams_professor_id_idx ON exams(professor_id);
+
+-- 13. courses
+CREATE TABLE IF NOT EXISTS courses (
+    id TEXT PRIMARY KEY NOT NULL,
+    subject_id TEXT NOT NULL REFERENCES subjects(id),
+    professor_id TEXT REFERENCES professor_profiles(id),
+    title TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS courses_subject_id_idx ON courses(subject_id);
+CREATE INDEX IF NOT EXISTS courses_professor_id_idx ON courses(professor_id);
+
+-- 14. lectures
+CREATE TABLE IF NOT EXISTS lectures (
+    id TEXT PRIMARY KEY NOT NULL,
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    duration_seconds INTEGER NOT NULL DEFAULT 0,
+    order_index INTEGER NOT NULL DEFAULT 0,
+    video_url TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS lectures_course_id_idx ON lectures(course_id);
+
+-- 15. recent_views
+CREATE TABLE IF NOT EXISTS recent_views (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    content_type TEXT NOT NULL,
+    content_id TEXT NOT NULL,
+    viewed_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS recent_views_user_id_idx ON recent_views(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS recent_views_user_content_idx ON recent_views(user_id, content_type, content_id);
+
+-- 16. lecture_progress
+CREATE TABLE IF NOT EXISTS lecture_progress (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    lecture_id TEXT NOT NULL REFERENCES lectures(id),
+    completed_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS lecture_progress_user_id_idx ON lecture_progress(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS lecture_progress_user_lecture_idx ON lecture_progress(user_id, lecture_id);
+
+-- 17. products
+CREATE TABLE IF NOT EXISTS products (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    price INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    is_activation_code INTEGER NOT NULL DEFAULT 0,
+    grants_subject_id TEXT REFERENCES subjects(id)
+);
+CREATE INDEX IF NOT EXISTS products_grants_subject_id_idx ON products(grants_subject_id);
+
+-- 18. orders
+CREATE TABLE IF NOT EXISTS orders (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    total INTEGER NOT NULL DEFAULT 0,
+    payment_method TEXT NOT NULL DEFAULT 'zaincash',
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    delivery_name TEXT,
+    delivery_phone TEXT,
+    delivery_address TEXT
+);
+CREATE INDEX IF NOT EXISTS orders_user_id_idx ON orders(user_id);
+CREATE INDEX IF NOT EXISTS orders_status_idx ON orders(status);
+
+-- 19. order_items
+CREATE TABLE IF NOT EXISTS order_items (
+    id TEXT PRIMARY KEY NOT NULL,
+    order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    product_id TEXT NOT NULL REFERENCES products(id),
+    qty INTEGER NOT NULL DEFAULT 1,
+    price INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS order_items_order_id_idx ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS order_items_product_id_idx ON order_items(product_id);
+
+-- 20. activation_codes
+CREATE TABLE IF NOT EXISTS activation_codes (
+    id TEXT PRIMARY KEY NOT NULL,
+    code TEXT NOT NULL,
+    subject_id TEXT REFERENCES subjects(id),
+    status TEXT NOT NULL DEFAULT 'idle',
+    activated_by_user_id TEXT REFERENCES users(id),
+    activated_at TEXT,
+    expires_at TEXT,
+    reseller_id TEXT REFERENCES users(id),
+    sold_at TEXT,
+    order_id TEXT REFERENCES orders(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS activation_codes_code_idx ON activation_codes(code);
+CREATE INDEX IF NOT EXISTS activation_codes_subject_id_idx ON activation_codes(subject_id);
+CREATE INDEX IF NOT EXISTS activation_codes_reseller_id_idx ON activation_codes(reseller_id);
+CREATE INDEX IF NOT EXISTS activation_codes_order_id_idx ON activation_codes(order_id);
+
+-- 21. ban_records
+CREATE TABLE IF NOT EXISTS ban_records (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    appeal_message TEXT,
+    appealed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ban_records_user_id_idx ON ban_records(user_id);
+CREATE INDEX IF NOT EXISTS ban_records_status_idx ON ban_records(status);
+
+-- 22. activity_logs
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT REFERENCES users(id),
+    action TEXT NOT NULL,
+    ip_address TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS activity_logs_user_id_idx ON activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS activity_logs_created_at_idx ON activity_logs(created_at);
+
+-- 23. media_files
+CREATE TABLE IF NOT EXISTS media_files (
+    id TEXT PRIMARY KEY NOT NULL,
+    filename TEXT NOT NULL,
+    url TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT '',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    uploaded_by TEXT REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS media_files_filename_idx ON media_files(filename);
+CREATE INDEX IF NOT EXISTS media_files_uploaded_by_idx ON media_files(uploaded_by);
+
+-- 24. exam_attempts
+CREATE TABLE IF NOT EXISTS exam_attempts (
+    id TEXT PRIMARY KEY NOT NULL,
+    exam_id TEXT NOT NULL REFERENCES exams(id),
+    user_id TEXT NOT NULL REFERENCES users(id),
+    started_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    finished_at TEXT,
+    score INTEGER NOT NULL DEFAULT 0,
+    total INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS exam_attempts_exam_id_idx ON exam_attempts(exam_id);
+CREATE INDEX IF NOT EXISTS exam_attempts_user_id_idx ON exam_attempts(user_id);
+
+-- 25. exam_attempt_questions
+CREATE TABLE IF NOT EXISTS exam_attempt_questions (
+    id TEXT PRIMARY KEY NOT NULL,
+    attempt_id TEXT NOT NULL REFERENCES exam_attempts(id) ON DELETE CASCADE,
+    question_id TEXT NOT NULL REFERENCES questions(id),
+    order_index INTEGER NOT NULL DEFAULT 0,
+    choice_id TEXT REFERENCES choices(id),
+    is_correct INTEGER,
+    answered_at TEXT
+);
+CREATE INDEX IF NOT EXISTS exam_attempt_questions_attempt_id_idx ON exam_attempt_questions(attempt_id);
+CREATE INDEX IF NOT EXISTS exam_attempt_questions_question_id_idx ON exam_attempt_questions(question_id);
+
+-- 26. user_skills
+CREATE TABLE IF NOT EXISTS user_skills (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS user_skills_user_id_idx ON user_skills(user_id);
+
+-- 27. saved_questions
+CREATE TABLE IF NOT EXISTS saved_questions (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    question_id TEXT NOT NULL REFERENCES questions(id),
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS saved_questions_user_id_idx ON saved_questions(user_id);
+CREATE INDEX IF NOT EXISTS saved_questions_question_id_idx ON saved_questions(question_id);
+CREATE UNIQUE INDEX IF NOT EXISTS saved_questions_user_question_idx ON saved_questions(user_id, question_id);
+
+-- 28. notifications
+CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT REFERENCES users(id),
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    created_by TEXT REFERENCES users(id),
+    content_type TEXT,
+    content_id TEXT
+);
+CREATE INDEX IF NOT EXISTS notifications_user_id_idx ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS notifications_created_at_idx ON notifications(created_at);
+
+-- 29. notification_reads
+CREATE TABLE IF NOT EXISTS notification_reads (
+    id TEXT PRIMARY KEY NOT NULL,
+    notification_id TEXT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    read_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS notification_reads_notification_id_idx ON notification_reads(notification_id);
+CREATE INDEX IF NOT EXISTS notification_reads_user_id_idx ON notification_reads(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS notification_reads_notif_user_idx ON notification_reads(notification_id, user_id);
+
+-- 30. clinical_pearls
+CREATE TABLE IF NOT EXISTS clinical_pearls (
+    id TEXT PRIMARY KEY NOT NULL,
+    tag TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    created_by TEXT REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS clinical_pearls_created_at_idx ON clinical_pearls(created_at);
+CREATE INDEX IF NOT EXISTS clinical_pearls_created_by_idx ON clinical_pearls(created_by);

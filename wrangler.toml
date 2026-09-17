@@ -1,0 +1,45 @@
+name = "nabd-backend"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "nabd-db"
+database_id = "local-d1"
+migrations_dir = "migrations"
+
+# Cloudflare R2 Storage Bucket Binding
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "nabd-media"
+
+# Import rule for raw HTML files as text modules
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
+
+# Environment Variables ([vars] accessible via c.env)
+[vars]
+DEBUG = "true"
+JWT_SECRET = "dev-secret-change-me-to-a-very-long-and-secure-random-token-nabd-2026"
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRES_MINUTES = "20160"
+BOOTSTRAP_ADMIN_EMAIL = ""
+CORS_ORIGINS = "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8787,http://127.0.0.1:8787"
+ALLOWED_UNIVERSITY_DOMAINS = "uob.edu.iq"
+FRONTEND_URL = "http://localhost:8787"
+ADMIN_FRONTEND_URL = ""
+GOOGLE_CLIENT_ID = ""
+GOOGLE_CLIENT_SECRET = ""
+GOOGLE_REDIRECT_URI = "http://localhost:8787/auth/google/callback"
+PASSWORD_RESET_TTL_MINUTES = "60"
+PASSWORD_RESET_COOLDOWN_SECONDS = "120"
+SMTP_HOST = ""
+SMTP_PORT = "587"
+SMTP_USER = ""
+SMTP_PASSWORD = ""
+SMTP_FROM = "no-reply@nabd.edu"
+SMTP_FROM_NAME = "Kiur"
