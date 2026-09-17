@@ -1080,12 +1080,26 @@
 
   /* =================== Uiverse-derived components, in platform tokens =================== */
 
+  .auth-view{
+    container-type:inline-size;
+    container-name:authview;
+    width:100%;
+    display:flex;
+    justify-content:center;
+  }
+
   /* ---- sign in: gradient card, pill fields with icons, filling submit ---- */
   .signin-form{
     width:100%; max-width:450px; display:flex; flex-direction:column; gap:10px;
-    padding:30px; border-radius:22px; color:#fff; position:relative; overflow:hidden; isolation:isolate;
+    padding:clamp(20px, 5cqi, 32px) clamp(16px, 4cqi, 28px); border-radius:22px; color:#fff; position:relative; overflow:hidden; isolation:isolate;
     background:linear-gradient(45deg, var(--accent-2), var(--accent));
     box-shadow:0 24px 50px -22px var(--glass-shadow), var(--shadow-soft);
+  }
+  @container authview (max-width: 360px){
+    .signin-form{padding:18px 14px; border-radius:18px;}
+    .signin-title{font-size:1.1rem;}
+    .signin-field{height:42px; font-size:.82rem;}
+    .signin-submit, .google-btn{padding:11px 12px; font-size:.82rem;}
   }
   /* the sample swaps the gradient's direction on hover; gradients can't
      transition, so a second layer fades in instead of snapping */
@@ -5422,25 +5436,55 @@
   }
   function togglePasswordVisibility(){ /* no longer used — kept as no-op for backward compatibility */ }
 
-  // ---------- Google Sign-In ----------
+  // ---------- Google Sign-In (Firebase backed with Server Verification) ----------
   async function startGoogleSignIn(){
     const btn = document.getElementById('googleBtn');
     const label = document.getElementById('googleBtnLabel');
     btn.disabled = true;
     label.textContent = 'جارٍ التحقق من حساب Google...';
 
-    if (await apiReachable()){
-      // Real flow: hand off to the backend, which redirects to Google,
-      // then back to this page with #access_token=... on success.
-      window.location.href = API_BASE_URL + '/auth/google/login';
-      return;
-    }
+    try {
+      if (await apiReachable()){
+        // 1. Initialize server-side one-time flow nonce
+        await fetch(API_BASE_URL + '/auth/firebase/flow', {
+          method: 'POST',
+          credentials: 'include',
+        }).catch(() => {});
 
-    // No backend: say so. This used to fake the round trip and drop the
-    // visitor onto the OTP screen as if Google had actually signed them in.
-    btn.disabled = false;
-    label.textContent = t('continueWithGoogleBtn');
-    showToast(t('googleUnavailable'));
+        // 2. If Firebase Web SDK is available in window
+        if (window.firebase && window.firebase.auth) {
+          const provider = new window.firebase.auth.GoogleAuthProvider();
+          const result = await window.firebase.auth().signInWithPopup(provider);
+          const idToken = await result.user.getIdToken();
+
+          const verifyRes = await fetch(API_BASE_URL + '/auth/firebase/verify', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_token: idToken }),
+          });
+          const data = await verifyRes.json();
+          if (!verifyRes.ok) throw new Error(data.detail || 'فشل التحقق من الحساب');
+
+          authToken = data.access_token;
+          currentUser = data.user;
+          proceedAfterAuth();
+          return;
+        }
+
+        // 3. Fallback: server-directed Google OAuth
+        window.location.href = API_BASE_URL + '/auth/google/login';
+        return;
+      }
+
+      btn.disabled = false;
+      label.textContent = t('continueWithGoogleBtn');
+      showToast(t('googleUnavailable'));
+    } catch (err) {
+      btn.disabled = false;
+      label.textContent = t('continueWithGoogleBtn');
+      showToast(err.message || t('googleUnavailable'));
+    }
   }
 
   // ---------- Email + password sign-in / sign-up ----------

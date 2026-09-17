@@ -66,6 +66,7 @@ api.route('/activation', activationRouter);
 api.route('/bans', bansRouter);
 api.route('/exams', examsRouter);
 api.route('/notifications', notificationsRouter);
+api.route('/me/notifications', notificationsRouter);
 api.route('/students', studentsRouter);
 api.route('/pearls', pearlsRouter);
 api.route('/public', publicRouter);

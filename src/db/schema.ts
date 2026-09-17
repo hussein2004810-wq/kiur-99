@@ -72,6 +72,8 @@ export const subjects = sqliteTable('subjects', {
   id: text('id').primaryKey().$defaultFn(genId),
   name: text('name').notNull(),
   stage_id: text('stage_id').notNull().references(() => stages.id),
+  is_deleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+  deleted_at: text('deleted_at'),
 }, (table) => ({
   stage_id_idx: index('subjects_stage_id_idx').on(table.stage_id),
 }));
@@ -109,10 +111,15 @@ export const users = sqliteTable('users', {
   redeem_locked_until: text('redeem_locked_until'),
   theme: text('theme').notNull().default('light'),
   language: text('language').notNull().default('ar'),
+  firebase_uid: text('firebase_uid'),
+  email_verified_at: text('email_verified_at'),
+  session_epoch: integer('session_epoch').notNull().default(1),
   created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
 }, (table) => ({
   email_idx: uniqueIndex('users_email_idx').on(table.email),
   google_sub_idx: uniqueIndex('users_google_sub_idx').on(table.google_sub),
+  firebase_uid_idx: uniqueIndex('users_firebase_uid_idx').on(table.firebase_uid),
+  email_verified_idx: index('users_email_verified_idx').on(table.email_verified_at),
   university_id_idx: index('users_university_id_idx').on(table.university_id),
   stage_id_idx: index('users_stage_id_idx').on(table.stage_id),
   section_id_idx: index('users_section_id_idx').on(table.section_id),
@@ -184,6 +191,8 @@ export const questions = sqliteTable('questions', {
   image_url: text('image_url'),
   rationale: text('rationale').notNull().default(''),
   eyebrow: text('eyebrow').notNull().default(''),
+  is_deleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+  deleted_at: text('deleted_at'),
 }, (table) => ({
   subject_id_idx: index('questions_subject_id_idx').on(table.subject_id),
   professor_id_idx: index('questions_professor_id_idx').on(table.professor_id),
@@ -253,6 +262,8 @@ export const courses = sqliteTable('courses', {
   subject_id: text('subject_id').notNull().references(() => subjects.id),
   professor_id: text('professor_id').references(() => professorProfiles.id),
   title: text('title').notNull(),
+  is_deleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+  deleted_at: text('deleted_at'),
 }, (table) => ({
   subject_id_idx: index('courses_subject_id_idx').on(table.subject_id),
   professor_id_idx: index('courses_professor_id_idx').on(table.professor_id),
@@ -271,6 +282,8 @@ export const lectures = sqliteTable('lectures', {
   duration_seconds: integer('duration_seconds').notNull().default(0),
   order_index: integer('order_index').notNull().default(0),
   video_url: text('video_url').notNull().default(''),
+  is_deleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+  deleted_at: text('deleted_at'),
 }, (table) => ({
   course_id_idx: index('lectures_course_id_idx').on(table.course_id),
 }));
@@ -436,6 +449,8 @@ export const mediaFiles = sqliteTable('media_files', {
   content_type: text('content_type').notNull().default(''),
   size_bytes: integer('size_bytes').notNull().default(0),
   uploaded_by: text('uploaded_by').references(() => users.id),
+  is_deleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+  deleted_at: text('deleted_at'),
   created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
 }, (table) => ({
   filename_idx: uniqueIndex('media_files_filename_idx').on(table.filename),
@@ -569,6 +584,115 @@ export const clinicalPearls = sqliteTable('clinical_pearls', {
 
 export type ClinicalPearl = InferSelectModel<typeof clinicalPearls>;
 export type NewClinicalPearl = InferInsertModel<typeof clinicalPearls>;
+
+// ============================================================================
+// 31. EMAIL VERIFICATIONS
+// ============================================================================
+export const emailVerifications = sqliteTable('email_verifications', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  token_hash: text('token_hash').notNull(),
+  expires_at: text('expires_at').notNull(),
+  verified_at: text('verified_at'),
+  created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+}, (table) => ({
+  user_id_idx: index('email_verifications_user_idx').on(table.user_id),
+  token_hash_idx: index('email_verifications_token_idx').on(table.token_hash),
+}));
+
+export type EmailVerification = InferSelectModel<typeof emailVerifications>;
+export type NewEmailVerification = InferInsertModel<typeof emailVerifications>;
+
+// ============================================================================
+// 32. ACCOUNT EVENTS (Security & Audit Trail)
+// ============================================================================
+export const accountEvents = sqliteTable('account_events', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  email_hash: text('email_hash'),
+  event_type: text('event_type').notNull(),
+  outcome: text('outcome').notNull(), // 'success' | 'failure'
+  device_hash: text('device_hash').notNull(),
+  ip_hash: text('ip_hash').notNull(),
+  created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  details_json: text('details_json'),
+}, (table) => ({
+  user_id_idx: index('account_events_user_idx').on(table.user_id, table.created_at),
+  recent_idx: index('account_events_recent_idx').on(table.created_at),
+}));
+
+export type AccountEvent = InferSelectModel<typeof accountEvents>;
+export type NewAccountEvent = InferInsertModel<typeof accountEvents>;
+
+// ============================================================================
+// 33. ACADEMIC CHANGE REQUESTS
+// ============================================================================
+export const academicChangeRequests = sqliteTable('academic_change_requests', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  current_section_id: text('current_section_id'),
+  current_university_id: text('current_university_id'),
+  current_stage_id: text('current_stage_id'),
+  target_section_id: text('target_section_id').references(() => sections.id),
+  target_university_id: text('target_university_id').references(() => universities.id),
+  target_stage_id: text('target_stage_id').references(() => stages.id),
+  reason: text('reason').notNull(),
+  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
+  reviewer_id: text('reviewer_id').references(() => users.id),
+  reviewer_notes: text('reviewer_notes'),
+  reviewed_at: text('reviewed_at'),
+  created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+}, (table) => ({
+  user_id_idx: index('academic_change_user_idx').on(table.user_id),
+  status_idx: index('academic_change_status_idx').on(table.status),
+}));
+
+export type AcademicChangeRequest = InferSelectModel<typeof academicChangeRequests>;
+export type NewAcademicChangeRequest = InferInsertModel<typeof academicChangeRequests>;
+
+// ============================================================================
+// 34. CERTIFICATES
+// ============================================================================
+export const certificates = sqliteTable('certificates', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  exam_id: text('exam_id').notNull().references(() => exams.id),
+  certificate_code: text('certificate_code').notNull().unique(),
+  student_name: text('student_name').notNull(),
+  exam_title: text('exam_title').notNull(),
+  score_percentage: integer('score_percentage').notNull(),
+  issued_at: text('issued_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  is_revoked: integer('is_revoked', { mode: 'boolean' }).notNull().default(false),
+  revoked_at: text('revoked_at'),
+  revocation_reason: text('revocation_reason'),
+}, (table) => ({
+  code_idx: uniqueIndex('certificates_code_idx').on(table.certificate_code),
+  user_id_idx: index('certificates_user_idx').on(table.user_id),
+}));
+
+export type Certificate = InferSelectModel<typeof certificates>;
+export type NewCertificate = InferInsertModel<typeof certificates>;
+
+// ============================================================================
+// 35. STUDENT REVIEWS (Spaced Repetition Queue)
+// ============================================================================
+export const studentReviews = sqliteTable('student_reviews', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  question_id: text('question_id').notNull().references(() => questions.id, { onDelete: 'cascade' }),
+  ease_factor: text('ease_factor').notNull().default('2.5'),
+  interval_days: integer('interval_days').notNull().default(1),
+  repetition_count: integer('repetition_count').notNull().default(0),
+  next_review_at: text('next_review_at').notNull(),
+  last_reviewed_at: text('last_reviewed_at'),
+  last_score: integer('last_score'),
+}, (table) => ({
+  user_id_idx: index('student_reviews_user_idx').on(table.user_id, table.next_review_at),
+  user_q_idx: uniqueIndex('student_reviews_user_q_idx').on(table.user_id, table.question_id),
+}));
+
+export type StudentReview = InferSelectModel<typeof studentReviews>;
+export type NewStudentReview = InferInsertModel<typeof studentReviews>;
 
 // ============================================================================
 // DRIZZLE RELATIONS (For Type-Safe Relational Queries)

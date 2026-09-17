@@ -6,7 +6,7 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, and, ne, inArray, desc, isNotNull } from 'drizzle-orm';
+import { eq, and, ne, inArray, desc, isNotNull, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth, startNewSession } from '../middleware/auth';
@@ -37,8 +37,12 @@ import {
   registerRateLimiter,
   forgotPasswordRateLimiter,
   twoFaVerifyRateLimiter,
+  resendVerificationRateLimiter,
+  firebaseAuthRateLimiter,
 } from '../middleware/rate-limit';
 import { recordAuditEvent } from '../services/audit';
+import { verifyFirebaseGoogleToken, FirebaseAuthError } from '../services/firebase';
+import { recordAccountEvent } from '../services/account-events';
 
 export const authRouter = new Hono<AppEnv>();
 
@@ -47,6 +51,7 @@ const LOCKOUT_MINUTES = 15;
 const ADMIN_DASHBOARD_ROLES = new Set(['admin', 'professor', 'reseller']);
 const PASSWORD_RESET_TTL_MINUTES = 30;
 const PASSWORD_RESET_COOLDOWN_SECONDS = 60;
+const EMAIL_VERIFICATION_TTL_HOURS = 24;
 
 // ─────────────────────────────────────────── helpers ────────────────────────
 
@@ -79,6 +84,8 @@ function userOut(user: typeof schema.users.$inferSelect) {
     totp_enabled: user.totp_enabled,
     theme: user.theme,
     language: user.language,
+    firebase_uid: user.firebase_uid,
+    email_verified_at: user.email_verified_at,
     created_at: user.created_at,
     password_changed_at: user.password_changed_at,
   };
@@ -211,6 +218,172 @@ authRouter.get('/google/callback', async (c) => {
   return response;
 });
 
+// ─────────────────────────────────────────── Firebase Google Sign-In (Stage A1) ──
+
+authRouter.post('/firebase/flow', firebaseAuthRateLimiter, async (c) => {
+  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const nonce = crypto.randomUUID().replace(/-/g, '');
+  const secure = isDebug ? '' : '; Secure';
+
+  c.header(
+    'Set-Cookie',
+    `kiur_firebase_flow=${nonce}; Path=/auth/firebase; HttpOnly; SameSite=Lax; Max-Age=300${secure}`
+  );
+
+  return c.json({
+    flow_nonce: nonce,
+    project_id: c.env.FIREBASE_AUTH_PROJECT_ID ?? '',
+    api_key_configured: Boolean(c.env.FIREBASE_WEB_API_KEY),
+  });
+});
+
+authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
+  const body = await c.req.json<{ idToken?: string; id_token?: string; nonce?: string; device_label?: string }>().catch(() => ({} as Record<string, string>));
+  const idToken = body?.idToken || (body as any)?.id_token;
+  if (!idToken) {
+    return c.json({ detail: 'رمز Firebase ID token مفقود' }, 400);
+  }
+
+  // 1. Flow cookie validation (replay and CSRF protection)
+  const cookieHeader = c.req.header('Cookie') ?? '';
+  const match = cookieHeader.match(/(?:^|; )kiur_firebase_flow=([^;]+)/);
+  const flowCookie = match ? match[1] : null;
+
+  if (!flowCookie || (body.nonce && flowCookie !== body.nonce)) {
+    return c.json({ detail: 'جلسة تدفق Firebase غير صالحة أو منتهية الصلاحية' }, 400);
+  }
+
+  // Clear flow cookie immediately (consume once)
+  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const secure = isDebug ? '' : '; Secure';
+  c.header(
+    'Set-Cookie',
+    `kiur_firebase_flow=; Path=/auth/firebase; HttpOnly; SameSite=Lax; Max-Age=0${secure}`
+  );
+
+  // 2. Server-side token verification
+  let fbUser;
+  try {
+    fbUser = await verifyFirebaseGoogleToken(c.env, idToken);
+  } catch (err: any) {
+    if (err instanceof FirebaseAuthError) {
+      return c.json({ detail: err.message, code: err.code }, err.statusCode as any);
+    }
+    return c.json({ detail: 'فشل التحقق من هوية Google', error: String(err) }, 500);
+  }
+
+  const db = drizzle(c.env.DB, { schema });
+  const ip = c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1';
+  const userAgent = c.req.header('user-agent');
+
+  // 3. User Resolution / Linkage
+  let user = await db
+    .select()
+    .from(schema.users)
+    .where(eq(schema.users.firebase_uid, fbUser.uid))
+    .get();
+
+  if (!user) {
+    user = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.email, fbUser.email))
+      .get();
+
+    if (user) {
+      // Link existing user
+      await db
+        .update(schema.users)
+        .set({
+          firebase_uid: fbUser.uid,
+          email_verified_at: user.email_verified_at || new Date().toISOString(),
+        })
+        .where(eq(schema.users.id, user.id));
+      user.firebase_uid = fbUser.uid;
+    }
+  }
+
+  // New user creation
+  if (!user) {
+    const allUsers = await db.select().from(schema.users).all();
+    // Default to student. Only bootstrap admin if explicitly matching bootstrap email
+    const role = shouldBootstrapAdmin(allUsers, fbUser.email, c.env.BOOTSTRAP_ADMIN_EMAIL)
+      ? 'admin'
+      : 'student';
+
+    const newId = schema.genId();
+    await db.insert(schema.users).values({
+      id: newId,
+      email: fbUser.email,
+      full_name: fbUser.name || 'طالب جديد',
+      firebase_uid: fbUser.uid,
+      photo_url: fbUser.photoUrl,
+      role,
+      email_verified_at: new Date().toISOString(),
+    });
+
+    user = (await db.select().from(schema.users).where(eq(schema.users.id, newId)).get())!;
+
+    await recordAccountEvent(db, {
+      userId: user.id,
+      email: user.email,
+      eventType: 'register',
+      outcome: 'success',
+      ip,
+      userAgent,
+      details: { provider: 'firebase_google' },
+    });
+  }
+
+  if (user.is_banned) {
+    await recordAccountEvent(db, {
+      userId: user.id,
+      email: user.email,
+      eventType: 'login_failure',
+      outcome: 'failure',
+      ip,
+      userAgent,
+      details: { reason: 'banned' },
+    });
+    return c.json({ detail: 'هذا الحساب محظور' }, 403);
+  }
+
+  // Handle 2FA if enabled
+  const jwtSecret = c.env.JWT_SECRET;
+  if (user.totp_enabled) {
+    const pendingToken = await create2faPendingToken(user.id, jwtSecret);
+    return c.json({
+      requires_2fa: true,
+      pending_token: pendingToken,
+      user_id: user.id,
+    });
+  }
+
+  const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
+  const deviceLabel = (body.device_label || c.req.header('user-agent') || 'متصفح').slice(0, 50);
+  const session = await startNewSession(db, user.id, deviceLabel);
+  const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
+
+  await recordAccountEvent(db, {
+    userId: user.id,
+    email: user.email,
+    eventType: 'google_login',
+    outcome: 'success',
+    ip,
+    userAgent,
+    details: { provider: 'firebase_google' },
+  });
+
+  const response = c.json({
+    access_token: token,
+    token_type: 'bearer',
+    user: userOut(user),
+  });
+
+  setSessionCookie(response, token, expiresMinutes, isDebug);
+  return response;
+});
+
 // ─────────────────────────────────────────── Dev login ───────────────────────
 
 authRouter.post('/dev-login', async (c) => {
@@ -286,7 +459,117 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
     details: { email, role },
   });
 
+  // Generate verification token and save to email_verifications table
+  const rawVerificationToken = generateResetToken();
+  const verificationHash = await hashResetToken(rawVerificationToken);
+  const verifExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_HOURS * 3600000).toISOString();
+  await db.insert(schema.emailVerifications).values({
+    id: schema.genId(),
+    user_id: user!.id,
+    token_hash: verificationHash,
+    expires_at: verifExpires,
+  });
+
+  await recordAccountEvent(db, {
+    userId: user!.id,
+    email: user!.email,
+    eventType: 'register',
+    outcome: 'success',
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+    details: { role },
+  });
+
   return response;
+});
+
+// ─────────────────────────────────────────── Email Verification (Stage A2) ──
+
+authRouter.post('/verify-email', async (c) => {
+  const body = await c.req.json<{ token?: string }>().catch(() => ({} as Record<string, string>));
+  const token = (body?.token ?? '').trim();
+  if (!token) return c.json({ detail: 'رمز التوثيق مطلوب' }, 400);
+
+  const db = drizzle(c.env.DB, { schema });
+  const tokenHash = await hashResetToken(token);
+
+  const record = await db
+    .select()
+    .from(schema.emailVerifications)
+    .where(eq(schema.emailVerifications.token_hash, tokenHash))
+    .get();
+
+  if (!record) {
+    return c.json({ detail: 'رمز التحقق أو التوثيق غير صالح أو منتهي الصلاحية' }, 400);
+  }
+
+  // Idempotency: if already verified, return success safely
+  if (record.verified_at) {
+    return c.json({ ok: true, message: 'البريد الإلكتروني موثق مسبقاً', already_verified: true });
+  }
+
+  // Check expiration
+  if (new Date(record.expires_at) < new Date()) {
+    return c.json({ detail: 'رمز التحقق منتهي الصلاحية' }, 400);
+  }
+
+  const now = new Date().toISOString();
+  await db.batch([
+    db
+      .update(schema.emailVerifications)
+      .set({ verified_at: now })
+      .where(eq(schema.emailVerifications.id, record.id)),
+    db
+      .update(schema.users)
+      .set({ email_verified_at: now })
+      .where(eq(schema.users.id, record.user_id)),
+  ]);
+
+  await recordAccountEvent(db, {
+    userId: record.user_id,
+    eventType: 'email_verified',
+    outcome: 'success',
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+  });
+
+  return c.json({ ok: true, message: 'تم توثيق البريد الإلكتروني بنجاح' });
+});
+
+authRouter.post('/resend-verification', resendVerificationRateLimiter, async (c) => {
+  const body = await c.req.json<{ email?: string }>().catch(() => ({} as Record<string, string>));
+  const email = (body?.email ?? '').trim().toLowerCase();
+  if (!email) return c.json({ detail: 'البريد الإلكتروني مطلوب' }, 400);
+
+  const db = drizzle(c.env.DB, { schema });
+  const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
+
+  if (user && !user.email_verified_at) {
+    const rawVerificationToken = generateResetToken();
+    const verificationHash = await hashResetToken(rawVerificationToken);
+    const verifExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_HOURS * 3600000).toISOString();
+    await db.insert(schema.emailVerifications).values({
+      id: schema.genId(),
+      user_id: user.id,
+      token_hash: verificationHash,
+      expires_at: verifExpires,
+    });
+
+    await recordAccountEvent(db, {
+      userId: user.id,
+      email: user.email,
+      eventType: 'verification_resent',
+      outcome: 'success',
+      ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+      userAgent: c.req.header('user-agent'),
+    });
+  }
+
+  // Account enumeration defense: Return identical response whether email exists or not
+  return c.json({
+    ok: true,
+    message: 'إذا كان البريد مسجلاً ولم يتم توثيقه بعد، فستصله رسالة توثيق جديدة',
+  });
 });
 
 // ─────────────────────────────────────────── Login ───────────────────────────
@@ -865,12 +1148,153 @@ authRouter.get('/me/history', requireAuth, async (c) => {
 
 // ─────────────────────────────────────────── Sessions ────────────────────────
 
-authRouter.get('/me/sessions', requireAuth, async (c) => {
+const handleGetSessions = async (c: any) => {
   const db = drizzle(c.env.DB, { schema });
-  const sessions = await db.select().from(schema.userSessions)
-    .where(and(eq(schema.userSessions.user_id, c.get('user')!.id), eq(schema.userSessions.is_active, true)))
+  const userId = c.get('user')!.id;
+  const currentSessionId = c.get('session')?.id;
+
+  const sessions = await db
+    .select()
+    .from(schema.userSessions)
+    .where(and(eq(schema.userSessions.user_id, userId), eq(schema.userSessions.is_active, true)))
     .orderBy(desc(schema.userSessions.created_at));
-  return c.json(sessions);
+
+  const list = sessions.map((s) => ({
+    id: s.id,
+    device_label: s.device_label,
+    is_active: s.is_active,
+    created_at: s.created_at,
+    is_current: s.id === currentSessionId,
+  }));
+
+  return c.json({
+    ok: true,
+    sessions: list,
+  });
+};
+
+authRouter.get('/sessions', requireAuth, handleGetSessions);
+authRouter.get('/me/sessions', requireAuth, handleGetSessions);
+
+authRouter.post('/sessions/:id/revoke', requireAuth, async (c) => {
+  const sessionId = c.req.param('id') ?? '';
+  if (!sessionId) return c.json({ detail: 'معرّف الجلسة مطلوب' }, 400);
+  const userId = c.get('user')!.id;
+  const db = drizzle(c.env.DB, { schema });
+
+  const session = await db
+    .select()
+    .from(schema.userSessions)
+    .where(and(eq(schema.userSessions.id, sessionId), eq(schema.userSessions.user_id, userId)))
+    .get();
+
+  if (!session) {
+    return c.json({ detail: 'الجلسة غير موجودة' }, 404);
+  }
+
+  await db
+    .update(schema.userSessions)
+    .set({ is_active: false })
+    .where(eq(schema.userSessions.id, sessionId));
+
+  await recordAccountEvent(db, {
+    userId,
+    eventType: 'session_revoked',
+    outcome: 'success',
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+    details: { sessionId },
+  });
+
+  return c.json({ ok: true, message: 'تم إنهاء الجلسة بنجاح' });
+});
+
+authRouter.post('/sessions/revoke-others', requireAuth, async (c) => {
+  const userId = c.get('user')!.id;
+  const currentSessionId = c.get('session')?.id;
+  const db = drizzle(c.env.DB, { schema });
+
+  if (currentSessionId) {
+    await db
+      .update(schema.userSessions)
+      .set({ is_active: false })
+      .where(and(eq(schema.userSessions.user_id, userId), ne(schema.userSessions.id, currentSessionId)));
+  }
+
+  await recordAccountEvent(db, {
+    userId,
+    eventType: 'session_revoked',
+    outcome: 'success',
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+    details: { action: 'revoke_others', currentSessionId },
+  });
+
+  return c.json({ ok: true, message: 'تم إنهاء جميع الجلسات الأخرى بنجاح' });
+});
+
+authRouter.post('/logout-all', requireAuth, async (c) => {
+  const userId = c.get('user')!.id;
+  const db = drizzle(c.env.DB, { schema });
+
+  await db.batch([
+    db
+      .update(schema.userSessions)
+      .set({ is_active: false })
+      .where(eq(schema.userSessions.user_id, userId)),
+    db
+      .update(schema.users)
+      .set({ session_epoch: sql`${schema.users.session_epoch} + 1` })
+      .where(eq(schema.users.id, userId)),
+  ]);
+
+  await recordAccountEvent(db, {
+    userId,
+    eventType: 'logout_all',
+    outcome: 'success',
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+  });
+
+  const response = c.json({ ok: true, message: 'تم تسجيل الخروج من كافة الأجهزة بنجاح' });
+  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  clearSessionCookie(response, isDebug);
+  return response;
+});
+
+authRouter.get('/security-events', requireAuth, async (c) => {
+  const userId = c.get('user')!.id;
+  const db = drizzle(c.env.DB, { schema });
+
+  const events = await db
+    .select()
+    .from(schema.accountEvents)
+    .where(eq(schema.accountEvents.user_id, userId))
+    .orderBy(desc(schema.accountEvents.created_at))
+    .limit(50);
+
+  return c.json({ ok: true, events });
+});
+
+authRouter.patch('/me/preferences', requireAuth, async (c) => {
+  const userId = c.get('user')!.id;
+  const body = await c.req.json<{ theme?: string; language?: string }>().catch(() => ({} as Record<string, string>));
+  const db = drizzle(c.env.DB, { schema });
+
+  const updates: Partial<typeof schema.users.$inferInsert> = {};
+  if (body.theme && (body.theme === 'light' || body.theme === 'dark')) {
+    updates.theme = body.theme;
+  }
+  if (body.language && (body.language === 'ar' || body.language === 'en')) {
+    updates.language = body.language;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await db.update(schema.users).set(updates).where(eq(schema.users.id, userId));
+  }
+
+  const updatedUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
+  return c.json({ user: userOut(updatedUser!) });
 });
 
 authRouter.post('/session/restore', async (c) => {

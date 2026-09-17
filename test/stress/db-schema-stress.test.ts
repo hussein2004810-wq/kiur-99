@@ -7,6 +7,7 @@ import * as schema from '../../src/db/schema';
 import { MockD1Database } from '../harness/d1-mock';
 
 const MIGRATION_PATH = path.resolve(__dirname, '../../migrations/0000_initial_schema.sql');
+const MIGRATION_0001_PATH = path.resolve(__dirname, '../../migrations/0001_legacy_feature_port.sql');
 const migrationSql = fs.readFileSync(MIGRATION_PATH, 'utf-8');
 
 const ALL_30_TABLES = [
@@ -697,6 +698,9 @@ describe('Tier 5 / Milestone 1: Empirical Database Schema & Constraint Stress Su
       const mockD1 = new MockD1Database(true);
       mockD1.db.exec('PRAGMA foreign_keys = ON;');
       mockD1.db.exec(migrationSql);
+      if (fs.existsSync(MIGRATION_0001_PATH)) {
+        mockD1.db.exec(fs.readFileSync(MIGRATION_0001_PATH, 'utf-8'));
+      }
 
       const drizzleDb = drizzle(mockD1 as any, { schema });
 

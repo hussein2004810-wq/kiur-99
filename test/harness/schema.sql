@@ -26,7 +26,9 @@ CREATE INDEX IF NOT EXISTS stages_university_id_idx ON stages(university_id);
 CREATE TABLE IF NOT EXISTS subjects (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
-    stage_id TEXT NOT NULL REFERENCES stages(id)
+    stage_id TEXT NOT NULL REFERENCES stages(id),
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS subjects_stage_id_idx ON subjects(stage_id);
 
@@ -58,10 +60,15 @@ CREATE TABLE IF NOT EXISTS users (
     redeem_locked_until TEXT,
     theme TEXT NOT NULL DEFAULT 'light',
     language TEXT NOT NULL DEFAULT 'ar',
+    firebase_uid TEXT,
+    email_verified_at TEXT,
+    session_epoch INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email);
 CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx ON users(google_sub);
+CREATE UNIQUE INDEX IF NOT EXISTS users_firebase_uid_idx ON users(firebase_uid);
+CREATE INDEX IF NOT EXISTS users_email_verified_idx ON users(email_verified_at);
 CREATE INDEX IF NOT EXISTS users_university_id_idx ON users(university_id);
 CREATE INDEX IF NOT EXISTS users_stage_id_idx ON users(stage_id);
 CREATE INDEX IF NOT EXISTS users_section_id_idx ON users(section_id);
@@ -108,7 +115,9 @@ CREATE TABLE IF NOT EXISTS questions (
     text TEXT NOT NULL,
     image_url TEXT,
     rationale TEXT NOT NULL DEFAULT '',
-    eyebrow TEXT NOT NULL DEFAULT ''
+    eyebrow TEXT NOT NULL DEFAULT '',
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS questions_subject_id_idx ON questions(subject_id);
 CREATE INDEX IF NOT EXISTS questions_professor_id_idx ON questions(professor_id);
@@ -153,7 +162,9 @@ CREATE TABLE IF NOT EXISTS courses (
     id TEXT PRIMARY KEY NOT NULL,
     subject_id TEXT NOT NULL REFERENCES subjects(id),
     professor_id TEXT REFERENCES professor_profiles(id),
-    title TEXT NOT NULL
+    title TEXT NOT NULL,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS courses_subject_id_idx ON courses(subject_id);
 CREATE INDEX IF NOT EXISTS courses_professor_id_idx ON courses(professor_id);
@@ -165,7 +176,9 @@ CREATE TABLE IF NOT EXISTS lectures (
     title TEXT NOT NULL,
     duration_seconds INTEGER NOT NULL DEFAULT 0,
     order_index INTEGER NOT NULL DEFAULT 0,
-    video_url TEXT NOT NULL DEFAULT ''
+    video_url TEXT NOT NULL DEFAULT '',
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS lectures_course_id_idx ON lectures(course_id);
 
@@ -277,6 +290,8 @@ CREATE TABLE IF NOT EXISTS media_files (
     content_type TEXT NOT NULL DEFAULT '',
     size_bytes INTEGER NOT NULL DEFAULT 0,
     uploaded_by TEXT REFERENCES users(id),
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS media_files_filename_idx ON media_files(filename);
@@ -364,3 +379,82 @@ CREATE TABLE IF NOT EXISTS clinical_pearls (
 );
 CREATE INDEX IF NOT EXISTS clinical_pearls_created_at_idx ON clinical_pearls(created_at);
 CREATE INDEX IF NOT EXISTS clinical_pearls_created_by_idx ON clinical_pearls(created_by);
+
+-- 31. email_verifications
+CREATE TABLE IF NOT EXISTS email_verifications (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    verified_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS email_verifications_user_idx ON email_verifications(user_id);
+CREATE INDEX IF NOT EXISTS email_verifications_token_idx ON email_verifications(token_hash);
+
+-- 32. account_events
+CREATE TABLE IF NOT EXISTS account_events (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    email_hash TEXT,
+    event_type TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    device_hash TEXT NOT NULL,
+    ip_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    details_json TEXT
+);
+CREATE INDEX IF NOT EXISTS account_events_user_idx ON account_events(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS account_events_recent_idx ON account_events(created_at DESC);
+
+-- 33. academic_change_requests
+CREATE TABLE IF NOT EXISTS academic_change_requests (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    current_section_id TEXT,
+    current_university_id TEXT,
+    current_stage_id TEXT,
+    target_section_id TEXT REFERENCES sections(id),
+    target_university_id TEXT REFERENCES universities(id),
+    target_stage_id TEXT REFERENCES stages(id),
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    reviewer_id TEXT REFERENCES users(id),
+    reviewer_notes TEXT,
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS academic_change_user_idx ON academic_change_requests(user_id);
+CREATE INDEX IF NOT EXISTS academic_change_status_idx ON academic_change_requests(status);
+
+-- 34. certificates
+CREATE TABLE IF NOT EXISTS certificates (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    exam_id TEXT NOT NULL REFERENCES exams(id),
+    certificate_code TEXT NOT NULL UNIQUE,
+    student_name TEXT NOT NULL,
+    exam_title TEXT NOT NULL,
+    score_percentage INTEGER NOT NULL,
+    issued_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    is_revoked INTEGER NOT NULL DEFAULT 0,
+    revoked_at TEXT,
+    revocation_reason TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS certificates_code_idx ON certificates(certificate_code);
+CREATE INDEX IF NOT EXISTS certificates_user_idx ON certificates(user_id);
+
+-- 35. student_reviews
+CREATE TABLE IF NOT EXISTS student_reviews (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    ease_factor REAL NOT NULL DEFAULT 2.5,
+    interval_days INTEGER NOT NULL DEFAULT 1,
+    repetition_count INTEGER NOT NULL DEFAULT 0,
+    next_review_at TEXT NOT NULL,
+    last_reviewed_at TEXT,
+    last_score INTEGER
+);
+CREATE INDEX IF NOT EXISTS student_reviews_user_idx ON student_reviews(user_id, next_review_at);
+CREATE UNIQUE INDEX IF NOT EXISTS student_reviews_user_q_idx ON student_reviews(user_id, question_id);

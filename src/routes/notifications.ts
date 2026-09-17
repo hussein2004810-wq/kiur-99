@@ -3,7 +3,7 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, or, isNull, desc } from 'drizzle-orm';
+import { eq, or, isNull, desc, and } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
@@ -63,8 +63,8 @@ notificationsRouter.get('/unread-count', async (c) => {
   return c.json({ count });
 });
 
-// POST /api/me/notifications/:notification_id/read
-notificationsRouter.post('/:notification_id/read', async (c) => {
+// POST & PATCH /api/me/notifications/:notification_id/read
+const markAsRead = async (c: any) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
   const notificationId = c.req.param('notification_id');
@@ -73,8 +73,10 @@ notificationsRouter.post('/:notification_id/read', async (c) => {
     .select()
     .from(schema.notificationReads)
     .where(
-      eq(schema.notificationReads.notification_id, notificationId) &&
-      eq(schema.notificationReads.user_id, user.id)
+      and(
+        eq(schema.notificationReads.notification_id, notificationId),
+        eq(schema.notificationReads.user_id, user.id)
+      )
     )
     .get();
 
@@ -86,4 +88,36 @@ notificationsRouter.post('/:notification_id/read', async (c) => {
     });
   }
   return c.json({ ok: true });
+};
+
+notificationsRouter.post('/:notification_id/read', markAsRead);
+notificationsRouter.patch('/:notification_id/read', markAsRead);
+
+// POST /api/me/notifications/read-all
+notificationsRouter.post('/read-all', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+
+  const allNotifs = await db
+    .select({ id: schema.notifications.id })
+    .from(schema.notifications)
+    .where(or(eq(schema.notifications.user_id, user.id), isNull(schema.notifications.user_id)));
+
+  const reads = await db
+    .select()
+    .from(schema.notificationReads)
+    .where(eq(schema.notificationReads.user_id, user.id));
+
+  const readIds = new Set(reads.map((r) => r.notification_id));
+  const unread = allNotifs.filter((n) => !readIds.has(n.id));
+
+  for (const n of unread) {
+    await db.insert(schema.notificationReads).values({
+      id: schema.genId(),
+      notification_id: n.id,
+      user_id: user.id,
+    });
+  }
+
+  return c.json({ ok: true, marked_read: unread.length });
 });

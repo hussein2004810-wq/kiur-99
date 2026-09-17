@@ -82,6 +82,8 @@ export const registerRateLimiter = rateLimiter({ max: 5, windowSeconds: 600, key
 export const forgotPasswordRateLimiter = rateLimiter({ max: 3, windowSeconds: 600, keyPrefix: 'rl:forgot-pw' });
 export const twoFaVerifyRateLimiter = rateLimiter({ max: 5, windowSeconds: 300, keyPrefix: 'rl:2fa-verify' });
 export const examAttemptRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:exam-start' });
+export const resendVerificationRateLimiter = rateLimiter({ max: 3, windowSeconds: 3600, keyPrefix: 'rl:resend-verif' });
+export const firebaseAuthRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:firebase' });
 
 /**
  * Resets the rate limiter store (used for test isolation).

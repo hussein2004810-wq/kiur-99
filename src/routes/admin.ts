@@ -9,7 +9,7 @@ import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAdmin, requireAuth } from '../middleware/auth';
 import { hashPassword } from '../services/crypto';
-import { createStorageService, safeUploadName, mediaUrl, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
+import { createStorageService, safeUploadName, mediaUrl, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES, validateFileSignature } from '../services/storage';
 import { recordAuditEvent } from '../services/audit';
 
 export const adminRouter = new Hono<AppEnv>();
@@ -492,20 +492,19 @@ adminRouter.delete('/catalog/subjects/:id', async (c) => {
   const subj = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
   if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
 
-  const blockers: string[] = [];
-  const qs = await db.select().from(schema.questions).where(eq(schema.questions.subject_id, id));
-  if (qs.length) blockers.push('أسئلة');
-  const profs = await db.select().from(schema.professorProfiles).where(eq(schema.professorProfiles.subject_id, id));
-  if (profs.length) blockers.push('ملفات دكاترة');
-  const courses = await db.select().from(schema.courses).where(eq(schema.courses.subject_id, id));
-  if (courses.length) blockers.push('كورسات');
-  const exams = await db.select().from(schema.exams).where(eq(schema.exams.subject_id, id));
-  if (exams.length) blockers.push('امتحانات');
-  const codes = await db.select().from(schema.activationCodes).where(eq(schema.activationCodes.subject_id, id));
-  if (codes.length) blockers.push('أكواد تفعيل');
+  // Soft delete subject
+  await db.update(schema.subjects).set({
+    is_deleted: true,
+    deleted_at: new Date().toISOString(),
+  }).where(eq(schema.subjects.id, id));
 
-  if (blockers.length) return c.json({ detail: `لا يمكن حذف المادة — مرتبطة بـ: ${blockers.join(', ')}. عالجي هذي أولاً` }, 400);
-  await db.delete(schema.subjects).where(eq(schema.subjects.id, id));
+  recordAuditEvent({
+    event: 'ADMIN_SUBJECT_SOFT_DELETED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: id,
+  });
+
   return c.json({ ok: true });
 });
 
@@ -513,7 +512,9 @@ adminRouter.delete('/catalog/subjects/:id', async (c) => {
 adminRouter.get('/questions', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const subjectId = c.req.query('subject_id') ?? '';
-  const questions = await db.select().from(schema.questions).where(eq(schema.questions.subject_id, subjectId));
+  const questions = await db.select().from(schema.questions).where(
+    and(eq(schema.questions.subject_id, subjectId), eq(schema.questions.is_deleted, false))
+  );
   const result = await Promise.all(questions.map(async (q) => {
     const choices = await db.select().from(schema.choices).where(eq(schema.choices.question_id, q.id));
     return { ...q, choices };
@@ -534,7 +535,7 @@ adminRouter.post('/questions', async (c) => {
   if (!body.choices.some((c) => c.is_correct)) return c.json({ detail: 'يجب تحديد إجابة صحيحة واحدة على الأقل' }, 400);
 
   const qId = schema.genId();
-  await db.insert(schema.questions).values({ id: qId, subject_id: body.subject_id, text: body.text, eyebrow: body.eyebrow, rationale: body.rationale, image_url: body.image_url });
+  await db.insert(schema.questions).values({ id: qId, subject_id: body.subject_id, text: body.text, eyebrow: body.eyebrow, rationale: body.rationale, image_url: body.image_url, is_deleted: false });
   for (let i = 0; i < body.choices.length; i++) {
     await db.insert(schema.choices).values({ id: schema.genId(), question_id: qId, text: body.choices[i].text, is_correct: body.choices[i].is_correct, order_index: i });
   }
@@ -573,9 +574,20 @@ adminRouter.delete('/questions/:qid', async (c) => {
   const qId = c.req.param('qid');
   const q = await db.select().from(schema.questions).where(eq(schema.questions.id, qId)).get();
   if (!q) return c.json({ detail: 'السؤال غير موجود' }, 404);
-  await db.delete(schema.studentAnswers).where(eq(schema.studentAnswers.question_id, qId));
-  await db.delete(schema.choices).where(eq(schema.choices.question_id, qId));
-  await db.delete(schema.questions).where(eq(schema.questions.id, qId));
+
+  // Soft delete question
+  await db.update(schema.questions).set({
+    is_deleted: true,
+    deleted_at: new Date().toISOString(),
+  }).where(eq(schema.questions.id, qId));
+
+  recordAuditEvent({
+    event: 'ADMIN_QUESTION_SOFT_DELETED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: qId,
+  });
+
   return c.json({ ok: true });
 });
 
@@ -637,6 +649,7 @@ adminRouter.get('/students', async (c) => {
 // ─────────────────────── Media upload ────────────────────────────────────────
 adminRouter.post('/media/upload', async (c) => {
   const db = drizzle(c.env.DB, { schema });
+  const adminUser = c.get('user')!;
   const formData = await c.req.formData();
   const file = formData.get('file') as File | null;
   if (!file) return c.json({ detail: 'الملف مطلوب' }, 400);
@@ -644,13 +657,30 @@ adminRouter.post('/media/upload', async (c) => {
   const contents = await file.arrayBuffer();
   if (contents.byteLength > MAX_UPLOAD_BYTES) return c.json({ detail: 'الملف أكبر من الحد المسموح (20 ميغابايت)' }, 400);
 
-  const storage = createStorageService(c.env.R2_BUCKET);
   const allExts = [...IMAGE_EXTS, ...PDF_EXTS, ...VIDEO_EXTS];
+  const sig = validateFileSignature(contents, allExts);
+  if (!sig.valid) {
+    return c.json({ detail: 'توقيع الملف أو نوعه الداخلي غير صالح' }, 400);
+  }
+
+  const storage = createStorageService(c.env.R2_BUCKET);
   const storedName = safeUploadName(file.name, allExts, 'file');
   await storage.save(storedName, contents, file.type || 'application/octet-stream');
 
   const url = mediaUrl(storedName);
-  return c.json({ url });
+  try {
+    await db.insert(schema.mediaFiles).values({
+      id: schema.genId(),
+      filename: storedName,
+      url,
+      content_type: file.type || 'application/octet-stream',
+      size_bytes: contents.byteLength,
+      uploaded_by: adminUser.id,
+      is_deleted: false,
+    });
+  } catch (_) {}
+
+  return c.json({ url, stored_name: storedName });
 });
 
 // ─────────────────────── Store Products & Orders ─────────────────────────────
@@ -807,4 +837,526 @@ adminRouter.delete('/pearls/:id', async (c) => {
   if (!pearl) return c.json({ detail: 'اللمحة غير موجودة' }, 404);
   await db.delete(schema.clinicalPearls).where(eq(schema.clinicalPearls.id, id));
   return c.json({ ok: true });
+});
+
+// ─────────────────────── CSV Helpers ─────────────────────────────────────────
+function escapeCsv(val: any): string {
+  if (val === null || val === undefined) return '""';
+  const str = String(val).replace(/"/g, '""');
+  return `"${str}"`;
+}
+
+// ─────────────────────── Bulk Question Import (A5) ───────────────────────────
+adminRouter.post('/questions/import/preview', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{
+    subject_id: string;
+    questions: Array<{
+      text: string;
+      eyebrow?: string;
+      rationale?: string;
+      image_url?: string;
+      choices: Array<{ text: string; is_correct: boolean }>;
+    }>;
+  }>();
+
+  if (!body.subject_id) return c.json({ detail: 'المادة مطلوبة' }, 400);
+  const subject = await db.select().from(schema.subjects).where(
+    and(eq(schema.subjects.id, body.subject_id), eq(schema.subjects.is_deleted, false))
+  ).get();
+  if (!subject) return c.json({ detail: 'المادة غير موجودة أو محذوفة' }, 404);
+
+  if (!Array.isArray(body.questions) || !body.questions.length) {
+    return c.json({ detail: 'قائمة الأسئلة فارغة' }, 400);
+  }
+  if (body.questions.length > 500) {
+    return c.json({ detail: 'الحد الأقصى للاستيراد في الدفعة الواحدة هو 500 سؤال' }, 400);
+  }
+
+  // Fetch existing questions in subject to detect duplicates
+  const existing = await db.select({ id: schema.questions.id, text: schema.questions.text })
+    .from(schema.questions)
+    .where(and(eq(schema.questions.subject_id, body.subject_id), eq(schema.questions.is_deleted, false)));
+
+  const existingMap = new Map<string, string>();
+  for (const q of existing) {
+    existingMap.set(q.text.trim().toLowerCase(), q.id);
+  }
+
+  const items = body.questions.map((q, idx) => {
+    const errors: string[] = [];
+    const text = (q.text || '').trim();
+    if (text.length < 3) errors.push('نص السؤال قصير جداً (أقل من 3 أحرف)');
+    if (text.length > 2000) errors.push('نص السؤال طويل جداً (أكثر من 2000 حرف)');
+
+    const choices = Array.isArray(q.choices) ? q.choices : [];
+    if (choices.length < 2) errors.push('يجب إضافة خيارين على الأقل');
+    if (choices.length > 8) errors.push('الحد الأقصى للخيارات هو 8');
+    if (!choices.some((ch) => ch.is_correct)) errors.push('يجب تحديد إجابة صحيحة واحدة على الأقل');
+
+    const duplicateOfId = existingMap.get(text.toLowerCase()) || null;
+
+    return {
+      index: idx + 1,
+      text,
+      eyebrow: q.eyebrow?.trim() || null,
+      rationale: q.rationale?.trim() || null,
+      image_url: q.image_url?.trim() || null,
+      choices_count: choices.length,
+      is_valid: errors.length === 0,
+      is_duplicate: duplicateOfId !== null,
+      duplicate_of_id: duplicateOfId,
+      errors,
+    };
+  });
+
+  const validCount = items.filter((i) => i.is_valid && !i.is_duplicate).length;
+  const duplicateCount = items.filter((i) => i.is_duplicate).length;
+  const errorCount = items.filter((i) => !i.is_valid).length;
+
+  return c.json({
+    summary: {
+      total: items.length,
+      valid: validCount,
+      duplicates: duplicateCount,
+      errors: errorCount,
+    },
+    items,
+  });
+});
+
+adminRouter.post('/questions/import/commit', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const adminUser = c.get('user')!;
+  const body = await c.req.json<{
+    subject_id: string;
+    questions: Array<{
+      text: string;
+      eyebrow?: string;
+      rationale?: string;
+      image_url?: string;
+      choices: Array<{ text: string; is_correct: boolean }>;
+    }>;
+    on_duplicate?: 'skip' | 'replace' | 'keep_both';
+  }>();
+
+  if (!body.subject_id) return c.json({ detail: 'المادة مطلوبة' }, 400);
+  const subject = await db.select().from(schema.subjects).where(
+    and(eq(schema.subjects.id, body.subject_id), eq(schema.subjects.is_deleted, false))
+  ).get();
+  if (!subject) return c.json({ detail: 'المادة غير موجودة أو محذوفة' }, 404);
+
+  const onDuplicate = body.on_duplicate ?? 'skip';
+
+  const existing = await db.select({ id: schema.questions.id, text: schema.questions.text })
+    .from(schema.questions)
+    .where(and(eq(schema.questions.subject_id, body.subject_id), eq(schema.questions.is_deleted, false)));
+
+  const existingMap = new Map<string, string>();
+  for (const q of existing) {
+    existingMap.set(q.text.trim().toLowerCase(), q.id);
+  }
+
+  let imported = 0;
+  let replaced = 0;
+  let skipped = 0;
+
+  for (const q of body.questions) {
+    const text = (q.text || '').trim();
+    const choices = Array.isArray(q.choices) ? q.choices : [];
+    if (text.length < 3 || choices.length < 2 || !choices.some((ch) => ch.is_correct)) {
+      skipped++;
+      continue;
+    }
+
+    const dupId = existingMap.get(text.toLowerCase());
+    if (dupId) {
+      if (onDuplicate === 'skip') {
+        skipped++;
+        continue;
+      } else if (onDuplicate === 'replace') {
+        await db.update(schema.questions).set({
+          eyebrow: q.eyebrow?.trim() || '',
+          rationale: q.rationale?.trim() || '',
+          image_url: q.image_url?.trim() || null,
+        }).where(eq(schema.questions.id, dupId));
+
+        await db.delete(schema.choices).where(eq(schema.choices.question_id, dupId));
+        for (let i = 0; i < choices.length; i++) {
+          await db.insert(schema.choices).values({
+            id: schema.genId(),
+            question_id: dupId,
+            text: choices[i].text.trim(),
+            is_correct: choices[i].is_correct,
+            order_index: i,
+          });
+        }
+        replaced++;
+        continue;
+      }
+    }
+
+    // Insert new question
+    const qId = schema.genId();
+    await db.insert(schema.questions).values({
+      id: qId,
+      subject_id: body.subject_id,
+      text,
+      eyebrow: q.eyebrow?.trim() || '',
+      rationale: q.rationale?.trim() || '',
+      image_url: q.image_url?.trim() || null,
+      is_deleted: false,
+    });
+
+    for (let i = 0; i < choices.length; i++) {
+      await db.insert(schema.choices).values({
+        id: schema.genId(),
+        question_id: qId,
+        text: choices[i].text.trim(),
+        is_correct: choices[i].is_correct,
+        order_index: i,
+      });
+    }
+    existingMap.set(text.toLowerCase(), qId);
+    imported++;
+  }
+
+  recordAuditEvent({
+    event: 'ADMIN_QUESTIONS_IMPORTED',
+    status: 'SUCCESS',
+    actorId: adminUser.id,
+    targetId: body.subject_id,
+    details: { imported, replaced, skipped },
+  });
+
+  return c.json({ ok: true, imported, replaced, skipped });
+});
+
+// ─────────────────────── Scoped Exports (A6) ─────────────────────────────────
+adminRouter.get('/export/questions', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const subjectId = c.req.query('subject_id');
+
+  const questions = subjectId
+    ? await db.select().from(schema.questions).where(and(eq(schema.questions.subject_id, subjectId), eq(schema.questions.is_deleted, false)))
+    : await db.select().from(schema.questions).where(eq(schema.questions.is_deleted, false));
+
+  const subjects = await db.select().from(schema.subjects);
+  const subjectMap = new Map(subjects.map((s) => [s.id, s.name]));
+
+  const header = '\uFEFF' + ['المعرف', 'المادة', 'نص السؤال', 'التصنيف', 'الشرح', 'الخيارات', 'الإجابة الصحيحة'].map(escapeCsv).join(',') + '\r\n';
+
+  const rows = await Promise.all(questions.map(async (q) => {
+    const choices = await db.select().from(schema.choices).where(eq(schema.choices.question_id, q.id));
+    const choicesStr = choices.map((ch, idx) => `${idx + 1}. ${ch.text}`).join(' | ');
+    const correctStr = choices.filter((ch) => ch.is_correct).map((ch) => ch.text).join(' | ');
+    const subName = q.subject_id ? (subjectMap.get(q.subject_id) ?? '—') : '—';
+    return [q.id, subName, q.text, q.eyebrow ?? '', q.rationale ?? '', choicesStr, correctStr].map(escapeCsv).join(',');
+  }));
+
+  const csv = header + rows.join('\r\n');
+  return new Response(csv, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="questions-export.csv"',
+      'Cache-Control': 'no-store',
+    },
+  });
+});
+
+adminRouter.get('/export/exam-results/:exam_id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const examId = c.req.param('exam_id');
+  const exam = await db.select().from(schema.exams).where(eq(schema.exams.id, examId)).get();
+  if (!exam) return c.json({ detail: 'الامتحان غير موجود' }, 404);
+
+  const attempts = await db.select().from(schema.examAttempts).where(eq(schema.examAttempts.exam_id, examId));
+  const users = await db.select().from(schema.users);
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  const unis = await db.select().from(schema.universities);
+  const uniMap = new Map(unis.map((u) => [u.id, u.name]));
+  const stages = await db.select().from(schema.stages);
+  const stageMap = new Map(stages.map((s) => [s.id, s.name]));
+
+  const header = '\uFEFF' + ['معرف المحاولة', 'اسم الطالب', 'البريد الإلكتروني', 'الجامعة', 'المرحلة', 'الدرجة', 'النسبة المئوية', 'تاريخ البدء', 'تاريخ الإكمال'].map(escapeCsv).join(',') + '\r\n';
+
+  const rows = attempts.map((att) => {
+    const student = userMap.get(att.user_id);
+    const uniName = student?.university_id ? (uniMap.get(student.university_id) ?? '—') : '—';
+    const stageName = student?.stage_id ? (stageMap.get(student.stage_id) ?? '—') : '—';
+    const pct = att.total > 0 ? `${Math.round((att.score / att.total) * 100)}%` : '—';
+    return [
+      att.id,
+      student?.full_name ?? '—',
+      student?.email ?? '—',
+      uniName,
+      stageName,
+      att.score ?? '—',
+      pct,
+      att.started_at ?? '—',
+      att.finished_at ?? '—',
+    ].map(escapeCsv).join(',');
+  });
+
+  const csv = header + rows.join('\r\n');
+  return new Response(csv, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="exam-${examId}-results.csv"`,
+      'Cache-Control': 'no-store',
+    },
+  });
+});
+
+// ─────────────────────── Admin Account Events View (A4 / A7) ─────────────────
+adminRouter.get('/account-events', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const limit = Math.min(parseInt(c.req.query('limit') ?? '50'), 100);
+  const offset = parseInt(c.req.query('offset') ?? '0');
+  const userId = c.req.query('user_id');
+  const eventType = c.req.query('event_type');
+
+  const events = await db.select().from(schema.accountEvents).orderBy(desc(schema.accountEvents.created_at)).limit(limit).offset(offset);
+
+  const filtered = events.filter((e) => {
+    if (userId && e.user_id !== userId) return false;
+    if (eventType && e.event_type !== eventType) return false;
+    return true;
+  });
+
+  const users = await db.select().from(schema.users);
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  const out = filtered.map((e) => {
+    const user = e.user_id ? userMap.get(e.user_id) : null;
+    return {
+      id: e.id,
+      user_id: e.user_id,
+      user_name: user?.full_name ?? '—',
+      user_email: user?.email ?? '—',
+      event_type: e.event_type,
+      outcome: e.outcome,
+      ip_hash: e.ip_hash,
+      device_hash: e.device_hash,
+      created_at: e.created_at,
+      details: e.details_json ? JSON.parse(e.details_json) : null,
+    };
+  });
+
+  return c.json({ total: out.length, events: out });
+});
+
+// ─────────────────────── Academic Change Requests (B1) ───────────────────────
+adminRouter.get('/academic-change-requests', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const status = c.req.query('status');
+
+  const allRequests = await db.select().from(schema.academicChangeRequests).orderBy(desc(schema.academicChangeRequests.created_at));
+  const filtered = status ? allRequests.filter((r) => r.status === status) : allRequests;
+
+  const users = await db.select().from(schema.users);
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  const unis = await db.select().from(schema.universities);
+  const uniMap = new Map(unis.map((u) => [u.id, u.name]));
+
+  const stages = await db.select().from(schema.stages);
+  const stageMap = new Map(stages.map((s) => [s.id, s.name]));
+
+  const out = filtered.map((r) => {
+    const student = userMap.get(r.user_id);
+    const reviewer = r.reviewer_id ? userMap.get(r.reviewer_id) : null;
+    return {
+      id: r.id,
+      user_id: r.user_id,
+      student_name: student?.full_name ?? '—',
+      student_email: student?.email ?? '—',
+      current_university: r.current_university_id ? (uniMap.get(r.current_university_id) ?? '—') : '—',
+      current_stage: r.current_stage_id ? (stageMap.get(r.current_stage_id) ?? '—') : '—',
+      target_university: r.target_university_id ? (uniMap.get(r.target_university_id) ?? r.target_university_id) : '—',
+      target_stage: r.target_stage_id ? (stageMap.get(r.target_stage_id) ?? r.target_stage_id) : '—',
+      reason: r.reason,
+      status: r.status,
+      reviewer_name: reviewer?.full_name ?? null,
+      reviewer_notes: r.reviewer_notes,
+      reviewed_at: r.reviewed_at,
+      created_at: r.created_at,
+    };
+  });
+
+  return c.json(out);
+});
+
+adminRouter.post('/academic-change-requests/:id/review', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const adminUser = c.get('user')!;
+  const id = c.req.param('id');
+  const body = await c.req.json<{ status: 'approved' | 'rejected'; notes?: string }>();
+
+  if (!['approved', 'rejected'].includes(body.status)) {
+    return c.json({ detail: 'حالة المراجعة غير صالحة' }, 400);
+  }
+
+  const reqRecord = await db.select().from(schema.academicChangeRequests).where(eq(schema.academicChangeRequests.id, id)).get();
+  if (!reqRecord) return c.json({ detail: 'طلب التغيير غير موجود' }, 404);
+  if (reqRecord.status !== 'pending') {
+    return c.json({ detail: 'تمت مراجعة هذا الطلب مسبقاً' }, 409);
+  }
+
+  const now = new Date().toISOString();
+
+  if (body.status === 'approved') {
+    await db.update(schema.users).set({
+      university_id: reqRecord.target_university_id,
+      stage_id: reqRecord.target_stage_id,
+    }).where(eq(schema.users.id, reqRecord.user_id));
+  }
+
+  await db.update(schema.academicChangeRequests).set({
+    status: body.status,
+    reviewer_id: adminUser.id,
+    reviewer_notes: body.notes?.trim() || null,
+    reviewed_at: now,
+  }).where(eq(schema.academicChangeRequests.id, id));
+
+  // Send notification to student
+  const outcomeArabic = body.status === 'approved' ? 'تمت الموافقة على' : 'تم رفض';
+  await db.insert(schema.notifications).values({
+    id: schema.genId(),
+    user_id: reqRecord.user_id,
+    title: `طلب تغيير المسار الأكاديمي: ${outcomeArabic}`,
+    body: body.notes ? `النتيجة: ${outcomeArabic} طلبك. ملاحظة المراجع: ${body.notes}` : `النتيجة: ${outcomeArabic} طلبك لتغيير المسار الأكاديمي.`,
+  });
+
+  recordAuditEvent({
+    event: 'ADMIN_ACADEMIC_CHANGE_REVIEWED',
+    status: 'SUCCESS',
+    actorId: adminUser.id,
+    targetId: id,
+    details: { status: body.status, student_id: reqRecord.user_id },
+  });
+
+  return c.json({ ok: true, status: body.status });
+});
+
+// ─────────────────────── Academic Trash & Restore (B2) ───────────────────────
+adminRouter.get('/trash', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+
+  const subjects = await db.select().from(schema.subjects).where(eq(schema.subjects.is_deleted, true));
+  const courses = await db.select().from(schema.courses).where(eq(schema.courses.is_deleted, true));
+  const questions = await db.select().from(schema.questions).where(eq(schema.questions.is_deleted, true));
+  const media = await db.select().from(schema.mediaFiles).where(eq(schema.mediaFiles.is_deleted, true));
+
+  return c.json({
+    subjects: subjects.map((s) => ({ id: s.id, name: s.name, deleted_at: s.deleted_at })),
+    courses: courses.map((co) => ({ id: co.id, title: co.title, deleted_at: co.deleted_at })),
+    questions: questions.map((q) => ({ id: q.id, text: q.text, deleted_at: q.deleted_at })),
+    media_files: media.map((m) => ({ id: m.id, filename: m.filename, url: m.url, deleted_at: m.deleted_at })),
+  });
+});
+
+adminRouter.post('/trash/:type/:id/restore', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const adminUser = c.get('user')!;
+  const type = c.req.param('type');
+  const id = c.req.param('id');
+
+  if (type === 'subject') {
+    const subj = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
+    if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
+    await db.update(schema.subjects).set({ is_deleted: false, deleted_at: null }).where(eq(schema.subjects.id, id));
+  } else if (type === 'question') {
+    const q = await db.select().from(schema.questions).where(eq(schema.questions.id, id)).get();
+    if (!q) return c.json({ detail: 'السؤال غير موجود' }, 404);
+    await db.update(schema.questions).set({ is_deleted: false, deleted_at: null }).where(eq(schema.questions.id, id));
+  } else if (type === 'course') {
+    const co = await db.select().from(schema.courses).where(eq(schema.courses.id, id)).get();
+    if (!co) return c.json({ detail: 'الكورس غير موجود' }, 404);
+    await db.update(schema.courses).set({ is_deleted: false, deleted_at: null }).where(eq(schema.courses.id, id));
+  } else if (type === 'media') {
+    const m = await db.select().from(schema.mediaFiles).where(eq(schema.mediaFiles.id, id)).get();
+    if (!m) return c.json({ detail: 'الملف غير موجود' }, 404);
+    await db.update(schema.mediaFiles).set({ is_deleted: false, deleted_at: null }).where(eq(schema.mediaFiles.id, id));
+  } else {
+    return c.json({ detail: 'نوع غير صالح' }, 400);
+  }
+
+  recordAuditEvent({
+    event: 'ADMIN_ITEM_RESTORED',
+    status: 'SUCCESS',
+    actorId: adminUser.id,
+    targetId: id,
+    details: { type },
+  });
+
+  return c.json({ ok: true, restored_type: type, id });
+});
+
+adminRouter.delete('/trash/:type/:id/purge', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const adminUser = c.get('user')!;
+  const type = c.req.param('type');
+  const id = c.req.param('id');
+
+  if (type === 'subject') {
+    await db.delete(schema.subjects).where(eq(schema.subjects.id, id));
+  } else if (type === 'question') {
+    await db.delete(schema.studentAnswers).where(eq(schema.studentAnswers.question_id, id));
+    await db.delete(schema.choices).where(eq(schema.choices.question_id, id));
+    await db.delete(schema.questions).where(eq(schema.questions.id, id));
+  } else if (type === 'course') {
+    await db.delete(schema.courses).where(eq(schema.courses.id, id));
+  } else if (type === 'media') {
+    const m = await db.select().from(schema.mediaFiles).where(eq(schema.mediaFiles.id, id)).get();
+    if (m?.filename) {
+      const storage = createStorageService(c.env.R2_BUCKET);
+      await storage.delete(m.filename);
+    }
+    await db.delete(schema.mediaFiles).where(eq(schema.mediaFiles.id, id));
+  } else {
+    return c.json({ detail: 'نوع غير صالح' }, 400);
+  }
+
+  recordAuditEvent({
+    event: 'ADMIN_ITEM_PURGED',
+    status: 'SUCCESS',
+    actorId: adminUser.id,
+    targetId: id,
+    details: { type },
+  });
+
+  return c.json({ ok: true, purged_type: type, id });
+});
+
+// ─────────────────────── Certificate Revocation (B6) ─────────────────────────
+adminRouter.post('/certificates/:id/revoke', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const adminUser = c.get('user')!;
+  const id = c.req.param('id');
+  const body = await c.req.json<{ reason: string }>();
+
+  if (!body.reason?.trim()) return c.json({ detail: 'سبب الإلغاء مطلوب' }, 400);
+
+  const cert = await db.select().from(schema.certificates).where(eq(schema.certificates.id, id)).get();
+  if (!cert) return c.json({ detail: 'الشهادة غير موجودة' }, 404);
+
+  await db.update(schema.certificates).set({
+    is_revoked: true,
+    revoked_at: new Date().toISOString(),
+    revocation_reason: body.reason.trim(),
+  }).where(eq(schema.certificates.id, id));
+
+  recordAuditEvent({
+    event: 'ADMIN_CERTIFICATE_REVOKED',
+    status: 'SUCCESS',
+    actorId: adminUser.id,
+    targetId: id,
+    details: { reason: body.reason.trim() },
+  });
+
+  return c.json({ ok: true, certificate_id: id, is_revoked: true });
 });
