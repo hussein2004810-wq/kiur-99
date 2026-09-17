@@ -1,4 +1,4 @@
-name = "nabd-backend"
+name = "kiur-99"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
@@ -6,14 +6,9 @@ compatibility_flags = ["nodejs_compat"]
 # Cloudflare D1 Database Binding
 [[d1_databases]]
 binding = "DB"
-database_name = "nabd-db"
-database_id = "local-d1"
+database_name = "kiur-99-db"
+database_id = "89fbb990-643f-4727-b71b-99733e65593a"
 migrations_dir = "migrations"
-
-# Cloudflare R2 Storage Bucket Binding
-[[r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "nabd-media"
 
 # Import rule for raw HTML files as text modules
 [[rules]]
@@ -23,23 +18,23 @@ fallthrough = true
 
 # Environment Variables ([vars] accessible via c.env)
 [vars]
-DEBUG = "true"
-JWT_SECRET = "dev-secret-change-me-to-a-very-long-and-secure-random-token-nabd-2026"
+DEBUG = "false"
+JWT_SECRET = "super-secret-secure-random-token-kiur-99-prod-2026"
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRES_MINUTES = "20160"
-BOOTSTRAP_ADMIN_EMAIL = ""
-CORS_ORIGINS = "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8787,http://127.0.0.1:8787"
-ALLOWED_UNIVERSITY_DOMAINS = "uob.edu.iq"
-FRONTEND_URL = "http://localhost:8787"
+BOOTSTRAP_ADMIN_EMAIL = "hussein2004810@gmail.com"
+CORS_ORIGINS = "*"
+ALLOWED_UNIVERSITY_DOMAINS = ""
+FRONTEND_URL = ""
 ADMIN_FRONTEND_URL = ""
 GOOGLE_CLIENT_ID = ""
 GOOGLE_CLIENT_SECRET = ""
-GOOGLE_REDIRECT_URI = "http://localhost:8787/auth/google/callback"
+GOOGLE_REDIRECT_URI = ""
 PASSWORD_RESET_TTL_MINUTES = "60"
 PASSWORD_RESET_COOLDOWN_SECONDS = "120"
 SMTP_HOST = ""
 SMTP_PORT = "587"
 SMTP_USER = ""
 SMTP_PASSWORD = ""
-SMTP_FROM = "no-reply@nabd.edu"
+SMTP_FROM = "no-reply@kiur.edu"
 SMTP_FROM_NAME = "Kiur"

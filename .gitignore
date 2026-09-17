@@ -1,9 +1,29 @@
+# Dependencies
 node_modules/
+
+# Build and deployment artifacts
 dist/
 .wrangler/
-.dev.vars
 coverage/
 *.log
+
+# Environment variables and secrets
+.dev.vars
+.env
+.env.*
+*.pem
+*.key
+*.cert
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Operating System files
 .DS_Store
+Thumbs.db
+
+# Legacy python artifacts
 __pycache__/
 *.pyc

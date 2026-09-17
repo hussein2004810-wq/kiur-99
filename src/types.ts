@@ -6,7 +6,7 @@ import type { Role } from './db/schema';
  */
 export interface AppBindings {
   DB: D1Database;
-  R2_BUCKET: R2Bucket;
+  R2_BUCKET?: R2Bucket;
   JWT_SECRET: string;
   JWT_ALGORITHM?: string;
   JWT_EXPIRES_MINUTES?: string;

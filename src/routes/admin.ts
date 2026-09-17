@@ -10,6 +10,7 @@ import type { AppEnv } from '../types';
 import { requireAdmin, requireAuth } from '../middleware/auth';
 import { hashPassword } from '../services/crypto';
 import { createStorageService, safeUploadName, mediaUrl, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
+import { recordAuditEvent } from '../services/audit';
 
 export const adminRouter = new Hono<AppEnv>();
 adminRouter.use('*', requireAdmin);
@@ -123,6 +124,14 @@ adminRouter.put('/users/:user_id', async (c) => {
   if (body.password) updates.password_hash = await hashPassword(body.password);
   await db.update(schema.users).set(updates).where(eq(schema.users.id, userId));
 
+  recordAuditEvent({
+    event: 'ADMIN_ROLE_CHANGED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: userId,
+    details: { oldRole: user.role, newRole: body.role, email: body.email },
+  });
+
   return c.json(await db.select().from(schema.users).where(eq(schema.users.id, userId)).get());
 });
 
@@ -231,6 +240,15 @@ adminRouter.post('/users/:user_id/ban', async (c) => {
 
   await db.update(schema.users).set({ is_banned: true }).where(eq(schema.users.id, userId));
   await db.insert(schema.banRecords).values({ id: schema.genId(), user_id: userId, reason, status: 'active' });
+
+  recordAuditEvent({
+    event: 'ADMIN_USER_BANNED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: userId,
+    details: { reason },
+  });
+
   return c.json({ ok: true });
 });
 
@@ -244,6 +262,14 @@ adminRouter.post('/users/:user_id/unban', async (c) => {
   await db.update(schema.users).set({ is_banned: false }).where(eq(schema.users.id, userId));
   await db.update(schema.banRecords).set({ status: 'lifted' })
     .where(and(eq(schema.banRecords.user_id, userId), eq(schema.banRecords.status, 'active')));
+
+  recordAuditEvent({
+    event: 'ADMIN_USER_UNBANNED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: userId,
+  });
+
   return c.json({ ok: true });
 });
 
@@ -253,6 +279,15 @@ adminRouter.post('/users/:user_id/2fa/reset', async (c) => {
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
   if (!user) return c.json({ detail: 'المستخدم غير موجود' }, 404);
   await db.update(schema.users).set({ totp_enabled: false, totp_secret: null }).where(eq(schema.users.id, userId));
+
+  recordAuditEvent({
+    event: 'AUTH_2FA_DISABLED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: userId,
+    details: { resetByAdmin: true },
+  });
+
   return c.json({ ok: true });
 });
 

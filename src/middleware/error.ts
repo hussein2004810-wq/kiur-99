@@ -6,6 +6,7 @@ import type { ZodSchema } from 'zod';
 import type { ValidationTargets } from 'hono';
 import type { AppEnv } from '../types';
 import { resolveAllowedOrigin } from './cors';
+import { applySecurityHeaders } from './security-headers';
 
 /**
  * Flattens Zod validation issues into a single, clean, human-readable string.
@@ -49,6 +50,10 @@ export const errorHandler: ErrorHandler<AppEnv> = (err, c) => {
   console.error('[Unhandled Error]', err);
 
   // Ensure CORS headers are injected on error responses so browsers do not mask errors
+  // Ensure CORS and Security headers are injected on error responses so browsers do not mask errors
+  const isDebug = c.env?.DEBUG === 'true' || (c.env as any)?.DEBUG === true;
+  applySecurityHeaders(c.res.headers, isDebug);
+
   const origin = c.req.header('Origin');
   const allowedOrigin = resolveAllowedOrigin(origin, c.env);
   if (allowedOrigin) {
@@ -90,6 +95,9 @@ export const errorHandler: ErrorHandler<AppEnv> = (err, c) => {
  * Returns `{ "detail": "المسار المطلوب غير موجود" }` instead of plain text "404 Not Found".
  */
 export const notFoundHandler: NotFoundHandler<AppEnv> = (c) => {
+  const isDebug = c.env?.DEBUG === 'true' || (c.env as any)?.DEBUG === true;
+  applySecurityHeaders(c.res.headers, isDebug);
+
   const origin = c.req.header('Origin');
   const allowedOrigin = resolveAllowedOrigin(origin, c.env);
   if (allowedOrigin) {

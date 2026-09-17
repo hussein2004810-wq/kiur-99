@@ -2,6 +2,7 @@
  * Exams routes — mirrors Python app/routers/exams.py
  */
 import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, isNull, inArray, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -14,6 +15,11 @@ examsRouter.use('*', requireAuth);
 function deadline(exam: typeof schema.exams.$inferSelect, attempt: typeof schema.examAttempts.$inferSelect): Date | null {
   if (!exam.duration_minutes) return null;
   const started = new Date(attempt.started_at ?? Date.now());
+  let startedStr = attempt.started_at ?? '';
+  if (startedStr && !startedStr.includes('T')) {
+    startedStr = startedStr.replace(' ', 'T') + 'Z';
+  }
+  const started = startedStr ? new Date(startedStr) : new Date();
   return new Date(started.getTime() + exam.duration_minutes * 60000);
 }
 
@@ -52,6 +58,7 @@ examsRouter.post('/:exam_id/start', async (c) => {
       id: attemptId,
       exam_id: examId,
       user_id: user.id,
+      started_at: new Date().toISOString(),
       total: chosen.length,
       score: 0,
     });
@@ -114,14 +121,65 @@ examsRouter.post('/attempts/:attempt_id/items/:item_id/answer', async (c) => {
   const choice = choices.find((ch) => ch.id === body.choice_id);
   if (!choice) return c.json({ detail: 'خيار غير صالح' }, 400);
 
+  const isCorrect = choice.is_correct === true || (choice.is_correct as any) === 1;
+
   await db.update(schema.examAttemptQuestions).set({
     choice_id: choice.id,
     is_correct: choice.is_correct,
+    is_correct: isCorrect,
     answered_at: new Date().toISOString(),
   }).where(eq(schema.examAttemptQuestions.id, item_id));
 
   return c.json({ ok: true });
+  return c.json({ ok: true, recorded: true });
 });
+
+// POST /api/exams/attempts/:attempt_id/answer and /answers (alias supporting { question_id, choice_id })
+const handleAttemptAnswer = async (c: Context<AppEnv>) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+  const attempt_id = c.req.param('attempt_id') ?? '';
+  if (!attempt_id) return c.json({ detail: 'المحاولة غير موجودة' }, 404);
+  const body = await c.req.json<{ question_id: string; choice_id: string }>();
+
+  const attempt = await db.select().from(schema.examAttempts).where(eq(schema.examAttempts.id, attempt_id)).get();
+  if (!attempt || attempt.user_id !== user.id) return c.json({ detail: 'المحاولة غير موجودة' }, 404);
+
+  const exam = await db.select().from(schema.exams).where(eq(schema.exams.id, attempt.exam_id)).get();
+  if (exam) {
+    const dl = deadline(exam, attempt);
+    if (dl && new Date() > dl && !attempt.finished_at) {
+      await autoFinish(db, attempt.id, dl);
+      return c.json({ detail: 'انتهى وقت الامتحان' }, 400);
+    }
+  }
+
+  if (attempt.finished_at) return c.json({ detail: 'انتهى وقت الامتحان' }, 400);
+
+  const item = await db
+    .select()
+    .from(schema.examAttemptQuestions)
+    .where(and(eq(schema.examAttemptQuestions.attempt_id, attempt_id), eq(schema.examAttemptQuestions.question_id, body.question_id)))
+    .get();
+  if (!item) return c.json({ detail: 'السؤال غير موجود بهذه المحاولة' }, 404);
+
+  const choices = await db.select().from(schema.choices).where(eq(schema.choices.question_id, item.question_id));
+  const choice = choices.find((ch) => ch.id === body.choice_id);
+  if (!choice) return c.json({ detail: 'خيار غير صالح' }, 400);
+
+  const isCorrect = choice.is_correct === true || (choice.is_correct as any) === 1;
+
+  await db.update(schema.examAttemptQuestions).set({
+    choice_id: choice.id,
+    is_correct: isCorrect,
+    answered_at: new Date().toISOString(),
+  }).where(eq(schema.examAttemptQuestions.id, item.id));
+
+  return c.json({ ok: true, recorded: true });
+};
+
+examsRouter.post('/attempts/:attempt_id/answer', handleAttemptAnswer);
+examsRouter.post('/attempts/:attempt_id/answers', handleAttemptAnswer);
 
 // POST /api/exams/attempts/:attempt_id/finish
 examsRouter.post('/attempts/:attempt_id/finish', async (c) => {
@@ -135,6 +193,7 @@ examsRouter.post('/attempts/:attempt_id/finish', async (c) => {
   if (!attempt.finished_at) {
     const items = await db.select().from(schema.examAttemptQuestions).where(eq(schema.examAttemptQuestions.attempt_id, attemptId));
     const score = items.filter((it) => it.is_correct).length;
+    const score = items.filter((it) => it.is_correct === true || (it.is_correct as any) === 1).length;
     await db.update(schema.examAttempts).set({
       score,
       finished_at: new Date().toISOString(),

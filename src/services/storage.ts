@@ -15,26 +15,31 @@ export interface StorageService {
   } | null>;
 }
 
-export function createStorageService(bucket: R2Bucket): StorageService {
+export function createStorageService(bucket?: R2Bucket): StorageService {
   return {
     async save(name, data, contentType) {
+      if (!bucket) throw new Error('R2 storage is not enabled or configured yet.');
       await bucket.put(name, data, { httpMetadata: { contentType } });
     },
 
     async get(name) {
+      if (!bucket) return null;
       return bucket.get(name);
     },
 
     async delete(name) {
+      if (!bucket) return;
       await bucket.delete(name);
     },
 
     async exists(name) {
+      if (!bucket) return false;
       const head = await bucket.head(name);
       return head !== null;
     },
 
     async getWithRange(name, rangeHeader) {
+      if (!bucket) return null;
       if (!rangeHeader) {
         const obj = await bucket.get(name);
         if (!obj) return null;

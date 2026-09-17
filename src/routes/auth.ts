@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, inArray, desc, isNotNull } from 'drizzle-orm';
+import { eq, and, ne, inArray, desc, isNotNull } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth, startNewSession } from '../middleware/auth';
@@ -32,6 +33,13 @@ import {
 import { emailConfigured, sendPasswordReset } from '../services/mailer';
 import { createStorageService, safeUploadName, mediaUrl, IMAGE_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
 import { peerIds, rankedPairs, rankOf, streakDays, accuracyPct } from '../services/ranking';
+import {
+  loginRateLimiter,
+  registerRateLimiter,
+  forgotPasswordRateLimiter,
+  twoFaVerifyRateLimiter,
+} from '../middleware/rate-limit';
+import { recordAuditEvent } from '../services/audit';
 
 export const authRouter = new Hono<AppEnv>();
 
@@ -86,6 +94,9 @@ authRouter.get('/google/login', async (c) => {
 
   const next = c.req.query('next') ?? '';
   const state = next === 'admin' ? 'admin' : 'student';
+  const flow = next === 'admin' ? 'admin' : 'student';
+  const stateNonce = crypto.randomUUID().replace(/-/g, '');
+  const state = `${flow}:${stateNonce}`;
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -96,6 +107,10 @@ authRouter.get('/google/login', async (c) => {
     access_type: 'online',
     prompt: 'select_account',
   });
+
+  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const secure = isDebug ? '' : '; Secure';
+  c.header('Set-Cookie', `oauth_state=${state}; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=300${secure}`);
 
   return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
@@ -109,6 +124,20 @@ authRouter.get('/google/callback', async (c) => {
 
   if (!code) return c.json({ detail: 'كود التفويض مفقود' }, 400);
   if (!clientId || !clientSecret || !redirectUri) return c.json({ detail: 'إعدادات Google OAuth غير مهيأة' }, 500);
+
+  // Validate OAuth state against cookie (CSRF protection)
+  const cookieHeader = c.req.header('Cookie') ?? '';
+  const stateCookieMatch = cookieHeader.match(/(?:^|; )oauth_state=([^;]+)/);
+  const expectedState = stateCookieMatch ? stateCookieMatch[1] : null;
+
+  // Clear state cookie
+  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const secure = isDebug ? '' : '; Secure';
+  c.header('Set-Cookie', `oauth_state=; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
+
+  if (!state || (expectedState && state !== expectedState)) {
+    return c.json({ detail: 'حالة OAuth غير صالحة أو منتهية الصلاحية (Invalid OAuth State / CSRF Detected)' }, 403);
+  }
 
   // Exchange code for tokens
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -220,9 +249,11 @@ authRouter.post('/dev-login', async (c) => {
 // ─────────────────────────────────────────── Register ────────────────────────
 
 authRouter.post('/register', async (c) => {
+authRouter.post('/register', registerRateLimiter, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const body = await c.req.json<{ email: string; password?: string; full_name?: string }>();
   const email = (body.email ?? '').trim();
+  const email = (body.email ?? '').trim().toLowerCase();
   const password = body.password ?? '';
   const fullName = (body.full_name ?? '').trim();
 
@@ -250,14 +281,26 @@ authRouter.post('/register', async (c) => {
 
   const response = c.json({ access_token: token, user: userOut(user!) });
   setSessionCookie(response, token, expiresMinutes, isDebug);
+
+  recordAuditEvent({
+    event: 'AUTH_REGISTER_SUCCESS',
+    status: 'SUCCESS',
+    actorId: user!.id,
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+    details: { email, role },
+  });
+
   return response;
 });
 
 // ─────────────────────────────────────────── Login ───────────────────────────
 
 authRouter.post('/login', async (c) => {
+authRouter.post('/login', loginRateLimiter, async (c) => {
   const body = await c.req.json<{ email: string; password: string }>();
   const email = body.email?.trim() ?? '';
+  const email = (body.email ?? '').trim().toLowerCase();
   const db = drizzle(c.env.DB, { schema });
 
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
@@ -266,6 +309,13 @@ authRouter.post('/login', async (c) => {
     const lockedUntil = new Date(user.locked_until);
     if (lockedUntil > new Date()) {
       const minutesLeft = Math.max(1, Math.floor((lockedUntil.getTime() - Date.now()) / 60000) + 1);
+      recordAuditEvent({
+        event: 'AUTH_ACCOUNT_LOCKED',
+        status: 'LOCKED',
+        actorId: user.id,
+        ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+        details: { email, minutesLeft },
+      });
       return c.json({ detail: `تم قفل الحساب مؤقتاً بسبب محاولات دخول فاشلة متكررة — حاول بعد ${minutesLeft} دقيقة` }, 429);
     }
   }
@@ -277,14 +327,38 @@ authRouter.post('/login', async (c) => {
       if (attempts >= MAX_FAILED_ATTEMPTS) {
         const lockUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60000).toISOString();
         await db.update(schema.users).set({ failed_login_attempts: 0, locked_until: lockUntil }).where(eq(schema.users.id, user.id));
+        recordAuditEvent({
+          event: 'AUTH_ACCOUNT_LOCKED',
+          status: 'LOCKED',
+          actorId: user.id,
+          ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+          details: { email, reason: 'max_failed_attempts_reached' },
+        });
       } else {
         await db.update(schema.users).set({ failed_login_attempts: attempts }).where(eq(schema.users.id, user.id));
       }
     }
+    recordAuditEvent({
+      event: 'AUTH_LOGIN_FAILED',
+      status: 'FAILURE',
+      actorId: user?.id ?? null,
+      ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+      details: { email, reason: 'invalid_credentials' },
+    });
     return c.json({ detail: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' }, 401);
   }
 
   if (user.is_banned) return c.json({ detail: 'هذا الحساب محظور' }, 403);
+  if (user.is_banned) {
+    recordAuditEvent({
+      event: 'AUTH_LOGIN_FAILED',
+      status: 'DENIED',
+      actorId: user.id,
+      ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+      details: { email, reason: 'user_is_banned' },
+    });
+    return c.json({ detail: 'هذا الحساب محظور' }, 403);
+  }
 
   // Clear failed attempts
   if (user.failed_login_attempts || user.locked_until) {
@@ -304,6 +378,15 @@ authRouter.post('/login', async (c) => {
   const session = await startNewSession(db, user.id, 'متصفح');
   const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
 
+  recordAuditEvent({
+    event: 'AUTH_LOGIN_SUCCESS',
+    status: 'SUCCESS',
+    actorId: user.id,
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+    details: { email },
+  });
+
   const response = c.json({ access_token: token, user: userOut(user!) });
   setSessionCookie(response, token, expiresMinutes, isDebug);
   return response;
@@ -317,6 +400,15 @@ authRouter.post('/logout', requireAuth, async (c) => {
   const session = c.get('session')!;
 
   await db.update(schema.userSessions).set({ is_active: false }).where(eq(schema.userSessions.user_id, user.id));
+
+  recordAuditEvent({
+    event: 'AUTH_LOGOUT',
+    status: 'SUCCESS',
+    actorId: user.id,
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    details: { sessionId: session.id },
+  });
+
   const response = c.json({ ok: true });
   clearSessionCookie(response, (c.env.DEBUG ?? 'true') === 'true');
   return response;
@@ -325,6 +417,7 @@ authRouter.post('/logout', requireAuth, async (c) => {
 // ─────────────────────────────────────────── 2FA ─────────────────────────────
 
 authRouter.post('/2fa/verify', async (c) => {
+authRouter.post('/2fa/verify', twoFaVerifyRateLimiter, async (c) => {
   const body = await c.req.json<{ pending_token: string; code: string }>();
   const jwtSecret = c.env.JWT_SECRET;
   const userId = await decode2faPendingToken(body.pending_token, jwtSecret);
@@ -345,6 +438,13 @@ authRouter.post('/2fa/verify', async (c) => {
     const attempts = (user.failed_login_attempts ?? 0) + 1;
     if (attempts >= MAX_FAILED_ATTEMPTS) {
       await db.update(schema.users).set({ failed_login_attempts: 0, locked_until: new Date(Date.now() + LOCKOUT_MINUTES * 60000).toISOString() }).where(eq(schema.users.id, userId));
+      recordAuditEvent({
+        event: 'AUTH_ACCOUNT_LOCKED',
+        status: 'LOCKED',
+        actorId: user.id,
+        ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+        details: { reason: '2fa_max_attempts' },
+      });
     } else {
       await db.update(schema.users).set({ failed_login_attempts: attempts }).where(eq(schema.users.id, userId));
     }
@@ -356,6 +456,13 @@ authRouter.post('/2fa/verify', async (c) => {
   const isDebug = (c.env.DEBUG ?? 'true') === 'true';
   const session = await startNewSession(db, user.id, 'متصفح');
   const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
+
+  recordAuditEvent({
+    event: 'AUTH_2FA_VERIFIED',
+    status: 'SUCCESS',
+    actorId: user.id,
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+  });
 
   const response = c.json({ access_token: token, user: userOut(user!) });
   setSessionCookie(response, token, expiresMinutes, isDebug);
@@ -380,6 +487,13 @@ authRouter.post('/2fa/enable', requireAuth, async (c) => {
   if (!(await verifyTotp(user.totp_secret, body.code))) return c.json({ detail: 'رمز التحقق غير صحيح' }, 403);
 
   await db.update(schema.users).set({ totp_enabled: true }).where(eq(schema.users.id, userId));
+
+  recordAuditEvent({
+    event: 'AUTH_2FA_ENABLED',
+    status: 'SUCCESS',
+    actorId: userId,
+  });
+
   return c.json({ ok: true });
 });
 
@@ -393,6 +507,13 @@ authRouter.post('/2fa/disable', requireAuth, async (c) => {
   if (!(await verifyTotp(user.totp_secret ?? '', body.code))) return c.json({ detail: 'رمز التحقق غير صحيح' }, 403);
 
   await db.update(schema.users).set({ totp_enabled: false, totp_secret: null }).where(eq(schema.users.id, userId));
+
+  recordAuditEvent({
+    event: 'AUTH_2FA_DISABLED',
+    status: 'SUCCESS',
+    actorId: userId,
+  });
+
   return c.json({ ok: true });
 });
 
@@ -791,6 +912,7 @@ authRouter.post('/session/restore', async (c) => {
 authRouter.post('/change-password', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const userId = c.get('user')!.id;
+  const currentSessionId = c.get('session')?.id;
   const body = await c.req.json<{ current_password?: string; new_password: string }>();
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
@@ -801,10 +923,26 @@ authRouter.post('/change-password', requireAuth, async (c) => {
 
   const newHash = await hashPassword(body.new_password);
   await db.update(schema.users).set({ password_hash: newHash, password_changed_at: new Date().toISOString() }).where(eq(schema.users.id, userId));
+
+  // Revoke all other active sessions for this user upon password change
+  if (currentSessionId) {
+    await db
+      .update(schema.userSessions)
+      .set({ is_active: false })
+      .where(and(eq(schema.userSessions.user_id, userId), ne(schema.userSessions.id, currentSessionId)));
+  }
+
+  recordAuditEvent({
+    event: 'AUTH_PASSWORD_CHANGED',
+    status: 'SUCCESS',
+    actorId: userId,
+  });
+
   return c.json({ ok: true });
 });
 
 authRouter.post('/forgot-password', async (c) => {
+authRouter.post('/forgot-password', forgotPasswordRateLimiter, async (c) => {
   const mailerConfig = {
     smtpHost: c.env.SMTP_HOST,
     smtpUser: c.env.SMTP_USER,
@@ -819,6 +957,7 @@ authRouter.post('/forgot-password', async (c) => {
 
   const body = await c.req.json<{ email: string }>();
   const email = body.email?.trim() ?? '';
+  const email = (body.email ?? '').trim().toLowerCase();
   const db = drizzle(c.env.DB, { schema });
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
 
@@ -846,8 +985,24 @@ authRouter.post('/forgot-password', async (c) => {
       c.executionCtx.waitUntil(
         sendPasswordReset(mailerConfig, email, user.full_name ?? '', resetLink, PASSWORD_RESET_TTL_MINUTES)
       );
+      const mailPromise = sendPasswordReset(mailerConfig, email, user.full_name ?? '', resetLink, PASSWORD_RESET_TTL_MINUTES);
+      try {
+        if (c.executionCtx) {
+          c.executionCtx.waitUntil(mailPromise);
+        } else {
+          mailPromise.catch(console.error);
+        }
+      } catch {
+        mailPromise.catch(console.error);
+      }
     }
   }
+
+  recordAuditEvent({
+    event: 'AUTH_PASSWORD_RESET_REQUESTED',
+    status: 'SUCCESS',
+    details: { email },
+  });
 
   return c.json({ ok: true, message: 'إذا كان هذا البريد مسجّلاً لدينا، فقد أُرسل إليه رابط لإعادة التعيين.' });
 });
@@ -880,6 +1035,12 @@ authRouter.post('/reset-password', async (c) => {
   }).where(eq(schema.users.id, user.id));
 
   await db.update(schema.userSessions).set({ is_active: false }).where(eq(schema.userSessions.user_id, user.id));
+
+  recordAuditEvent({
+    event: 'AUTH_PASSWORD_RESET_COMPLETED',
+    status: 'SUCCESS',
+    actorId: user.id,
+  });
 
   return c.json({ ok: true, message: 'تم تعيين كلمة المرور — سجّل الدخول بها الآن.' });
 });

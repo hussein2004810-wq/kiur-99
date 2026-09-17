@@ -9,6 +9,12 @@ export const mediaRouter = new Hono<AppEnv>();
 
 mediaRouter.get('/:name', async (c) => {
   const name = c.req.param('name');
+
+  // Prevent path traversal
+  if (!name || name.includes('..') || name.includes('/') || name.includes('\\')) {
+    return c.json({ detail: 'اسم الملف غير صالح (Path Traversal Detected)' }, 400);
+  }
+
   const storage = createStorageService(c.env.R2_BUCKET);
   const rangeHeader = c.req.header('range') ?? null;
 

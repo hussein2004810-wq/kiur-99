@@ -120,6 +120,22 @@ export async function startNewSession(
     is_active: true,
   });
 
+  // Atomically deactivate all existing sessions and create the new session in one transaction
+  await db.batch([
+    db
+      .update(schema.userSessions)
+      .set({ is_active: false })
+      .where(eq(schema.userSessions.user_id, userId)),
+    db
+      .insert(schema.userSessions)
+      .values({
+        id,
+        user_id: userId,
+        device_label: deviceLabel,
+        is_active: true,
+      }),
+  ]);
+
   const session = await db
     .select()
     .from(schema.userSessions)

@@ -1,0 +1,44 @@
+name: Security CI & Regression Testing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-audit-and-test:
+    name: Security Tests & Typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run Complete Test Suite
+        run: npm test
+
+      - name: Secret Scanning Check
+        run: |
+          echo "Scanning repository for high-entropy secrets and sensitive patterns..."
+          if grep -rnE --exclude-dir={node_modules,.git,dist} "(ghp_[a-zA-Z0-9]{36}|AIza[0-9A-Za-z-_]{35}|-----BEGIN PRIVATE KEY-----)" .; then
+            echo "::error::Potential hardcoded secrets detected!"
+            exit 1
+          fi
+          echo "Secret scan passed cleanly."
+
+      - name: Dependency Vulnerability Audit
+        run: npm audit --audit-level=critical
+

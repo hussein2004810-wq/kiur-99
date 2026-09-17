@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import type { AppEnv } from './types';
 import { corsMiddleware } from './middleware/cors';
+import { securityHeadersMiddleware } from './middleware/security-headers';
+import { csrfProtectionMiddleware } from './middleware/csrf';
+import { bodySizeLimitMiddleware } from './middleware/body-limit';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { registerStaticRoutes } from './routes/static';
 
@@ -24,16 +27,29 @@ import { mediaRouter } from './routes/media';
 const app = new Hono<AppEnv>();
 
 // 1. Global CORS Middleware (Preflight & request handling)
+// 1. Centralized Security Headers (CSP, HSTS, nosniff, etc.)
+app.use('*', securityHeadersMiddleware);
+
+// 2. Request Body Size Limiter (100 KB JSON, 25 MB uploads)
+app.use('*', bodySizeLimitMiddleware);
+
+// 3. Global CORS Middleware (Preflight & request handling)
 app.use('*', corsMiddleware);
 
 // 2. Global Error & 404 Handlers
+// 4. CSRF & Untrusted Cross-Site Mutation Protection
+app.use('*', csrfProtectionMiddleware);
+
+// 5. Global Error & 404 Handlers
 app.onError(errorHandler);
 app.notFound(notFoundHandler);
 
 // 3. Static SPA and Health Probe Routes
+// 6. Static SPA and Health Probe Routes
 registerStaticRoutes(app);
 
 // 4. API & Auth Routers
+// 7. API & Auth Routers
 app.route('/auth', authRouter);
 app.route('/media-files', mediaRouter);
 

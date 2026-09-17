@@ -6,6 +6,20 @@ export const DEFAULT_JWT_EXPIRES_MINUTES = 60 * 24 * 14; // 14 days (20160 minut
 export const DEFAULT_PASSWORD_RESET_TTL_MINUTES = 60;
 export const DEFAULT_PASSWORD_RESET_COOLDOWN_SECONDS = 120;
 
+export const ALLOWED_JWT_ALGORITHMS = ['HS256', 'HS384', 'HS512'] as const;
+
+export const KNOWN_INSECURE_SECRETS = new Set([
+  'dev-secret-change-me',
+  'dev-secret-change-me-to-a-very-long-and-secure-random-token-nabd-2026',
+  'super-secret-secure-random-token-kiur-99-prod-2026',
+  'secret',
+  'jwt-secret',
+  'changeme',
+  'password',
+  '123456',
+  'admin',
+]);
+
 export interface AppConfig {
   isDebug: boolean;
   jwtSecret: string;
@@ -31,10 +45,40 @@ export interface AppConfig {
 
 /**
  * Parses and returns typed configuration options from Worker environment bindings.
+ * Validates configuration invariants according to environment.
+ * In production (isDebug=false), enforces fail-closed requirements.
+ */
+export function validateConfig(config: AppConfig): void {
+  // 1. Algorithm check (both dev and prod)
+  if (!ALLOWED_JWT_ALGORITHMS.includes(config.jwtAlgorithm as any)) {
+    throw new Error(`Insecure or unsupported JWT algorithm: "${config.jwtAlgorithm}". Allowed: ${ALLOWED_JWT_ALGORITHMS.join(', ')}`);
+  }
+
+  // 2. Production fail-closed secret checks
+  if (!config.isDebug) {
+    if (!config.jwtSecret || config.jwtSecret.trim() === '') {
+      throw new Error('FATAL: JWT_SECRET is required in production.');
+    }
+
+    if (KNOWN_INSECURE_SECRETS.has(config.jwtSecret.trim().toLowerCase())) {
+      throw new Error('FATAL: Insecure default or placeholder JWT_SECRET detected in production.');
+    }
+
+    if (config.jwtSecret.length < 32) {
+      throw new Error('FATAL: JWT_SECRET must be at least 32 characters long in production.');
+    }
+  }
+}
+
+/**
+ * Parses, validates, and returns typed configuration options from Worker environment bindings.
  */
 export function getConfig(env?: AppBindings): AppConfig {
   const isDebug = env?.DEBUG === 'true' || env?.DEBUG === '1';
   const jwtSecret = env?.JWT_SECRET || DEFAULT_JWT_SECRET;
+  const jwtSecret = env?.JWT_SECRET !== undefined && env?.JWT_SECRET !== ''
+    ? env.JWT_SECRET
+    : isDebug ? DEFAULT_JWT_SECRET : '';
   const jwtAlgorithm = env?.JWT_ALGORITHM || 'HS256';
   const jwtExpiresMinutes = parseInt(env?.JWT_EXPIRES_MINUTES || '20160', 10) || DEFAULT_JWT_EXPIRES_MINUTES;
 
@@ -68,6 +112,7 @@ export function getConfig(env?: AppBindings): AppConfig {
   const smtpFromName = env?.SMTP_FROM_NAME || 'Kiur';
 
   return {
+  const config: AppConfig = {
     isDebug,
     jwtSecret,
     jwtAlgorithm,
@@ -89,4 +134,7 @@ export function getConfig(env?: AppBindings): AppConfig {
     smtpFrom,
     smtpFromName,
   };
+
+  validateConfig(config);
+  return config;
 }
