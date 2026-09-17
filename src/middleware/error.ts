@@ -82,7 +82,6 @@ export const errorHandler: ErrorHandler<AppEnv> = (err, c) => {
   }
 
   // 4. Catch-all unexpected runtime crashes (500)
-  const isDebug = c.env?.DEBUG === 'true' || (c.env as any)?.DEBUG === true;
   const detail = isDebug
     ? (err.message || 'Internal Server Error')
     : 'حدث خطأ غير متوقع في الخادم';

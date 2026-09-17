@@ -75,7 +75,6 @@ export function validateConfig(config: AppConfig): void {
  */
 export function getConfig(env?: AppBindings): AppConfig {
   const isDebug = env?.DEBUG === 'true' || env?.DEBUG === '1';
-  const jwtSecret = env?.JWT_SECRET || DEFAULT_JWT_SECRET;
   const jwtSecret = env?.JWT_SECRET !== undefined && env?.JWT_SECRET !== ''
     ? env.JWT_SECRET
     : isDebug ? DEFAULT_JWT_SECRET : '';
@@ -111,7 +110,6 @@ export function getConfig(env?: AppBindings): AppConfig {
   const smtpFrom = env?.SMTP_FROM || 'no-reply@nabd.edu';
   const smtpFromName = env?.SMTP_FROM_NAME || 'Kiur';
 
-  return {
   const config: AppConfig = {
     isDebug,
     jwtSecret,

@@ -1,7 +1,6 @@
 /**
  * Exams routes — mirrors Python app/routers/exams.py
  */
-import { Hono } from 'hono';
 import { Hono, type Context } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, isNull, inArray, asc } from 'drizzle-orm';
@@ -14,7 +13,6 @@ examsRouter.use('*', requireAuth);
 
 function deadline(exam: typeof schema.exams.$inferSelect, attempt: typeof schema.examAttempts.$inferSelect): Date | null {
   if (!exam.duration_minutes) return null;
-  const started = new Date(attempt.started_at ?? Date.now());
   let startedStr = attempt.started_at ?? '';
   if (startedStr && !startedStr.includes('T')) {
     startedStr = startedStr.replace(' ', 'T') + 'Z';
@@ -125,12 +123,10 @@ examsRouter.post('/attempts/:attempt_id/items/:item_id/answer', async (c) => {
 
   await db.update(schema.examAttemptQuestions).set({
     choice_id: choice.id,
-    is_correct: choice.is_correct,
     is_correct: isCorrect,
     answered_at: new Date().toISOString(),
   }).where(eq(schema.examAttemptQuestions.id, item_id));
 
-  return c.json({ ok: true });
   return c.json({ ok: true, recorded: true });
 });
 
@@ -192,7 +188,6 @@ examsRouter.post('/attempts/:attempt_id/finish', async (c) => {
 
   if (!attempt.finished_at) {
     const items = await db.select().from(schema.examAttemptQuestions).where(eq(schema.examAttemptQuestions.attempt_id, attemptId));
-    const score = items.filter((it) => it.is_correct).length;
     const score = items.filter((it) => it.is_correct === true || (it.is_correct as any) === 1).length;
     await db.update(schema.examAttempts).set({
       score,

@@ -6,7 +6,6 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, and, inArray, desc, isNotNull } from 'drizzle-orm';
 import { eq, and, ne, inArray, desc, isNotNull } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
@@ -93,7 +92,6 @@ authRouter.get('/google/login', async (c) => {
   if (!clientId || !redirectUri) return c.json({ detail: 'إعدادات Google OAuth غير مهيأة' }, 500);
 
   const next = c.req.query('next') ?? '';
-  const state = next === 'admin' ? 'admin' : 'student';
   const flow = next === 'admin' ? 'admin' : 'student';
   const stateNonce = crypto.randomUUID().replace(/-/g, '');
   const state = `${flow}:${stateNonce}`;
@@ -200,7 +198,6 @@ authRouter.get('/google/callback', async (c) => {
 
   const jwtSecret = c.env.JWT_SECRET;
   const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
 
   if (user.totp_enabled) {
     const pending = await create2faPendingToken(user.id, jwtSecret);
@@ -248,11 +245,9 @@ authRouter.post('/dev-login', async (c) => {
 
 // ─────────────────────────────────────────── Register ────────────────────────
 
-authRouter.post('/register', async (c) => {
 authRouter.post('/register', registerRateLimiter, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const body = await c.req.json<{ email: string; password?: string; full_name?: string }>();
-  const email = (body.email ?? '').trim();
   const email = (body.email ?? '').trim().toLowerCase();
   const password = body.password ?? '';
   const fullName = (body.full_name ?? '').trim();
@@ -296,10 +291,8 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
 
 // ─────────────────────────────────────────── Login ───────────────────────────
 
-authRouter.post('/login', async (c) => {
 authRouter.post('/login', loginRateLimiter, async (c) => {
   const body = await c.req.json<{ email: string; password: string }>();
-  const email = body.email?.trim() ?? '';
   const email = (body.email ?? '').trim().toLowerCase();
   const db = drizzle(c.env.DB, { schema });
 
@@ -416,7 +409,6 @@ authRouter.post('/logout', requireAuth, async (c) => {
 
 // ─────────────────────────────────────────── 2FA ─────────────────────────────
 
-authRouter.post('/2fa/verify', async (c) => {
 authRouter.post('/2fa/verify', twoFaVerifyRateLimiter, async (c) => {
   const body = await c.req.json<{ pending_token: string; code: string }>();
   const jwtSecret = c.env.JWT_SECRET;
@@ -941,7 +933,6 @@ authRouter.post('/change-password', requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
-authRouter.post('/forgot-password', async (c) => {
 authRouter.post('/forgot-password', forgotPasswordRateLimiter, async (c) => {
   const mailerConfig = {
     smtpHost: c.env.SMTP_HOST,
@@ -956,7 +947,6 @@ authRouter.post('/forgot-password', forgotPasswordRateLimiter, async (c) => {
   }
 
   const body = await c.req.json<{ email: string }>();
-  const email = body.email?.trim() ?? '';
   const email = (body.email ?? '').trim().toLowerCase();
   const db = drizzle(c.env.DB, { schema });
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();

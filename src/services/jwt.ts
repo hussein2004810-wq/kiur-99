@@ -5,15 +5,12 @@
  */
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
 
-const SESSION_COOKIE_PATH = '/auth/session';
-const SESSION_COOKIE_NAME = 'nabd_session';
+export const SESSION_COOKIE_PATH = '/auth/session';
+export const SESSION_COOKIE_NAME = 'nabd_session';
 export const JWT_ISSUER = 'kiur-api';
 export const JWT_AUDIENCE = 'kiur-app';
 export const JWT_TYPE_ACCESS = 'access';
 export const JWT_TYPE_2FA = 'pending_2fa';
-
-export const SESSION_COOKIE_PATH = '/auth/session';
-export const SESSION_COOKIE_NAME = 'nabd_session';
 
 export interface AccessTokenPayload extends JWTPayload {
   sub: string;   // user_id
@@ -38,11 +35,8 @@ export async function createAccessToken(
   userId: string,
   sessionId: string,
   jwtSecret: string,
-  expiresMinutes = 20160
   expiresMinutes = 30
 ): Promise<string> {
-  return new SignJWT({ sub: userId, sid: sessionId })
-    .setProtectedHeader({ alg: 'HS256' })
   return new SignJWT({
     sub: userId,
     sid: sessionId,
@@ -68,8 +62,6 @@ export async function decodeAccessToken(
   if (!token || typeof token !== 'string') return null;
 
   try {
-    const { payload } = await jwtVerify(token, getSecretKey(jwtSecret));
-    return payload as AccessTokenPayload;
     const { payload } = await jwtVerify(token, getSecretKey(jwtSecret), {
       algorithms: ['HS256', 'HS384', 'HS512'],
     });
@@ -118,8 +110,6 @@ export async function create2faPendingToken(
   userId: string,
   jwtSecret: string
 ): Promise<string> {
-  return new SignJWT({ pending_2fa_user: userId })
-    .setProtectedHeader({ alg: 'HS256' })
   return new SignJWT({
     pending_2fa_user: userId,
     type: JWT_TYPE_2FA,
@@ -142,8 +132,6 @@ export async function decode2faPendingToken(
   if (!token || typeof token !== 'string') return null;
 
   try {
-    const { payload } = await jwtVerify(token, getSecretKey(jwtSecret));
-    return (payload as PendingTwoFAPayload).pending_2fa_user ?? null;
     const { payload } = await jwtVerify(token, getSecretKey(jwtSecret), {
       algorithms: ['HS256', 'HS384', 'HS512'],
     });
@@ -179,7 +167,6 @@ export async function decode2faPendingToken(
 export function setSessionCookie(
   response: Response,
   token: string,
-  expiresMinutes = 20160,
   expiresMinutes = 30,
   isDebug = true
 ): void {
@@ -204,5 +191,3 @@ export function getSessionCookieValue(cookieHeader: string | null): string | nul
   const match = cookieHeader.match(new RegExp(`(?:^|; )${SESSION_COOKIE_NAME}=([^;]+)`));
   return match ? match[1] : null;
 }
-
-export { SESSION_COOKIE_NAME };
