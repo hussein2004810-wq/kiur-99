@@ -62,3 +62,4 @@ ON clinical_glimpse_targets(university_id, college_id, department_id, phase_id, 
 
 CREATE INDEX IF NOT EXISTS idx_glimpse_logs_recent
 ON clinical_glimpse_logs(glimpse_id, at DESC);
+

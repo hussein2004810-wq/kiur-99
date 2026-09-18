@@ -1088,71 +1088,206 @@
     justify-content:center;
   }
 
-  /* ---- sign in: gradient card, pill fields with icons, filling submit ---- */
-  .signin-form{
-    width:100%; max-width:450px; display:flex; flex-direction:column; gap:10px;
-    padding:clamp(20px, 5cqi, 32px) clamp(16px, 4cqi, 28px); border-radius:22px; color:#fff; position:relative; overflow:hidden; isolation:isolate;
-    background:linear-gradient(45deg, var(--accent-2), var(--accent));
-    box-shadow:0 24px 50px -22px var(--glass-shadow), var(--shadow-soft);
+  /* ---- sign in: user login card design ---- */
+  .container {
+    max-width: 350px;
+    width: 100%;
+    background: #F8F9FD;
+    background: linear-gradient(0deg, rgb(255, 255, 255) 0%, rgb(244, 247, 251) 100%);
+    border-radius: 40px;
+    padding: 25px 35px;
+    border: 5px solid rgb(255, 255, 255);
+    box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 30px 30px -20px;
+    margin: 20px auto;
+    box-sizing: border-box;
+    position: relative;
   }
-  @container authview (max-width: 360px){
-    .signin-form{padding:18px 14px; border-radius:18px;}
-    .signin-title{font-size:1.1rem;}
-    .signin-field{height:42px; font-size:.82rem;}
-    .signin-submit, .google-btn{padding:11px 12px; font-size:.82rem;}
+
+  .heading {
+    text-align: center;
+    font-weight: 900;
+    font-size: 30px;
+    color: rgb(16, 137, 211);
   }
-  /* the sample swaps the gradient's direction on hover; gradients can't
-     transition, so a second layer fades in instead of snapping */
-  .signin-form::before{
-    content:''; position:absolute; inset:0; z-index:-1; opacity:0; transition:opacity .45s ease;
-    background:linear-gradient(45deg, var(--accent), var(--accent-2));
+
+  .form {
+    margin-top: 20px;
   }
-  .signin-form:hover::before{opacity:1;}
-  .signin-brand{display:flex; align-items:center; gap:10px; margin-bottom:6px;}
-  .signin-brand svg{width:30px; height:30px;}
-  .signin-title{font-size:1.25rem; font-weight:700;}
-  .signin-sub{font-size:.8rem; opacity:.82; margin:-4px 0 6px; line-height:1.6;}
-  .signin-label{color:#fff; font-weight:600; font-size:.86rem; margin-top:4px;}
-  .signin-field{
-    border:1.5px solid transparent; border-radius:999px; height:50px; display:flex; align-items:center;
-    padding-inline:16px 6px; gap:10px; background:var(--glass-bg-strong); color:var(--ink-faint);
-    transition:border-color .2s ease-in-out, box-shadow .2s ease-in-out;
+
+  .form .input {
+    width: 100%;
+    background: white;
+    border: none;
+    padding: 15px 20px;
+    border-radius: 20px;
+    margin-top: 15px;
+    box-shadow: #cff0ff 0px 10px 10px -5px;
+    border-inline: 2px solid transparent;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 0.92rem;
+    color: #1a202c;
   }
-  html:not(.dark) .signin-field{background:#fff;}
-  .signin-field svg{width:19px; height:19px; flex:none;}
-  .signin-field input{
-    flex:1; min-width:0; height:100%; border:0; outline:0; background:transparent; border-radius:999px;
-    font:inherit; font-size:.9rem; color:var(--ink);
+
+  .form .input::-moz-placeholder {
+    color: rgb(170, 170, 170);
   }
-  .signin-field input::placeholder{color:var(--ink-faint);}
-  .signin-field:focus-within{border-color:var(--warm); box-shadow:0 0 0 3px rgba(255,138,91,.25);}
-  .signin-row{display:flex; align-items:center; justify-content:flex-end; gap:10px;}
-  .signin-link{background:none; border:0; cursor:pointer; font:inherit; font-size:.84rem; font-weight:600; color:#fff; padding:2px 4px; text-decoration:underline; text-decoration-color:rgba(255,255,255,.4); text-underline-offset:4px;}
-  .signin-link:hover{text-decoration-color:#fff;}
-  .signin-submit{
-    position:relative; width:100%; height:52px; margin:14px 0 4px; cursor:pointer;
-    border:2px solid #fff; border-radius:999px; background:transparent; color:#fff;
-    font:inherit; font-size:.98rem; font-weight:700; letter-spacing:.3px;
-    box-shadow:inset 0 0 0 0 var(--accent); transition:box-shadow .5s ease-out, transform .15s ease, color .3s;
+
+  .form .input::placeholder {
+    color: rgb(170, 170, 170);
   }
-  .signin-submit:hover{box-shadow:inset 0 -100px 0 0 rgba(255,255,255,.22);}
-  .signin-submit:active{transform:scale(.96);}
-  .signin-msg{font-size:.8rem; text-align:center; padding:8px 12px; border-radius:12px; background:rgba(255,255,255,.92); color:var(--ink);}
-  html.dark .signin-msg{background:rgba(10,15,30,.72); color:#fff;}
-  .signin-p{text-align:center; font-size:.86rem; margin:4px 0;}
-  .signin-or{display:flex; align-items:center; gap:10px; font-size:.78rem; opacity:.85; margin:6px 0 2px;}
-  .signin-or::before, .signin-or::after{content:''; flex:1; height:1px; background:rgba(255,255,255,.35);}
-  .signin-social{
-    width:100%; height:50px; border-radius:999px; display:flex; align-items:center; justify-content:center; gap:10px;
-    border:1.5px solid transparent; background:#fff; color:#16213A; cursor:pointer; font:inherit; font-weight:600; font-size:.9rem;
-    transition:border-color .2s ease-in-out, transform .2s ease;
+
+  .form .input:focus {
+    outline: none;
+    border-inline: 2px solid #12B1D1;
   }
-  html.dark .signin-social{background:#20263F; color:#fff;}
-  .signin-social:hover{border-color:var(--warm); transform:translateY(-1px);}
-  .signin-social:disabled{opacity:.65; cursor:default; transform:none;}
-  .signin-social svg{width:20px; height:20px;}
-  .signin-terms{text-align:center; font-size:.72rem; opacity:.75; margin-top:4px;}
-  @media (max-width:520px){ .signin-form{padding:24px 18px; border-radius:18px;} }
+
+  .form .forgot-password {
+    display: block;
+    margin-top: 10px;
+    margin-inline-start: 10px;
+  }
+
+  .form .forgot-password a,
+  .form .forgot-password button {
+    font-size: 11px;
+    color: #0099ff;
+    text-decoration: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0;
+  }
+
+  .form .login-button {
+    display: block;
+    width: 100%;
+    font-weight: bold;
+    background: linear-gradient(45deg, rgb(16, 137, 211) 0%, rgb(18, 177, 209) 100%);
+    color: white;
+    padding-block: 15px;
+    margin: 20px auto 10px;
+    border-radius: 20px;
+    box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 20px 10px -15px;
+    border: none;
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.95rem;
+  }
+
+  .form .login-button:hover {
+    transform: scale(1.03);
+    box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 23px 10px -20px;
+  }
+
+  .form .login-button:active {
+    transform: scale(0.95);
+    box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 15px 10px -10px;
+  }
+
+  .social-account-container {
+    margin-top: 25px;
+  }
+
+  .social-account-container .title {
+    display: block;
+    text-align: center;
+    font-size: 10px;
+    color: rgb(170, 170, 170);
+  }
+
+  .social-account-container .social-accounts {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 8px;
+  }
+
+  .social-account-container .social-accounts .social-button {
+    background: linear-gradient(45deg, rgb(0, 0, 0) 0%, rgb(112, 112, 112) 100%);
+    border: 5px solid white;
+    padding: 5px;
+    border-radius: 50%;
+    width: 42px;
+    height: 42px;
+    aspect-ratio: 1;
+    display: grid;
+    place-content: center;
+    box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 12px 10px -8px;
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+  }
+
+  .social-account-container .social-accounts .social-button .svg,
+  .social-account-container .social-accounts .social-button svg {
+    fill: white;
+    width: 20px;
+    height: 20px;
+    margin: auto;
+  }
+
+  .social-account-container .social-accounts .social-button:hover {
+    transform: scale(1.18);
+  }
+
+  .social-account-container .social-accounts .social-button:active {
+    transform: scale(0.9);
+  }
+
+  .social-account-container .social-accounts .social-button.google {
+    background: #ffffff;
+    border: 4px solid #e2e8f0;
+  }
+
+  .agreement {
+    display: block;
+    text-align: center;
+    margin-top: 15px;
+  }
+
+  .agreement a {
+    text-decoration: none;
+    color: #0099ff;
+    font-size: 9px;
+  }
+
+  .signin-msg {
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--ink);
+  }
+
+  /* Dark mode compatibility */
+  html.dark .container {
+    background: #111a2e;
+    background: linear-gradient(0deg, #0e1726 0%, #152037 100%);
+    border-color: #213054;
+    box-shadow: rgba(0, 0, 0, 0.5) 0px 30px 30px -20px;
+  }
+  html.dark .heading {
+    color: #38bdf8;
+  }
+  html.dark .form .input {
+    background: #1a2744;
+    color: #fff;
+    box-shadow: rgba(0, 0, 0, 0.3) 0px 10px 10px -5px;
+  }
+  html.dark .form .input::placeholder {
+    color: #8899b5;
+  }
+  html.dark .social-account-container .social-accounts .social-button {
+    border-color: #213054;
+  }
+  html.dark .social-account-container .social-accounts .social-button.google {
+    background: #1a2744;
+    border-color: #213054;
+  }
 
   /* ---- one-time code: a box per digit ---- */
   .otp-card{
@@ -2597,56 +2732,42 @@
 
   <div class="view" id="view-login">
     <div class="auth-view">
-      <form class="signin-form" onsubmit="event.preventDefault(); submitEmailAuth();" novalidate>
-        <div class="signin-brand">
-          <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M4 24H14L18 12L26 36L30 24H44" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span class="display" style="font-size:1.15rem; font-weight:700;">Kiur</span>
-        </div>
-        <div class="signin-title" data-i18n="welcomeBack">مرحباً بعودتك</div>
-        <div class="signin-sub" data-i18n="signinSub">سجّل دخولك لتكمل من حيث توقفت</div>
+      <div class="container">
+        <div class="heading" id="authHeading" data-i18n="welcomeBack">Sign In</div>
+        <form class="form" onsubmit="event.preventDefault(); submitEmailAuth();" novalidate>
+          <div id="authNameField" style="display:none;">
+            <input class="input" id="authName" type="text" autocomplete="name" placeholder="Full Name" data-i18n-placeholder="fullName" />
+          </div>
+          <input class="input" id="authEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="E-mail" data-i18n-placeholder="enterEmail" required />
+          <input class="input" id="authPassword" type="password" autocomplete="current-password" placeholder="Password" data-i18n-placeholder="enterPassword" required />
+          
+          <span class="forgot-password">
+            <button type="button" onclick="goToForgotPassword()" data-i18n="forgotPassword">Forgot Password ?</button>
+          </span>
 
-        <div id="authNameField" style="display:none;">
-          <label class="signin-label" for="authName" data-i18n="fullName">الاسم الكامل</label>
-          <div class="signin-field" style="margin-top:8px;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
-            <input id="authName" type="text" autocomplete="name" placeholder="الاسم الكامل" data-i18n-placeholder="fullName" />
+          <div id="authFormMsg" class="signin-msg" style="display:none; margin-top:12px;"></div>
+
+          <button class="login-button" type="submit" id="authSubmitBtn" data-i18n="login">Sign In</button>
+        </form>
+
+        <p class="signin-p" style="margin-top:6px; text-align:center; font-size:12px;">
+          <span id="authToggleText" data-i18n="noAccount" style="color:var(--ink-sub, #718096);">ليس لديك حساب؟</span>
+          <button type="button" onclick="toggleAuthMode()" id="authToggleLink" data-i18n="createAccount" style="color:#0099ff; font-weight:700; background:none; border:none; cursor:pointer; font-family:inherit; padding:0; margin-inline-start:4px;">أنشئ حساب</button>
+        </p>
+
+        <div class="social-account-container">
+          <span class="title" data-i18n="orWith">Or Sign in with</span>
+          <div class="social-accounts">
+            <button class="social-button google" type="button" id="googleBtn" onclick="startGoogleSignIn()" title="Sign in with Google" aria-label="Sign in with Google">
+              <svg viewBox="0 0 512 512" class="svg" aria-hidden="true"><path d="M113.47,309.408L95.648,375.94l-65.139,1.378C11.042,341.211,0,299.9,0,256c0-42.451,10.324-82.483,28.624-117.732h0.014l57.992,10.632l25.404,57.644c-5.317,15.501-8.215,32.141-8.215,49.456C103.821,274.792,107.225,292.797,113.47,309.408z" fill="#FBBB00"/><path d="M507.527,208.176C510.467,223.662,512,239.655,512,256c0,18.328-1.927,36.206-5.598,53.451c-12.462,58.683-45.025,109.925-90.134,146.187l-0.014-0.014l-73.044-3.727l-10.338-64.535c29.932-17.554,53.324-45.025,65.646-77.911h-136.89V208.176h138.887L507.527,208.176L507.527,208.176z" fill="#518EF8"/><path d="M416.253,455.624l0.014,0.014C372.396,490.901,316.666,512,256,512c-97.491,0-182.252-54.491-225.491-134.681l82.961-67.91c21.619,57.698,77.278,98.771,142.53,98.771c28.047,0,54.323-7.582,76.87-20.818L416.253,455.624z" fill="#28B446"/><path d="M419.404,58.936l-82.933,67.896c-23.335-14.586-50.919-23.012-80.471-23.012c-66.729,0-123.429,42.957-143.965,102.724l-83.397-68.276h-0.014C71.23,56.123,157.06,0,256,0C318.115,0,375.068,22.126,419.404,58.936z" fill="#F14336"/></svg>
+            </button>
           </div>
         </div>
 
-        <label class="signin-label" for="authEmail" data-i18n="email">البريد الإلكتروني</label>
-        <div class="signin-field">
-          <svg viewBox="0 0 32 32" fill="currentColor" aria-hidden="true"><path d="m30.853 13.87a15 15 0 0 0 -29.729 4.082 15.1 15.1 0 0 0 12.876 12.918 15.6 15.6 0 0 0 2.016.13 14.85 14.85 0 0 0 7.715-2.145 1 1 0 1 0 -1.031-1.711 13.007 13.007 0 1 1 5.458-6.529 2.149 2.149 0 0 1 -4.158-.759v-10.856a1 1 0 0 0 -2 0v1.726a8 8 0 1 0 .2 10.325 4.135 4.135 0 0 0 7.83.274 15.2 15.2 0 0 0 .823-7.455zm-14.853 8.13a6 6 0 1 1 6-6 6.006 6.006 0 0 1 -6 6z"/></svg>
-          <input id="authEmail" type="text" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="أدخل بريدك الإلكتروني" data-i18n-placeholder="enterEmail" />
-        </div>
-
-        <label class="signin-label" for="authPassword" data-i18n="password">كلمة المرور</label>
-        <div class="signin-field">
-          <svg viewBox="-64 0 512 512" fill="currentColor" aria-hidden="true"><path d="m336 512h-288c-26.453125 0-48-21.523438-48-48v-224c0-26.476562 21.546875-48 48-48h288c26.453125 0 48 21.523438 48 48v224c0 26.476562-21.546875 48-48 48zm-288-288c-8.8125 0-16 7.167969-16 16v224c0 8.832031 7.1875 16 16 16h288c8.8125 0 16-7.167969 16-16v-224c0-8.832031-7.1875-16-16-16zm0 0"/><path d="m304 224c-8.832031 0-16-7.167969-16-16v-80c0-52.929688-43.070312-96-96-96s-96 43.070312-96 96v80c0 8.832031-7.167969 16-16 16s-16-7.167969-16-16v-80c0-70.59375 57.40625-128 128-128s128 57.40625 128 128v80c0 8.832031-7.167969 16-16 16zm0 0"/></svg>
-          <input id="authPassword" type="password" autocomplete="current-password" placeholder="أدخل كلمة المرور" data-i18n-placeholder="enterPassword" />
-        </div>
-
-        <!-- No "remember me": the session cookie already keeps you signed in,
-             so a checkbox would change nothing. -->
-        <div class="signin-row">
-          <button class="signin-link" type="button" onclick="goToForgotPassword()" data-i18n="forgotPassword">نسيت كلمة المرور؟</button>
-        </div>
-
-        <div id="authFormMsg" class="signin-msg" style="display:none;"></div>
-        <button class="signin-submit" type="submit" id="authSubmitBtn" data-i18n="login">تسجيل الدخول</button>
-
-        <p class="signin-p">
-          <span id="authToggleText" data-i18n="noAccount">ليس لديك حساب؟</span>
-          <button class="signin-link" type="button" onclick="toggleAuthMode()" id="authToggleLink" data-i18n="createAccount">أنشئ حساب</button>
-        </p>
-
-        <!-- Google only: it's the one provider this backend actually signs you in with. -->
-        <div class="signin-or" data-i18n="orWith">أو عبر</div>
-        <button class="signin-social google-btn" type="button" id="googleBtn" onclick="startGoogleSignIn()">
-          <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M113.47,309.408L95.648,375.94l-65.139,1.378C11.042,341.211,0,299.9,0,256c0-42.451,10.324-82.483,28.624-117.732h0.014l57.992,10.632l25.404,57.644c-5.317,15.501-8.215,32.141-8.215,49.456C103.821,274.792,107.225,292.797,113.47,309.408z" fill="#FBBB00"/><path d="M507.527,208.176C510.467,223.662,512,239.655,512,256c0,18.328-1.927,36.206-5.598,53.451c-12.462,58.683-45.025,109.925-90.134,146.187l-0.014-0.014l-73.044-3.727l-10.338-64.535c29.932-17.554,53.324-45.025,65.646-77.911h-136.89V208.176h138.887L507.527,208.176L507.527,208.176z" fill="#518EF8"/><path d="M416.253,455.624l0.014,0.014C372.396,490.901,316.666,512,256,512c-97.491,0-182.252-54.491-225.491-134.681l82.961-67.91c21.619,57.698,77.278,98.771,142.53,98.771c28.047,0,54.323-7.582,76.87-20.818L416.253,455.624z" fill="#28B446"/><path d="M419.404,58.936l-82.933,67.896c-23.335-14.586-50.919-23.012-80.471-23.012c-66.729,0-123.429,42.957-143.965,102.724l-83.397-68.276h-0.014C71.23,56.123,157.06,0,256,0C318.115,0,375.068,22.126,419.404,58.936z" fill="#F14336"/></svg>
-          <span id="googleBtnLabel" data-i18n="continueWithGoogleBtn">المتابعة عبر Google</span>
-        </button>
-        <div class="signin-terms" data-i18n="termsNotice">بالمتابعة أنت توافق على الشروط وسياسة الخصوصية</div>
-      </form>
+        <span class="agreement" data-i18n="termsNotice">
+          <a href="#">Learn user licence agreement</a>
+        </span>
+      </div>
     </div>
   </div>
 
@@ -5881,6 +6002,8 @@
   function toggleAuthMode(){
     authMode = authMode === 'login' ? 'register' : 'login';
     document.getElementById('authNameField').style.display = authMode === 'register' ? 'block' : 'none';
+    const heading = document.getElementById('authHeading');
+    if (heading) heading.textContent = authMode === 'register' ? (document.documentElement.lang === 'en' ? 'Sign Up' : 'إنشاء حساب') : (document.documentElement.lang === 'en' ? 'Sign In' : 'تسجيل الدخول');
     document.getElementById('authSubmitBtn').textContent = authMode === 'register' ? 'إنشاء الحساب' : 'تسجيل الدخول';
     document.getElementById('authToggleText').textContent = authMode === 'register' ? 'عندك حساب؟' : 'ليس لديك حساب؟';
     document.getElementById('authToggleLink').textContent = authMode === 'register' ? 'سجّل دخولك' : 'أنشئ حساب';
