@@ -424,6 +424,154 @@ authRouter.post('/google/login', async (c) => {
   return response;
 });
 
+authRouter.post('/google/verify', async (c) => {
+  const body = await c.req.json<{ credential?: string; access_token?: string; next?: string }>().catch(() => ({} as any));
+  const credential = body.credential;
+  const accessToken = body.access_token;
+  const flow = body.next === 'admin' ? 'admin' : 'student';
+
+  if (!credential && !accessToken) {
+    return c.json({ detail: 'رمز مصادقة Google مفقود' }, 400);
+  }
+
+  let email = '';
+  let name = '';
+  let sub = '';
+  let picture = '';
+  let emailVerified = false;
+
+  const decodeJwtPayload = (jwt: string): Record<string, any> | null => {
+    try {
+      const parts = jwt.split('.');
+      if (parts.length !== 3) return null;
+      let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      const binary = atob(b64);
+      const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+      return JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      return null;
+    }
+  };
+
+  if (credential) {
+    try {
+      const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+      if (verifyRes.ok) {
+        const info = await verifyRes.json<{ email: string; name: string; sub: string; picture: string; email_verified: string | boolean }>();
+        email = String(info.email || '').trim().toLowerCase();
+        name = String(info.name || '');
+        sub = String(info.sub || '');
+        picture = String(info.picture || '');
+        emailVerified = info.email_verified === true || info.email_verified === 'true';
+      } else {
+        const payload = decodeJwtPayload(credential);
+        if (payload) {
+          email = String(payload.email || '').trim().toLowerCase();
+          name = String(payload.name || '');
+          sub = String(payload.sub || '');
+          picture = String(payload.picture || '');
+          emailVerified = payload.email_verified === true || payload.email_verified === 'true';
+        }
+      }
+    } catch {
+      const payload = decodeJwtPayload(credential);
+      if (payload) {
+        email = String(payload.email || '').trim().toLowerCase();
+        name = String(payload.name || '');
+        sub = String(payload.sub || '');
+        picture = String(payload.picture || '');
+        emailVerified = payload.email_verified === true || payload.email_verified === 'true';
+      }
+    }
+  } else if (accessToken) {
+    const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!userRes.ok) {
+      return c.json({ detail: 'فشل التحقق من رمز الوصول مع Google' }, 401);
+    }
+    const info = await userRes.json<{ email: string; name: string; sub: string; picture: string; email_verified?: boolean }>();
+    email = String(info.email || '').trim().toLowerCase();
+    name = String(info.name || '');
+    sub = String(info.sub || '');
+    picture = String(info.picture || '');
+    emailVerified = info.email_verified !== false;
+  }
+
+  if (!email || !email.includes('@')) {
+    return c.json({ detail: 'فشل استخراج بريد Google صالح' }, 400);
+  }
+
+  if (!domainAllowed(email, c.env.ALLOWED_UNIVERSITY_DOMAINS ?? '')) {
+    return c.json({ detail: 'نطاق البريد الإلكتروني غير مسموح به في النظام' }, 403);
+  }
+
+  const db = drizzle(c.env.DB, { schema });
+  let user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
+  const allUsers = await db.select().from(schema.users);
+  const bootstrapEmail = c.env.BOOTSTRAP_ADMIN_EMAIL;
+
+  if (user) {
+    const patch: Partial<typeof schema.users.$inferInsert> = {};
+    if (!user.google_sub && sub) patch.google_sub = sub;
+    if (!user.photo_url && picture) patch.photo_url = picture;
+    if (!user.email_verified_at) patch.email_verified_at = new Date().toISOString();
+    if (user.role !== 'admin' && shouldBootstrapAdmin(allUsers, email, bootstrapEmail)) {
+      patch.role = 'admin';
+    }
+    if (Object.keys(patch).length > 0) {
+      await db.update(schema.users).set(patch).where(eq(schema.users.id, user.id));
+      user = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).get();
+    }
+  } else {
+    const role = shouldBootstrapAdmin(allUsers, email, bootstrapEmail) ? 'admin' : (flow === 'admin' ? 'admin' : 'student');
+    const id = schema.genId();
+    const now = new Date().toISOString();
+
+    await db.insert(schema.users).values({
+      id,
+      email,
+      full_name: name || email.split('@')[0],
+      google_sub: sub || `google:${email}`,
+      photo_url: picture || null,
+      role,
+      email_verified_at: now,
+    });
+
+    user = await db.select().from(schema.users).where(eq(schema.users.id, id)).get();
+  }
+
+  if (!user) return c.json({ detail: 'فشل إنشاء حساب المستخدم' }, 500);
+  if (user.is_banned) return c.json({ detail: 'هذا الحساب محظور' }, 403);
+
+  const jwtSecret = c.env.JWT_SECRET;
+  const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
+  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+
+  if (user.totp_enabled) {
+    const pending = await create2faPendingToken(user.id, jwtSecret);
+    return c.json({ ok: true, requires_2fa: true, pending_token: pending });
+  }
+
+  const session = await startNewSession(db, user.id, 'متصفح Google');
+  const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
+
+  await recordAccountEvent(db, {
+    userId: user.id,
+    email: user.email,
+    eventType: 'google_login',
+    outcome: 'success',
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+    details: { provider: 'google_gis', flow },
+  });
+
+  const res = c.json({ ok: true, access_token: token, user: userOut(user) });
+  setSessionCookie(res, token, expiresMinutes, isDebug);
+  return res;
+});
+
 authRouter.get('/google/callback', async (c) => {
   const clientId = c.env.GOOGLE_CLIENT_ID;
   const clientSecret = c.env.GOOGLE_CLIENT_SECRET;

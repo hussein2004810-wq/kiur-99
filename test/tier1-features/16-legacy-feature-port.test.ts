@@ -92,6 +92,47 @@ describe('Legacy Feature Port & Operational Gap Suite', () => {
       expect(data.user.role).toBe('student');
       expect(data.user.profile_complete).toBe(false);
     });
+
+    it('verifies Google ID token on POST /auth/google/verify and signs student in', async () => {
+      // Mock base64url encoded Google ID token payload
+      const mockPayload = {
+        email: 'gis_student@gmail.com',
+        name: 'علي حسين',
+        sub: 'google_gis_123456',
+        picture: 'https://lh3.googleusercontent.com/a/test_pic.jpg',
+        email_verified: true,
+      };
+      const headerB64 = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+      const payloadB64 = Buffer.from(JSON.stringify(mockPayload)).toString('base64url');
+      const mockJwt = `${headerB64}.${payloadB64}.fake_signature`;
+
+      const res = await apiRequest(app, 'POST', '/auth/google/verify', {
+        body: { credential: mockJwt, next: 'student' },
+      }, ctx);
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(data.access_token).toBeDefined();
+      expect(data.user.email).toBe('gis_student@gmail.com');
+      expect(data.user.full_name).toBe('علي حسين');
+      expect(data.user.photo_url).toBe('https://lh3.googleusercontent.com/a/test_pic.jpg');
+      expect(data.user.role).toBe('student');
+
+      // Verify session cookie
+      const setCookie = res.headers.get('set-cookie');
+      expect(setCookie).toBeDefined();
+      expect(setCookie).toContain('nabd_session=');
+    });
+
+    it('rejects POST /auth/google/verify when credential is missing', async () => {
+      const res = await apiRequest(app, 'POST', '/auth/google/verify', {
+        body: {},
+      }, ctx);
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.detail).toContain('مفقود');
+    });
   });
 
   // ────────────────── A2. Email Verification Lifecycle ─────────────────────────
