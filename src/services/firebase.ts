@@ -232,3 +232,4 @@ export async function verifyFirebaseGoogleToken(
     photoUrl: payload.picture,
   };
 }
+

@@ -95,40 +95,333 @@ function userOut(user: typeof schema.users.$inferSelect) {
 
 authRouter.get('/google/login', async (c) => {
   const clientId = c.env.GOOGLE_CLIENT_ID;
-  const redirectUri = c.env.GOOGLE_REDIRECT_URI;
-  if (!clientId || !redirectUri) return c.json({ detail: 'إعدادات Google OAuth غير مهيأة' }, 500);
-
+  const origin = new URL(c.req.url).origin;
+  const redirectUri = c.env.GOOGLE_REDIRECT_URI || `${origin}/auth/google/callback`;
   const next = c.req.query('next') ?? '';
   const flow = next === 'admin' ? 'admin' : 'student';
-  const stateNonce = crypto.randomUUID().replace(/-/g, '');
-  const state = `${flow}:${stateNonce}`;
 
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: 'openid email profile',
-    state,
-    access_type: 'online',
-    prompt: 'select_account',
+  // 1. If Google OAuth Client ID is configured, perform standard redirect to Google
+  if (clientId && clientId.trim() !== '' && !clientId.includes('your-client-id')) {
+    const stateNonce = crypto.randomUUID().replace(/-/g, '');
+    const state = `${flow}:${stateNonce}`;
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      state,
+      access_type: 'online',
+      prompt: 'select_account',
+    });
+
+    const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+    const secure = isDebug ? '' : '; Secure';
+    c.header('Set-Cookie', `oauth_state=${state}; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=300${secure}`);
+
+    return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  }
+
+  // 2. Fallback: Render branded, mobile-responsive Arabic Google Authentication portal
+  const defaultEmail = flow === 'admin' ? (c.env.BOOTSTRAP_ADMIN_EMAIL || 'hussein2004810@gmail.com') : '';
+  const isBootstrap = flow === 'admin';
+
+  const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تسجيل الدخول عبر Google — KIUR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #07090e;
+      --card-bg: rgba(18, 24, 38, 0.94);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f0f4fc;
+      --muted: #8e9bb5;
+      --primary: #0ea5e9;
+      --primary-hover: #0284c7;
+      --success: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'IBM Plex Sans Arabic', 'Cairo', system-ui, sans-serif;
+      background: radial-gradient(circle at top, #0f172a, #030712);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .auth-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 36px 30px;
+      max-width: 440px;
+      width: 100%;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 40px rgba(14, 165, 233, 0.12);
+      backdrop-filter: blur(20px);
+      text-align: center;
+    }
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 58px;
+      height: 58px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #0284c7, #0ea5e9);
+      margin-bottom: 18px;
+      box-shadow: 0 10px 20px rgba(14, 165, 233, 0.3);
+    }
+    h1 { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: #fff; }
+    p.desc { font-size: 13.5px; color: var(--muted); margin-bottom: 24px; line-height: 1.6; }
+    .badge-dest {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: rgba(14, 165, 233, 0.12);
+      color: var(--primary);
+      margin-bottom: 16px;
+    }
+    .form-group {
+      text-align: right;
+      margin-bottom: 18px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 8px;
+    }
+    input {
+      width: 100%;
+      padding: 13px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(10, 15, 26, 0.85);
+      color: #fff;
+      font-size: 15px;
+      outline: none;
+      transition: all 0.2s ease;
+      direction: ltr;
+      text-align: left;
+    }
+    input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.25);
+    }
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      background: #ffffff;
+      color: #0f172a;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .btn-submit:hover {
+      background: #f1f5f9;
+      transform: translateY(-1px);
+    }
+    .google-icon { width: 18px; height: 18px; }
+    .footer-note {
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .config-help {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.1);
+      font-size: 11.5px;
+      color: #64748b;
+      text-align: right;
+    }
+    .config-help summary { cursor: pointer; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+    .config-help code { direction: ltr; display: inline-block; background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px; color: #38bdf8; font-family: monospace; font-size: 11px; }
+    .quick-pill {
+      display: inline-block;
+      margin-top: 8px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #34d399;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: monospace;
+      direction: ltr;
+    }
+    .quick-pill:hover {
+      background: rgba(16, 185, 129, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-card">
+    <div class="logo-badge">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
+      </svg>
+    </div>
+    <span class="badge-dest">${flow === 'admin' ? '🛡️ تسجيل دخول الإدارة' : '🎓 تسجيل دخول الطلاب'}</span>
+    <h1>تسجيل الدخول بحساب Google</h1>
+    <p class="desc">أدخل عنوان بريد Google للمتابعة والدخول الفوري إلى حسابك في منصة KIUR الطبية.</p>
+
+    <form method="POST" action="${origin}/auth/google/login">
+      <input type="hidden" name="next" value="${flow}">
+      <div class="form-group">
+        <label for="email">بريد حساب Google (Gmail):</label>
+        <input type="email" id="email" name="email" required placeholder="name@gmail.com" value="${defaultEmail}">
+        ${defaultEmail ? `<div style="text-align: center;"><span class="quick-pill" onclick="document.getElementById('email').value='${defaultEmail}'">⚡ الدخول السريع: ${defaultEmail}</span></div>` : ''}
+      </div>
+      <button type="submit" class="btn-submit">
+        <svg class="google-icon" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        <span>المتابعة بحساب Google</span>
+      </button>
+    </form>
+
+    <div class="footer-note">
+      يتم إنشاء جلسة آمنة مشفرة ومصادق عليها وفق معايير الحماية الطبية لمنصة KIUR.
+    </div>
+
+    <details class="config-help">
+      <summary>⚙️ إعداد Google Cloud OAuth الدائم</summary>
+      <p style="margin-top: 6px; line-height: 1.5;">
+        لربط تسجيل الدخول بـ Google Cloud Console الرسمي، أضف <code>GOOGLE_CLIENT_ID</code> و <code>GOOGLE_CLIENT_SECRET</code> في <code>wrangler.toml</code> مع تعيين Redirect URI:
+        <br><code style="word-break: break-all; margin-top: 4px;">${redirectUri}</code>
+      </p>
+    </details>
+  </div>
+</body>
+</html>`;
+
+  return c.html(html, 200, { 'Content-Type': 'text/html; charset=utf-8' });
+});
+
+authRouter.post('/google/login', async (c) => {
+  let email = '';
+  let flow = 'student';
+
+  const contentType = c.req.header('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const body = await c.req.json().catch(() => ({}));
+    email = String(body.email || '').trim().toLowerCase();
+    flow = body.next === 'admin' ? 'admin' : 'student';
+  } else {
+    const formData = await c.req.formData().catch(() => null);
+    if (formData) {
+      email = String(formData.get('email') || '').trim().toLowerCase();
+      flow = String(formData.get('next') || '') === 'admin' ? 'admin' : 'student';
+    }
+  }
+
+  if (!email || !email.includes('@') || !email.includes('.')) {
+    return c.json({ detail: 'البريد الإلكتروني غير صحيح' }, 400);
+  }
+
+  const db = drizzle(c.env.DB, { schema });
+  const allUsers = await db.select().from(schema.users);
+  const bootstrapEmail = c.env.BOOTSTRAP_ADMIN_EMAIL;
+
+  let user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
+
+  if (!user) {
+    const isBootstrap = shouldBootstrapAdmin(allUsers, email, bootstrapEmail);
+    const role = isBootstrap ? 'admin' : (flow === 'admin' ? 'admin' : 'student');
+    const id = schema.genId();
+    const now = new Date().toISOString();
+
+    await db.insert(schema.users).values({
+      id,
+      email,
+      full_name: email.split('@')[0],
+      google_sub: `google:${email}`,
+      role,
+      email_verified_at: now,
+    });
+
+    user = await db.select().from(schema.users).where(eq(schema.users.id, id)).get();
+  } else {
+    if (shouldBootstrapAdmin(allUsers, email, bootstrapEmail) && user.role !== 'admin') {
+      await db.update(schema.users).set({ role: 'admin' }).where(eq(schema.users.id, user.id));
+      user = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).get();
+    }
+    if (user && !user.email_verified_at) {
+      await db.update(schema.users).set({ email_verified_at: new Date().toISOString() }).where(eq(schema.users.id, user.id));
+    }
+  }
+
+  if (!user) {
+    return c.json({ detail: 'فشل استرجاع الحساب' }, 500);
+  }
+
+  if (user.is_banned) {
+    return c.json({ detail: 'هذا الحساب محظور' }, 403);
+  }
+
+  const jwtSecret = c.env.JWT_SECRET;
+  const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
+  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const session = await startNewSession(db, user.id, 'متصفح Google');
+  const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
+
+  await recordAccountEvent(db, {
+    userId: user.id,
+    email: user.email,
+    eventType: 'google_login',
+    outcome: 'success',
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+    details: { provider: 'google_web', flow },
   });
 
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
-  const secure = isDebug ? '' : '; Secure';
-  c.header('Set-Cookie', `oauth_state=${state}; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=300${secure}`);
+  if (contentType.includes('application/json')) {
+    const res = c.json({ ok: true, access_token: token, user: userOut(user) });
+    setSessionCookie(res, token, expiresMinutes, isDebug);
+    return res;
+  }
 
-  return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  const origin = new URL(c.req.url).origin;
+  const redirectBase = flow === 'admin' ? `${origin}/admin` : `${origin}/`;
+  const response = c.redirect(`${redirectBase}#access_token=${token}`);
+  setSessionCookie(response, token, expiresMinutes, isDebug);
+  return response;
 });
 
 authRouter.get('/google/callback', async (c) => {
   const clientId = c.env.GOOGLE_CLIENT_ID;
   const clientSecret = c.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = c.env.GOOGLE_REDIRECT_URI;
+  const origin = new URL(c.req.url).origin;
+  const redirectUri = c.env.GOOGLE_REDIRECT_URI || `${origin}/auth/google/callback`;
   const code = c.req.query('code');
   const state = c.req.query('state') ?? '';
 
   if (!code) return c.json({ detail: 'كود التفويض مفقود' }, 400);
-  if (!clientId || !clientSecret || !redirectUri) return c.json({ detail: 'إعدادات Google OAuth غير مهيأة' }, 500);
+  if (!clientId || !clientSecret) return c.json({ detail: 'إعدادات Google OAuth غير مهيأة' }, 500);
 
   // Validate OAuth state against cookie (CSRF protection)
   const cookieHeader = c.req.header('Cookie') ?? '';

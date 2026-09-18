@@ -5432,7 +5432,7 @@
     if (await apiReachable()){
       // Real flow: hand off to the backend, which redirects to Google,
       // then back to this page with #access_token=... on success.
-      window.location.href = API_BASE_URL + '/auth/google/login';
+      window.location.href = API_BASE_URL + '/auth/google/login?next=student';
       return;
     }
 

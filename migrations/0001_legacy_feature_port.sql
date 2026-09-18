@@ -103,3 +103,4 @@ ALTER TABLE questions ADD COLUMN deleted_at TEXT;
 
 ALTER TABLE media_files ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE media_files ADD COLUMN deleted_at TEXT;
+

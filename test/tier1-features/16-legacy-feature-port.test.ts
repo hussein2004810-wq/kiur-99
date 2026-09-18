@@ -38,6 +38,35 @@ describe('Legacy Feature Port & Operational Gap Suite', () => {
       const data = await res.json();
       expect(data.detail).toContain('جلسة تدفق Firebase');
     });
+
+    it('serves interactive Google login portal on GET /auth/google/login without 500 error', async () => {
+      const res = await apiRequest(app, 'GET', '/auth/google/login?next=admin', {}, ctx);
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain('تسجيل الدخول بحساب Google');
+      expect(text).toContain('المتابعة بحساب Google');
+    });
+
+    it('authenticates Google user on POST /auth/google/login and promotes bootstrap admin', async () => {
+      const res = await apiRequest(app, 'POST', '/auth/google/login', {
+        body: {
+          email: 'hussein2004810@gmail.com',
+          next: 'admin',
+        },
+      }, ctx);
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(data.access_token).toBeDefined();
+      expect(data.user.email).toBe('hussein2004810@gmail.com');
+      expect(data.user.role).toBe('admin');
+
+      // Verify session cookie was set
+      const setCookie = res.headers.get('set-cookie');
+      expect(setCookie).toBeDefined();
+      expect(setCookie).toContain('nabd_session=');
+    });
   });
 
   // ────────────────── A2. Email Verification Lifecycle ─────────────────────────

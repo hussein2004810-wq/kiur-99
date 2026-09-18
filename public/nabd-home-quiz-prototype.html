@@ -5472,8 +5472,8 @@
           return;
         }
 
-        // 3. Fallback: server-directed Google OAuth
-        window.location.href = API_BASE_URL + '/auth/google/login';
+        // 3. Fallback: server-directed Google OAuth portal
+        window.location.href = API_BASE_URL + '/auth/google/login?next=student';
         return;
       }
 
