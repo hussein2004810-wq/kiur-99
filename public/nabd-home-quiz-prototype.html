@@ -1763,7 +1763,21 @@
   html[dir="rtl"] .daily-details svg{transform:scaleX(-1);}
 
   /* ---- clinical pearls: cards flip to reveal the other side ---- */
-  .pearl-flip-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:14px;}
+  .pearl-flip-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+    gap: 22px;
+    align-items: stretch;
+  }
+  .pearl-flip-grid.wide-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr));
+    gap: 26px;
+  }
+  @media (min-width: 1400px) {
+    .pearl-flip-grid:not(.wide-grid) {
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    }
+  }
   .pearl-flip{position:relative; min-height:280px; perspective:1000px; cursor:pointer; border:0; background:none; padding:0; text-align:start; width:100%; font:inherit; color:inherit;}
   .pearl-flip-inner{position:relative; width:100%; height:100%; min-height:inherit; transition:transform .8s cubic-bezier(.2,.8,.2,1); transform-style:preserve-3d;}
   .pearl-flip:hover .pearl-flip-inner, .pearl-flip.flipped .pearl-flip-inner{transform:rotateY(180deg);}
@@ -1811,14 +1825,17 @@
 
   .clinicalFlipCard {
     position: relative;
-    height: 350px;
-    perspective: 1100px;
-    border-radius: 20px;
+    height: 420px;
+    perspective: 1200px;
+    border-radius: 22px;
     background: transparent;
     cursor: pointer;
     outline: 0;
     text-align: start;
     touch-action: manipulation;
+  }
+  .wide-grid .clinicalFlipCard {
+    height: 440px;
   }
   .clinicalFlipCardInner {
     position: relative;
@@ -1847,13 +1864,18 @@
     height: 100%;
     flex-direction: column;
     justify-content: space-between;
-    padding: 18px;
+    padding: 22px;
     overflow: hidden;
     border: 1px solid var(--kiur-line, #283958);
-    border-radius: 20px;
-    box-shadow: 0 16px 42px rgba(12,31,75,.12);
+    border-radius: 22px;
+    box-shadow: 0 16px 42px rgba(12,31,75,.16);
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+    transition: border-color .25s ease, box-shadow .25s ease;
+  }
+  .clinicalFlipCard:hover .clinicalFlipCardFace {
+    border-color: color-mix(in srgb, var(--kiur-primary, #69a6ff) 45%, var(--kiur-line, #283958));
+    box-shadow: 0 20px 48px rgba(12,31,75,.22);
   }
   .clinicalFlipCardFront {
     background: linear-gradient(145deg, var(--kiur-surface, #0d1930) 45%, var(--kiur-primary-soft, #172c50));
@@ -1865,17 +1887,21 @@
     background: linear-gradient(145deg, var(--kiur-surface-soft, #13223d), color-mix(in srgb, var(--kiur-primary-soft, #172c50) 76%, var(--kiur-surface, #0d1930)));
     color: var(--kiur-text, #f6f8ff);
     overflow-y: auto;
+    scrollbar-width: thin;
   }
   .clinicalFlipVisual {
     position: relative;
     display: grid;
     width: 100%;
-    height: 128px;
+    height: 160px;
     place-items: center;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--kiur-line, #283958) 75%, transparent);
-    border-radius: 14px;
+    border-radius: 16px;
     background: var(--kiur-surface-soft, #13223d);
+  }
+  .wide-grid .clinicalFlipVisual {
+    height: 180px;
   }
   .clinicalFlipVisual img {
     width: 100%;
@@ -1887,50 +1913,61 @@
   }
   .clinicalFlipDateBadge {
     position: absolute;
-    top: 8px;
-    inset-inline-end: 8px;
-    padding: 4px 9px;
+    top: 10px;
+    inset-inline-end: 10px;
+    padding: 5px 11px;
     border: 1px solid color-mix(in srgb, var(--kiur-line, #283958) 72%, transparent);
     border-radius: 999px;
     background: color-mix(in srgb, var(--kiur-surface, #0d1930) 88%, transparent);
     color: var(--kiur-muted, #b5c0d8);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     backdrop-filter: blur(8px);
   }
   .clinicalFlipContent {
-    margin: 10px 0 auto;
+    margin: 12px 0 auto;
   }
   .clinicalFlipTitle {
-    margin: 0 0 6px;
+    margin: 0 0 8px;
     color: var(--kiur-text, #f6f8ff);
-    font-size: 15px;
-    font-weight: 900;
+    font-size: 16.5px;
+    font-weight: 800;
     line-height: 1.45;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .wide-grid .clinicalFlipTitle {
+    font-size: 18px;
   }
   .clinicalFlipSummary {
     display: -webkit-box;
     margin: 0;
     overflow: hidden;
     color: var(--kiur-muted, #b5c0d8);
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1.75;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .wide-grid .clinicalFlipSummary {
+    font-size: 13.5px;
+    -webkit-line-clamp: 4;
   }
   .clinicalFlipFooter {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding-top: 10px;
+    gap: 10px;
+    padding-top: 12px;
     border-top: 1px solid color-mix(in srgb, var(--kiur-line, #283958) 70%, transparent);
   }
   .clinicalFlipHint, .clinicalFlipTag {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    font-size: 10px;
+    gap: 6px;
+    font-size: 11.5px;
   }
   .clinicalFlipHint {
     color: var(--kiur-primary, #69a6ff);
@@ -1938,102 +1975,133 @@
   }
   .clinicalFlipTag {
     color: var(--kiur-muted, #b5c0d8);
+    font-weight: 600;
   }
   .clinicalFlipBackHead {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    padding-bottom: 8px;
+    gap: 4px;
+    padding-bottom: 10px;
     border-bottom: 1px solid color-mix(in srgb, var(--kiur-line, #283958) 70%, transparent);
   }
   .clinicalFlipBackBadge {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
     color: var(--kiur-primary, #69a6ff);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 900;
   }
   .clinicalFlipBackHead small {
     overflow: hidden;
     color: var(--kiur-muted, #b5c0d8);
-    font-size: 10px;
+    font-size: 11.5px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .clinicalFlipBackBody {
-    display: grid;
-    gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     margin: auto 0;
+    max-height: 250px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding-inline-end: 2px;
+  }
+  .wide-grid .clinicalFlipBackBody {
+    max-height: 270px;
+    gap: 12px;
   }
   .clinicalPearlBox {
-    padding: 10px 12px;
-    border: 1px solid color-mix(in srgb, var(--kiur-primary, #69a6ff) 34%, var(--kiur-line, #283958));
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--kiur-primary-soft, #172c50) 78%, transparent);
+    padding: 12px 15px;
+    border: 1px solid color-mix(in srgb, var(--kiur-primary, #69a6ff) 38%, var(--kiur-line, #283958));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--kiur-primary-soft, #172c50) 82%, transparent);
   }
   .clinicalPearlBox strong {
     display: block;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     color: var(--kiur-primary, #69a6ff);
-    font-size: 11px;
+    font-size: 12.5px;
+    font-weight: 800;
   }
   .clinicalPearlBox p {
     margin: 0;
     color: var(--kiur-text, #f6f8ff);
-    font-size: 11px;
-    line-height: 1.7;
+    font-size: 13.5px;
+    line-height: 1.75;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .wide-grid .clinicalPearlBox p {
+    font-size: 14px;
+    line-height: 1.8;
   }
   .clinicalWarningBox {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
-    padding: 7px 10px;
-    border: 1px solid rgba(244,112,103,.34);
-    border-radius: 10px;
-    background: rgba(180,35,24,.1);
+    gap: 8px;
+    padding: 9px 13px;
+    border: 1px solid rgba(244,112,103,.38);
+    border-radius: 12px;
+    background: rgba(180,35,24,.14);
     color: var(--kiur-danger, #ff8a80);
-    font-size: 10px;
+    font-size: 12px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
-  .clinicalWarningBox svg { flex: none; }
+  .clinicalWarningBox svg { flex: none; margin-top: 2px; }
   .clinicalRefText {
     overflow: hidden;
     color: var(--kiur-muted, #b5c0d8);
-    font-size: 9px;
+    font-size: 11px;
     font-style: normal;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.55;
+    display: block;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .clinicalFlipBackFooter {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding-top: 10px;
+    gap: 10px;
+    padding-top: 12px;
     border-top: 1px solid color-mix(in srgb, var(--kiur-line, #283958) 70%, transparent);
   }
   .clinicalFlipDetailBtn {
     display: inline-flex;
-    min-height: 34px;
+    min-height: 38px;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
+    gap: 8px;
+    padding: 8px 18px;
     border: 1px solid var(--kiur-primary, #69a6ff);
-    border-radius: 9px;
+    border-radius: 11px;
     background: var(--kiur-primary, #1263df);
     color: #fff;
-    font-size: 11px;
-    font-weight: 900;
+    font-size: 12.5px;
+    font-weight: 800;
     cursor: pointer;
-    transition: background .18s ease, transform .18s ease;
+    transition: background .18s ease, transform .18s ease, box-shadow .18s ease;
   }
   .clinicalFlipDetailBtn:hover {
     background: var(--kiur-primary-strong, #0b4eb8);
+    box-shadow: 0 4px 14px rgba(18,99,223,.35);
     transform: translateX(-2px);
   }
   .clinicalFlipLeaveHint {
     color: var(--kiur-muted, #b5c0d8);
-    font-size: 10px;
+    font-size: 11.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .glimpse-view-modes button.is-active {
+    background: var(--kiur-primary, var(--accent)) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
   }
 
   /* Spotlight banner on home */
@@ -2090,15 +2158,15 @@
   }
   .glimpseDetail {
     position: relative;
-    max-width: 600px;
+    max-width: 680px;
     width: 100%;
     max-height: 90vh;
     overflow-y: auto;
-    border-radius: 20px;
+    border-radius: 22px;
     background: var(--glass-bg-strong);
     border: 1px solid var(--glass-border);
     box-shadow: 0 24px 64px rgba(0, 0, 0, .4);
-    padding: 24px;
+    padding: 26px;
     color: var(--ink);
   }
   .glimpseDetailClose {
@@ -2127,16 +2195,17 @@
       grid-template-columns: 1fr;
     }
     .glimpseSpotlightVisual {
-      height: 140px;
+      height: 150px;
     }
     .pearl-flip-grid {
       grid-template-columns: 1fr !important;
+      gap: 16px;
     }
     .clinicalFlipCard {
-      height: 330px;
+      height: 390px;
     }
     .clinicalFlipVisual {
-      height: 118px;
+      height: 140px;
     }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -2918,11 +2987,24 @@
       </div>
     </div>
 
-    <!-- Search bar -->
-    <div style="margin-bottom:16px;">
-      <div style="position:relative; width:100%;">
+    <!-- Search and Display Mode Controls -->
+    <div style="display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:20px;">
+      <div style="position:relative; flex:1; min-width:260px;">
         <input class="search-input" id="glimpseSearchInput" placeholder="ابحث في اللمحات أو التوجيه السريري أو المراجع..." oninput="filterGlimpsesUI()" style="width:100%; padding-inline-start:38px; border-radius:14px;" />
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; inset-inline-start:12px; top:50%; transform:translateY(-50%); width:16px; height:16px; opacity:.5; pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span id="glimpseCountBadge" class="badge badge-idle" style="font-size:.78rem; padding:6px 12px;"></span>
+        <div class="glimpse-view-modes" style="display:inline-flex; border-radius:12px; background:var(--glass-bg-strong); border:1px solid var(--glass-border); padding:3px; gap:2px;">
+          <button type="button" id="glimpseGridModeBtn" class="btn btn-ghost is-active" onclick="setGlimpseGridMode('grid')" title="عرض شبكي قياسي" style="padding:6px 12px; font-size:.76rem; border:0; border-radius:9px; gap:6px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:14px;height:14px;"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+            <span>شبكة متناسقة</span>
+          </button>
+          <button type="button" id="glimpseWideModeBtn" class="btn btn-ghost" onclick="setGlimpseGridMode('wide')" title="عرض بطاقات عريضة وموسعة" style="padding:6px 12px; font-size:.76rem; border:0; border-radius:9px; gap:6px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:14px;height:14px;"><rect width="18" height="7" x="3" y="3" rx="1"/><rect width="18" height="7" x="3" y="14" rx="1"/></svg>
+            <span>عرض عريض</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -7178,6 +7260,8 @@
     showView('view-pearls');
     const list = document.getElementById('pearlsList');
     if (!list) return;
+    const savedMode = localStorage.getItem('kiur_glimpse_mode') || 'grid';
+    setGlimpseGridMode(savedMode);
     list.innerHTML = `<div class="empty-row" style="grid-column:1/-1;">${t('loading')}</div>`;
     try {
       const res = await apiFetch('/api/glimpses');
@@ -7189,10 +7273,29 @@
     }
   }
 
+  function setGlimpseGridMode(mode){
+    const list = document.getElementById('pearlsList');
+    const gridBtn = document.getElementById('glimpseGridModeBtn');
+    const wideBtn = document.getElementById('glimpseWideModeBtn');
+    if (!list) return;
+    if (mode === 'wide'){
+      list.classList.add('wide-grid');
+      gridBtn?.classList.remove('is-active');
+      wideBtn?.classList.add('is-active');
+      try { localStorage.setItem('kiur_glimpse_mode', 'wide'); } catch (_) {}
+    } else {
+      list.classList.remove('wide-grid');
+      gridBtn?.classList.add('is-active');
+      wideBtn?.classList.remove('is-active');
+      try { localStorage.setItem('kiur_glimpse_mode', 'grid'); } catch (_) {}
+    }
+  }
+
   function filterGlimpsesUI(){
     const list = document.getElementById('pearlsList');
     if (!list) return;
     const query = (document.getElementById('glimpseSearchInput')?.value || '').trim().toLowerCase();
+    const countBadge = document.getElementById('glimpseCountBadge');
 
     const filtered = query
       ? allStudentGlimpses.filter(g =>
@@ -7200,6 +7303,10 @@
             .some(val => String(val || '').toLowerCase().includes(query))
         )
       : allStudentGlimpses;
+
+    if (countBadge){
+      countBadge.textContent = `${filtered.length} لمحة سريرية`;
+    }
 
     if (!filtered.length){
       list.innerHTML = `<div class="empty-row" style="grid-column:1/-1;">لا توجد لمحات مطابقة للبحث.</div>`;
