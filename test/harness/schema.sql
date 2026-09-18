@@ -458,3 +458,55 @@ CREATE TABLE IF NOT EXISTS student_reviews (
 );
 CREATE INDEX IF NOT EXISTS student_reviews_user_idx ON student_reviews(user_id, next_review_at);
 CREATE UNIQUE INDEX IF NOT EXISTS student_reviews_user_q_idx ON student_reviews(user_id, question_id);
+
+-- 36. clinical_glimpses
+CREATE TABLE IF NOT EXISTS clinical_glimpses (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    clinical_point TEXT NOT NULL,
+    warning TEXT,
+    image_id TEXT REFERENCES media_files(id),
+    reference_text TEXT,
+    publish_at TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'in_review', 'approved', 'published', 'archived')),
+    audience_all INTEGER NOT NULL DEFAULT 1 CHECK(audience_all IN (0, 1)),
+    created_by TEXT NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    updated_by TEXT NOT NULL REFERENCES users(id),
+    updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    reviewed_by TEXT REFERENCES users(id),
+    reviewed_at TEXT,
+    approved_by TEXT REFERENCES users(id),
+    approved_at TEXT,
+    published_by TEXT REFERENCES users(id),
+    published_at TEXT,
+    deleted_at TEXT,
+    deleted_by TEXT REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_glimpses_public ON clinical_glimpses(status, publish_at, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_glimpses_deleted ON clinical_glimpses(deleted_at);
+
+-- 37. clinical_glimpse_targets
+CREATE TABLE IF NOT EXISTS clinical_glimpse_targets (
+    id TEXT PRIMARY KEY NOT NULL,
+    glimpse_id TEXT NOT NULL REFERENCES clinical_glimpses(id) ON DELETE CASCADE,
+    university_id TEXT REFERENCES universities(id),
+    college_id TEXT,
+    department_id TEXT,
+    phase_id TEXT,
+    stage_id TEXT REFERENCES stages(id),
+    UNIQUE(glimpse_id, university_id, college_id, department_id, phase_id)
+);
+CREATE INDEX IF NOT EXISTS idx_glimpse_targets_scope ON clinical_glimpse_targets(university_id, college_id, department_id, phase_id, glimpse_id);
+
+-- 38. clinical_glimpse_logs
+CREATE TABLE IF NOT EXISTS clinical_glimpse_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    glimpse_id TEXT NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('create', 'update', 'submit_review', 'return_draft', 'approve', 'publish', 'archive', 'restore', 'delete_forever')),
+    by_user_id TEXT NOT NULL REFERENCES users(id),
+    at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    details_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_glimpse_logs_recent ON clinical_glimpse_logs(glimpse_id, at DESC);

@@ -873,6 +873,119 @@ export const notificationReadsRelations = relations(notificationReads, ({ one })
   user: one(users, { fields: [notificationReads.user_id], references: [users.id] }),
 }));
 
+// ============================================================================
+// 36. CLINICAL GLIMPSES (اللمحات السريرية)
+// ============================================================================
+export const clinicalGlimpseStatuses = ['draft', 'in_review', 'approved', 'published', 'archived'] as const;
+export type ClinicalGlimpseStatus = (typeof clinicalGlimpseStatuses)[number];
+
+export const clinicalGlimpseActions = [
+  'create',
+  'update',
+  'submit_review',
+  'return_draft',
+  'approve',
+  'publish',
+  'archive',
+  'restore',
+  'delete_forever',
+] as const;
+export type ClinicalGlimpseAction = (typeof clinicalGlimpseActions)[number];
+
+export const clinicalGlimpses = sqliteTable('clinical_glimpses', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  title: text('title').notNull(),
+  summary: text('summary').notNull(),
+  clinical_point: text('clinical_point').notNull(),
+  warning: text('warning'),
+  image_id: text('image_id').references(() => mediaFiles.id),
+  reference_text: text('reference_text'),
+  publish_at: text('publish_at'),
+  status: text('status', { enum: clinicalGlimpseStatuses }).notNull().default('draft'),
+  audience_all: integer('audience_all', { mode: 'boolean' }).notNull().default(true),
+  created_by: text('created_by').notNull().references(() => users.id),
+  created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  updated_by: text('updated_by').notNull().references(() => users.id),
+  updated_at: text('updated_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  reviewed_by: text('reviewed_by').references(() => users.id),
+  reviewed_at: text('reviewed_at'),
+  approved_by: text('approved_by').references(() => users.id),
+  approved_at: text('approved_at'),
+  published_by: text('published_by').references(() => users.id),
+  published_at: text('published_at'),
+  deleted_at: text('deleted_at'),
+  deleted_by: text('deleted_by').references(() => users.id),
+}, (table) => ({
+  status_idx: index('clinical_glimpses_status_idx').on(table.status),
+  publish_at_idx: index('clinical_glimpses_publish_at_idx').on(table.publish_at),
+  created_by_idx: index('clinical_glimpses_created_by_idx').on(table.created_by),
+  deleted_at_idx: index('clinical_glimpses_deleted_at_idx').on(table.deleted_at),
+}));
+
+export type ClinicalGlimpse = InferSelectModel<typeof clinicalGlimpses>;
+export type NewClinicalGlimpse = InferInsertModel<typeof clinicalGlimpses>;
+
+// ============================================================================
+// 37. CLINICAL GLIMPSE TARGETS
+// ============================================================================
+export const clinicalGlimpseTargets = sqliteTable('clinical_glimpse_targets', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  glimpse_id: text('glimpse_id').notNull().references(() => clinicalGlimpses.id, { onDelete: 'cascade' }),
+  university_id: text('university_id').references(() => universities.id),
+  college_id: text('college_id'),
+  department_id: text('department_id'),
+  phase_id: text('phase_id'),
+  stage_id: text('stage_id').references(() => stages.id),
+}, (table) => ({
+  glimpse_id_idx: index('clinical_glimpse_targets_glimpse_id_idx').on(table.glimpse_id),
+  scope_idx: index('clinical_glimpse_targets_scope_idx').on(table.university_id, table.college_id, table.department_id, table.phase_id, table.glimpse_id),
+}));
+
+export type ClinicalGlimpseTarget = InferSelectModel<typeof clinicalGlimpseTargets>;
+export type NewClinicalGlimpseTarget = InferInsertModel<typeof clinicalGlimpseTargets>;
+
+// ============================================================================
+// 38. CLINICAL GLIMPSE LOGS
+// ============================================================================
+export const clinicalGlimpseLogs = sqliteTable('clinical_glimpse_logs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  glimpse_id: text('glimpse_id').notNull(),
+  action: text('action', { enum: clinicalGlimpseActions }).notNull(),
+  by_user_id: text('by_user_id').notNull().references(() => users.id),
+  at: text('at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  details_json: text('details_json'),
+}, (table) => ({
+  glimpse_id_idx: index('clinical_glimpse_logs_glimpse_id_idx').on(table.glimpse_id),
+  at_idx: index('clinical_glimpse_logs_at_idx').on(table.at),
+}));
+
+export type ClinicalGlimpseLog = InferSelectModel<typeof clinicalGlimpseLogs>;
+export type NewClinicalGlimpseLog = InferInsertModel<typeof clinicalGlimpseLogs>;
+
+// ============================================================================
+// DRIZZLE RELATIONS (For Type-Safe Relational Queries)
+// ============================================================================
+
 export const clinicalPearlsRelations = relations(clinicalPearls, ({ one }) => ({
   creator: one(users, { fields: [clinicalPearls.created_by], references: [users.id] }),
+}));
+
+export const clinicalGlimpsesRelations = relations(clinicalGlimpses, ({ one, many }) => ({
+  creator: one(users, { fields: [clinicalGlimpses.created_by], references: [users.id] }),
+  editor: one(users, { fields: [clinicalGlimpses.updated_by], references: [users.id] }),
+  reviewer: one(users, { fields: [clinicalGlimpses.reviewed_by], references: [users.id] }),
+  approver: one(users, { fields: [clinicalGlimpses.approved_by], references: [users.id] }),
+  publisher: one(users, { fields: [clinicalGlimpses.published_by], references: [users.id] }),
+  image: one(mediaFiles, { fields: [clinicalGlimpses.image_id], references: [mediaFiles.id] }),
+  targets: many(clinicalGlimpseTargets),
+}));
+
+export const clinicalGlimpseTargetsRelations = relations(clinicalGlimpseTargets, ({ one }) => ({
+  glimpse: one(clinicalGlimpses, { fields: [clinicalGlimpseTargets.glimpse_id], references: [clinicalGlimpses.id] }),
+  university: one(universities, { fields: [clinicalGlimpseTargets.university_id], references: [universities.id] }),
+  stage: one(stages, { fields: [clinicalGlimpseTargets.stage_id], references: [stages.id] }),
+}));
+
+export const clinicalGlimpseLogsRelations = relations(clinicalGlimpseLogs, ({ one }) => ({
+  actor: one(users, { fields: [clinicalGlimpseLogs.by_user_id], references: [users.id] }),
 }));

@@ -547,23 +547,108 @@
 
       <!-- ===== ADMIN: Media ===== -->
       <!-- ===== ADMIN: Clinical pearls ===== -->
+      <!-- ===== ADMIN / PROFESSOR: Clinical Glimpses (اللمحات السريرية) ===== -->
       <section class="dash-section" id="sec-pearls">
+        <!-- FORM CARD -->
+        <div class="dash-card glass" style="margin-bottom:20px;">
+          <div class="dash-card-head">
+            <span class="dash-card-title" id="glimpseFormHeader">إضافة لمحة سريرية</span>
+            <button class="btn btn-ghost" id="glimpseCancelEditBtn" style="display:none; padding:6px 14px; font-size:.78rem;" onclick="cancelGlimpseEdit()">إلغاء التعديل</button>
+          </div>
+          <div class="item-meta" style="margin-bottom:14px;">
+            سير الاعتماد الإلزامي: <b>مسودة ← مراجعة ← اعتماد المالك ← نشر</b>. أي تعديل يعيد اللمحة إلى المسودة لمراجعتها من جديد.
+          </div>
+          <form id="glimpseForm" onsubmit="event.preventDefault(); saveGlimpse();">
+            <div class="form-field">
+              <label style="display:block; font-size:.78rem; font-weight:700; margin-bottom:4px;">العنوان (3 إلى 160 حرفًا)</label>
+              <input id="glimpseTitle" type="text" required minlength="3" maxlength="160" placeholder="مثال: التدخل السريع في متلازمة الشريان التاجي الحادة" />
+            </div>
+            <div class="form-field">
+              <label style="display:block; font-size:.78rem; font-weight:700; margin-bottom:4px;">ملخص قصير للطلاب (10 إلى 1000 حرف)</label>
+              <textarea id="glimpseSummary" rows="2" required minlength="10" maxlength="1000" placeholder="ملخص تمهيدي يظهر على الوجه الأمامي للبطاقة..." style="width:100%; resize:vertical; font:inherit; padding:10px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--glass-border); background:var(--glass-bg-strong); color:var(--ink);"></textarea>
+            </div>
+            <div class="form-field">
+              <label style="display:block; font-size:.78rem; font-weight:700; margin-bottom:4px;">النقطة السريرية الأساسية (الوجه الخلفي للبطاقة)</label>
+              <textarea id="glimpseClinicalPoint" rows="3" required minlength="5" placeholder="التوجيه السريري المعتمد أو اللؤلؤة السريرية الحاسمة..." style="width:100%; resize:vertical; font:inherit; padding:10px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--glass-border); background:var(--glass-bg-strong); color:var(--ink);"></textarea>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div class="form-field">
+                <label style="display:block; font-size:.78rem; font-weight:700; margin-bottom:4px;">تحذير سريري (اختياري)</label>
+                <input id="glimpseWarning" type="text" placeholder="مثال: تجنب إعطاء النترات إذا كان الضغط منخفضاً" />
+              </div>
+              <div class="form-field">
+                <label style="display:block; font-size:.78rem; font-weight:700; margin-bottom:4px;">مرجع علمي (اختياري)</label>
+                <input id="glimpseReferenceText" type="text" placeholder="مثال: دليل الجمعية الأوروبية لأمراض القلب 2024" />
+              </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div class="form-field">
+                <label style="display:block; font-size:.78rem; font-weight:700; margin-bottom:4px;">اختيار صورة من المكتبة (اختياري)</label>
+                <select id="glimpseImageSelect">
+                  <option value="">دون صورة (أيقونة النبض الافتراضية)</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label style="display:block; font-size:.78rem; font-weight:700; margin-bottom:4px;">تاريخ ووقت النشر المخطط (اختياري)</label>
+                <input id="glimpsePublishAt" type="datetime-local" />
+              </div>
+            </div>
+            <div style="margin:12px 0;">
+              <label class="check-row" style="cursor:pointer;">
+                <input id="glimpseAudienceAll" type="checkbox" checked onchange="toggleGlimpseAudienceUI()" />
+                <span>نشر لجميع الطلاب (يتطلب صلاحية الإدارة العامة)</span>
+              </label>
+            </div>
+            <div id="glimpseTargetSelectors" style="display:none; background:var(--glass-bg); padding:12px; border-radius:var(--radius-sm); border:1px solid var(--glass-border); margin-bottom:14px;">
+              <div class="item-meta" style="margin-bottom:8px;">تحديد النطاق الأكاديمي المستهدف:</div>
+              <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:10px;">
+                <select id="glimpseUniSelect" onchange="onGlimpseUniChange()">
+                  <option value="">كل الجامعات</option>
+                </select>
+                <select id="glimpseStageSelect">
+                  <option value="">كل المراحل</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button class="btn" id="glimpseSaveBtn" type="submit">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                <span id="glimpseSaveBtnText">إنشاء المسودة</span>
+              </button>
+              <div id="glimpseFormMsg" style="font-size:.82rem; display:none;"></div>
+            </div>
+          </form>
+        </div>
+
+        <!-- LIST CARD -->
         <div class="dash-card glass">
           <div class="dash-card-head">
-            <span class="dash-card-title">لمحات سريرية</span>
-            <button class="btn" onclick="promptAddPearl()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>إضافة لمحة</button>
-          </div>
-          <div class="item-meta" style="margin-bottom:12px;">
-            العنوان يظهر لأي زائر في الصفحة الرئيسية قبل تسجيل الدخول — التفاصيل لا تُرسل إطلاقاً إلا بعد الدخول.
+            <span class="dash-card-title">قائمة اللمحات وسير الاعتماد</span>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-ghost" style="padding:6px 14px; font-size:.78rem;" onclick="openGlimpseLogsModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M12 7v5l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+                سجل الاعتماد
+              </button>
+              <button class="btn btn-ghost" style="padding:6px 14px; font-size:.78rem;" onclick="loadPearls()">تحديث</button>
+            </div>
           </div>
           <div class="table-wrap">
             <table class="dash-table">
-              <thead><tr><th>التصنيف</th><th>العنوان</th><th>التفاصيل</th><th></th></tr></thead>
+              <thead>
+                <tr>
+                  <th>اللمحة</th>
+                  <th>الحالة</th>
+                  <th>الجمهور المستهدف</th>
+                  <th>تاريخ النشر</th>
+                  <th style="text-align:end;">الإجراءات المتاحة</th>
+                </tr>
+              </thead>
               <tbody id="pearlsBody"></tbody>
             </table>
           </div>
         </div>
       </section>
+
 
       <section class="dash-section" id="sec-media">
         <div class="dash-card glass">
@@ -842,6 +927,32 @@
       <button class="btn btn-ghost" style="flex:1; justify-content:center;" onclick="previewCatalogImport()">معاينة</button>
       <button class="btn" id="catalogImportConfirm" style="flex:1; justify-content:center; display:none;" onclick="runCatalogImport()">تأكيد الاستيراد</button>
       <button class="btn btn-ghost" style="flex:0 0 100px; justify-content:center;" onclick="closeCatalogImport()">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CLINICAL GLIMPSE AUDIT LOGS MODAL ============ -->
+<div id="glimpseLogsOverlay" style="display:none; position:fixed; inset:0; background:rgba(10,15,30,.65); z-index:1002; align-items:center; justify-content:center; padding:16px;">
+  <div class="dash-card glass" style="max-width:760px; width:100%; max-height:90vh; overflow-y:auto;">
+    <div class="dash-card-head">
+      <span class="dash-card-title">سجل سير واعتماد اللمحات السريرية</span>
+      <button class="btn btn-ghost" style="padding:4px 12px; font-size:.78rem;" onclick="closeGlimpseLogsModal()">إغلاق</button>
+    </div>
+    <div class="table-wrap" style="margin-top:10px;">
+      <table class="dash-table">
+        <thead>
+          <tr>
+            <th>التاريخ والوقت</th>
+            <th>اللمحة</th>
+            <th>الإجراء</th>
+            <th>المسؤول</th>
+            <th>تفاصيل إضافية</th>
+          </tr>
+        </thead>
+        <tbody id="glimpseLogsBody">
+          <tr><td colspan="5" class="empty-row">جاري تحميل السجلات...</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -2865,63 +2976,347 @@
     `).join('') || `<tr><td colspan="4" class="empty-row">لا يوجد طلاب نشطون بعد</td></tr>`;
   }
 
-  // ===== ADMIN: clinical pearls =====
+  // ===== ADMIN / PROFESSOR: Clinical Glimpses (اللمحات السريرية) =====
   let allPearls = [];
-  async function loadPearls(){
-    allPearls = await liveOrDemo('/api/admin/pearls', [], []);
-    document.getElementById('pearlsBody').innerHTML = allPearls.map(p => `
-      <tr>
-        <td>${p.tag ? `<span class="badge badge-active">${esc(p.tag)}</span>` : '<span class="cell-sub">—</span>'}</td>
-        <td><div class="cell-name">${esc(p.title)}</div></td>
-        <td><div class="cell-sub" style="max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(p.body || '—')}</div></td>
-        <td style="text-align:end;">
-          <div style="display:flex; gap:6px; justify-content:flex-end;">
-            <button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem;" onclick="promptEditPearl('${p.id}')">تعديل</button>
-            <button class="icon-btn" aria-label="حذف اللمحة" style="width:30px;height:30px;" title="حذف" onclick="deletePearl('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
-          </div>
-        </td>
-      </tr>`).join('') || `<tr><td colspan="4" class="empty-row">لا توجد لمحات بعد — أضف واحدة وتظهر مباشرة للطلاب وفي الصفحة الرئيسية</td></tr>`;
-  }
+  let editingGlimpseId = null;
+  let catalogTreeCache = null;
 
-  const PEARL_FIELDS = (v = {}) => [
-    {id: 'tag', label: 'التصنيف (مثال: طوارئ، تشخيص، أطفال)', type: 'text', value: v.tag || ''},
-    {id: 'title', label: 'العنوان — يظهر للزائر قبل تسجيل الدخول', type: 'text', value: v.title || ''},
-    {id: 'body', label: 'التفاصيل والحل — لا تظهر إلا بعد تسجيل الدخول', type: 'text', value: v.body || ''},
-  ];
-
-  function promptAddPearl(){
-    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً (وضع المعاينة بدون اتصال لا يدعم هذا الإجراء)'); return; }
-    openGenericModal('إضافة لمحة سريرية', PEARL_FIELDS(), async (v) => {
-      if (!v.title.trim()) throw {detail: 'العنوان مطلوب'};
-      await apiFetch('/api/admin/pearls', {
-        method: 'POST',
-        body: JSON.stringify({title: v.title.trim(), tag: v.tag.trim(), body: v.body.trim()}),
-      });
-      loadPearls();
-    });
-  }
-
-  function promptEditPearl(id){
-    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً (وضع المعاينة بدون اتصال لا يدعم هذا الإجراء)'); return; }
-    const current = allPearls.find(p => p.id === id);
-    if (!current) return;
-    openGenericModal('تعديل لمحة سريرية', PEARL_FIELDS(current), async (v) => {
-      if (!v.title.trim()) throw {detail: 'العنوان مطلوب'};
-      await apiFetch('/api/admin/pearls/' + id, {
-        method: 'PUT',
-        body: JSON.stringify({title: v.title.trim(), tag: v.tag.trim(), body: v.body.trim()}),
-      });
-      loadPearls();
-    });
-  }
-
-  async function deletePearl(id){
-    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً (وضع المعاينة بدون اتصال لا يدعم هذا الإجراء)'); return; }
-    if (!await confirmModal('حذف هذه اللمحة نهائياً؟')) return;
+  async function populateGlimpseCatalog() {
+    const uniSel = document.getElementById('glimpseUniSelect');
+    const stageSel = document.getElementById('glimpseStageSelect');
+    if (!uniSel || !stageSel) return;
     try {
-      await apiFetch('/api/admin/pearls/' + id, {method: 'DELETE'});
+      if (!catalogTreeCache) {
+        catalogTreeCache = await apiFetch('/api/catalog/tree').catch(() => []);
+      }
+      const unis = [];
+      const uniMap = new Map();
+      (catalogTreeCache || []).forEach(sec => {
+        (sec.universities || []).forEach(u => {
+          if (!uniMap.has(u.id)) {
+            uniMap.set(u.id, u);
+            unis.push(u);
+          }
+        });
+      });
+      let uniHtml = '<option value="">كل الجامعات</option>';
+      unis.forEach(u => {
+        uniHtml += `<option value="${esc(u.id)}">${esc(u.name)}</option>`;
+      });
+      uniSel.innerHTML = uniHtml;
+      onGlimpseUniChange();
+    } catch (e) {}
+  }
+
+  function onGlimpseUniChange() {
+    const uniSel = document.getElementById('glimpseUniSelect');
+    const stageSel = document.getElementById('glimpseStageSelect');
+    if (!uniSel || !stageSel || !catalogTreeCache) return;
+    const selectedUniId = uniSel.value;
+    const stages = [];
+    const stageMap = new Map();
+    catalogTreeCache.forEach(sec => {
+      (sec.universities || []).forEach(u => {
+        if (!selectedUniId || u.id === selectedUniId) {
+          (u.stages || []).forEach(st => {
+            if (!stageMap.has(st.id)) {
+              stageMap.set(st.id, st);
+              stages.push(st);
+            }
+          });
+        }
+      });
+    });
+    let stageHtml = '<option value="">كل المراحل</option>';
+    stages.forEach(st => {
+      stageHtml += `<option value="${esc(st.id)}">${esc(st.name)}</option>`;
+    });
+    stageSel.innerHTML = stageHtml;
+  }
+
+  async function populateGlimpseMedia(selectedFilename = '') {
+    const select = document.getElementById('glimpseImageSelect');
+    if (!select) return;
+    try {
+      const files = await apiFetch('/api/admin/media').catch(() => []);
+      const imgFiles = (files || []).filter(f => (f.content_type || '').startsWith('image/') || /\.(jpe?g|png|webp|gif|svg)$/i.test(f.filename || ''));
+      let html = '<option value="">دون صورة (أيقونة النبض الافتراضية)</option>';
+      imgFiles.forEach(f => {
+        const fn = f.filename;
+        html += `<option value="${esc(fn)}" ${fn === selectedFilename ? 'selected' : ''}>${esc(fn)}</option>`;
+      });
+      select.innerHTML = html;
+    } catch (e) {}
+  }
+
+  function toggleGlimpseAudienceUI() {
+    const audAll = document.getElementById('glimpseAudienceAll').checked;
+    const wrap = document.getElementById('glimpseTargetSelectors');
+    if (wrap) wrap.style.display = audAll ? 'none' : 'block';
+  }
+
+  async function loadPearls() {
+    populateGlimpseCatalog();
+    populateGlimpseMedia();
+    try {
+      const res = await apiFetch('/api/admin/glimpses');
+      allPearls = res.data || [];
+    } catch (e) {
+      allPearls = [];
+    }
+
+    const statusMap = {
+      draft: '<span class="badge" style="background:rgba(255,255,255,.08); color:var(--ink-sub);">مسودة</span>',
+      in_review: '<span class="badge" style="background:rgba(234,179,8,.18); color:#eab308;">قيد المراجعة</span>',
+      approved: '<span class="badge" style="background:rgba(59,130,246,.18); color:#60a5fa;">معتمدة</span>',
+      published: '<span class="badge badge-active">منشورة</span>',
+      archived: '<span class="badge" style="background:rgba(239,68,68,.18); color:#ef4444;">مؤرشفة</span>',
+    };
+
+    const tbody = document.getElementById('pearlsBody');
+    if (!tbody) return;
+    if (!allPearls.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-row">لا توجد لمحات بعد — أنشئ مسودة لمحة جديدة للبدء</td></tr>';
+      return;
+    }
+
+    const isAdmin = currentRole === 'admin';
+
+    tbody.innerHTML = allPearls.map(p => {
+      let audText = 'الكل';
+      if (!p.audienceAll) {
+        const t = (p.targets || [])[0];
+        audText = t ? `نطاق محدد (${t.universityId || 'أي جامعة'} / ${t.stageId || t.phaseId || 'أي مرحلة'})` : 'نطاق محدد';
+      }
+
+      let actionsHtml = '';
+      if (p.deletedAt || p.status === 'archived') {
+        if (isAdmin) {
+          actionsHtml = `
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem; color:var(--success);" onclick="actGlimpse('${p.id}', 'restore')">استعادة كمسودة</button>
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem; color:var(--danger);" onclick="actGlimpse('${p.id}', 'delete-forever')">حذف نهائي</button>
+          `;
+        } else {
+          actionsHtml = '<span class="cell-sub">مؤرشفة</span>';
+        }
+      } else {
+        const editBtn = `<button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="editGlimpse('${p.id}')">تعديل</button>`;
+        const archiveBtn = `<button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem; color:var(--danger);" onclick="actGlimpse('${p.id}', 'archive')">أرشفة</button>`;
+
+        let flowBtn = '';
+        if (p.status === 'draft') {
+          flowBtn = `<button class="btn" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse('${p.id}', 'submit-review')">طلب مراجعة</button>`;
+        } else if (p.status === 'in_review') {
+          flowBtn = `
+            ${isAdmin ? `<button class="btn" style="padding:4px 8px; font-size:.72rem; background:var(--primary);" onclick="actGlimpse('${p.id}', 'approve')">اعتماد</button>` : ''}
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse('${p.id}', 'return-draft')">إرجاع لمسودة</button>
+          `;
+        } else if (p.status === 'approved') {
+          flowBtn = `
+            ${isAdmin ? `<button class="btn badge-active" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse('${p.id}', 'publish')">نشر الآن</button>` : ''}
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse('${p.id}', 'return-draft')">إرجاع لمسودة</button>
+          `;
+        }
+
+        actionsHtml = `
+          <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center; flex-wrap:wrap;">
+            ${flowBtn}
+            ${editBtn}
+            ${archiveBtn}
+          </div>
+        `;
+      }
+
+      return `
+        <tr>
+          <td>
+            <div class="cell-name">${esc(p.title)}</div>
+            <div class="cell-sub" style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(p.summary || '')}</div>
+          </td>
+          <td>${statusMap[p.status] || esc(p.status)}</td>
+          <td><span class="cell-sub">${esc(audText)}</span></td>
+          <td style="font-size:.78rem; white-space:nowrap;">${p.publishedAt ? fmtDate(p.publishedAt) : (p.publishAt ? `مجدول: ${fmtDate(p.publishAt)}` : '—')}</td>
+          <td style="text-align:end;">${actionsHtml}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  async function saveGlimpse() {
+    if (!liveMode) { showToast('سجّل دخول حقيقي أولاً'); return; }
+    const title = document.getElementById('glimpseTitle').value.trim();
+    const summary = document.getElementById('glimpseSummary').value.trim();
+    const clinicalPoint = document.getElementById('glimpseClinicalPoint').value.trim();
+    const warning = document.getElementById('glimpseWarning').value.trim() || null;
+    const referenceText = document.getElementById('glimpseReferenceText').value.trim() || null;
+    const imageId = document.getElementById('glimpseImageSelect').value || null;
+    const publishAtRaw = document.getElementById('glimpsePublishAt').value;
+    const publishAt = publishAtRaw ? new Date(publishAtRaw).toISOString() : null;
+    const audienceAll = document.getElementById('glimpseAudienceAll').checked;
+    const uniId = document.getElementById('glimpseUniSelect').value || null;
+    const stageId = document.getElementById('glimpseStageSelect').value || null;
+
+    const targets = [];
+    if (!audienceAll) {
+      if (uniId || stageId) {
+        targets.push({ universityId: uniId, stageId: stageId });
+      }
+    }
+
+    const payload = {
+      title,
+      summary,
+      clinicalPoint,
+      warning,
+      referenceText,
+      imageId,
+      publishAt,
+      audienceAll,
+      targets
+    };
+
+    const btn = document.getElementById('glimpseSaveBtn');
+    btn.disabled = true;
+    try {
+      if (editingGlimpseId) {
+        await apiFetch('/api/admin/glimpses/' + editingGlimpseId, {
+          method: 'PATCH',
+          body: JSON.stringify(payload)
+        });
+        showToast('تم تعديل اللمحة وإرجاعها إلى المسودة للاعتماد');
+      } else {
+        await apiFetch('/api/admin/glimpses', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        showToast('تم إنشاء مسودة اللمحة بنجاح');
+      }
+      cancelGlimpseEdit();
       loadPearls();
-    } catch (e) { showToast(e.detail || 'تعذّر الحذف', 'error'); }
+    } catch (err) {
+      showToast(err.detail || err.message || 'فشلت العملية', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function editGlimpse(id) {
+    const item = allPearls.find(p => p.id === id);
+    if (!item) return;
+    editingGlimpseId = id;
+    document.getElementById('glimpseFormHeader').textContent = 'تعديل اللمحة السريرية (إعادة للمسودة)';
+    document.getElementById('glimpseCancelEditBtn').style.display = 'inline-block';
+    document.getElementById('glimpseSaveBtnText').textContent = 'حفظ التعديلات كمسودة جديدة';
+    
+    document.getElementById('glimpseTitle').value = item.title || '';
+    document.getElementById('glimpseSummary').value = item.summary || '';
+    document.getElementById('glimpseClinicalPoint').value = item.clinicalPoint || item.clinical_point || '';
+    document.getElementById('glimpseWarning').value = item.warning || '';
+    document.getElementById('glimpseReferenceText').value = item.referenceText || item.reference_text || '';
+    
+    if (item.publishAt) {
+      try {
+        const d = new Date(item.publishAt);
+        const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        document.getElementById('glimpsePublishAt').value = iso;
+      } catch (e) {
+        document.getElementById('glimpsePublishAt').value = '';
+      }
+    } else {
+      document.getElementById('glimpsePublishAt').value = '';
+    }
+
+    populateGlimpseMedia(item.imageId || '');
+    
+    const audAll = Boolean(item.audienceAll);
+    document.getElementById('glimpseAudienceAll').checked = audAll;
+    toggleGlimpseAudienceUI();
+    
+    if (!audAll && item.targets && item.targets.length) {
+      const t = item.targets[0];
+      const uniSel = document.getElementById('glimpseUniSelect');
+      if (uniSel && t.universityId) {
+        uniSel.value = t.universityId;
+        onGlimpseUniChange();
+      }
+      const stageSel = document.getElementById('glimpseStageSelect');
+      if (stageSel && (t.stageId || t.phaseId)) {
+        stageSel.value = t.stageId || t.phaseId;
+      }
+    }
+
+    document.getElementById('sec-pearls').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function cancelGlimpseEdit() {
+    editingGlimpseId = null;
+    document.getElementById('glimpseFormHeader').textContent = 'إضافة لمحة سريرية';
+    document.getElementById('glimpseCancelEditBtn').style.display = 'none';
+    document.getElementById('glimpseSaveBtnText').textContent = 'إنشاء المسودة';
+    document.getElementById('glimpseForm').reset();
+    document.getElementById('glimpseAudienceAll').checked = true;
+    toggleGlimpseAudienceUI();
+  }
+
+  async function actGlimpse(id, action) {
+    if (!liveMode) { showToast('سجّل دخول حقيقي أولاً'); return; }
+    const labels = {
+      'submit-review': 'إرسال اللمحة للمراجعة والتدقيق؟',
+      'approve': 'اعتماد اللمحة رسمياً بواسطة الإدارة؟',
+      'publish': 'نشر اللمحة للطلاب فوراً؟',
+      'return-draft': 'إرجاع اللمحة إلى وضع المسودة؟',
+      'archive': 'أرشفة هذه اللمحة وإخفاؤها من ظهور الطلاب؟',
+      'restore': 'استعادة اللمحة من الأرشيف كمسودة؟',
+      'delete-forever': 'حذف اللمحة نهائياً وسجلاتها المرتبطة؟ (لا يمكن التراجع)'
+    };
+    if (!await confirmModal(labels[action] || 'تأكيد الإجراء؟')) return;
+    try {
+      await apiFetch(`/api/admin/glimpses/${id}/${action}`, { method: 'POST' });
+      showToast('تم تنفيذ الإجراء بنجاح');
+      loadPearls();
+    } catch (err) {
+      showToast(err.detail || err.message || 'فشل تنفيذ الإجراء', 'error');
+    }
+  }
+
+  async function openGlimpseLogsModal() {
+    document.getElementById('glimpseLogsOverlay').style.display = 'flex';
+    const tbody = document.getElementById('glimpseLogsBody');
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-row">جاري تحميل السجلات...</td></tr>';
+    try {
+      const res = await apiFetch('/api/admin/glimpses/logs');
+      const logs = res.data || [];
+      if (!logs.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-row">لا توجد سجلات بعد</td></tr>';
+        return;
+      }
+      const actionLabels = {
+        'created': '<span class="badge" style="background:rgba(255,255,255,.1);">إنشاء</span>',
+        'edited': '<span class="badge" style="background:rgba(147,51,234,.2); color:#c084fc;">تعديل</span>',
+        'submitted_review': '<span class="badge" style="background:rgba(234,179,8,.2); color:#eab308;">إرسال للمراجعة</span>',
+        'returned_draft': '<span class="badge" style="background:rgba(249,115,22,.2); color:#fb923c;">إرجاع لمسودة</span>',
+        'approved': '<span class="badge" style="background:rgba(59,130,246,.2); color:#60a5fa;">اعتماد</span>',
+        'published': '<span class="badge badge-active">نشر</span>',
+        'archived': '<span class="badge" style="background:rgba(239,68,68,.2); color:#ef4444;">أرشفة</span>',
+        'restored': '<span class="badge" style="background:rgba(16,185,129,.2); color:#34d399;">استعادة</span>',
+        'deleted_forever': '<span class="badge" style="background:rgba(239,68,68,.3); color:#fca5a5;">حذف نهائي</span>',
+      };
+      tbody.innerHTML = logs.map(l => `
+        <tr>
+          <td style="font-size:.78rem; white-space:nowrap;">${fmtDate(l.at)}</td>
+          <td><div class="cell-name" style="font-size:.82rem;">${esc(l.title || l.glimpseId)}</div></td>
+          <td>${actionLabels[l.action] || esc(l.action)}</td>
+          <td style="font-size:.82rem;">${esc(l.actorName || '—')}</td>
+          <td style="font-size:.75rem; color:var(--ink-sub); max-width:240px; overflow:hidden; text-overflow:ellipsis;">${esc(JSON.stringify(l.details || {}))}</td>
+        </tr>
+      `).join('');
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-row" style="color:var(--danger);">تعذر تحميل السجل: ${esc(e.message||e.detail||'')}</td></tr>`;
+    }
+  }
+
+  function closeGlimpseLogsModal() {
+    document.getElementById('glimpseLogsOverlay').style.display = 'none';
   }
 
   // ===== RESELLER sections =====

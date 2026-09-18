@@ -24,9 +24,10 @@ import { pearlsRouter } from './routes/pearls';
 import { publicRouter } from './routes/public';
 import { mediaRouter } from './routes/media';
 
+import { glimpsesRouter, adminGlimpsesRouter } from './routes/glimpses';
+
 const app = new Hono<AppEnv>();
 
-// 1. Global CORS Middleware (Preflight & request handling)
 // 1. Centralized Security Headers (CSP, HSTS, nosniff, etc.)
 app.use('*', securityHeadersMiddleware);
 
@@ -36,7 +37,6 @@ app.use('*', bodySizeLimitMiddleware);
 // 3. Global CORS Middleware (Preflight & request handling)
 app.use('*', corsMiddleware);
 
-// 2. Global Error & 404 Handlers
 // 4. CSRF & Untrusted Cross-Site Mutation Protection
 app.use('*', csrfProtectionMiddleware);
 
@@ -44,14 +44,13 @@ app.use('*', csrfProtectionMiddleware);
 app.onError(errorHandler);
 app.notFound(notFoundHandler);
 
-// 3. Static SPA and Health Probe Routes
 // 6. Static SPA and Health Probe Routes
 registerStaticRoutes(app);
 
-// 4. API & Auth Routers
 // 7. API & Auth Routers
 app.route('/auth', authRouter);
 app.route('/media-files', mediaRouter);
+app.route('/api/media', mediaRouter);
 
 // Mount all /api routes under /api
 const api = new Hono<AppEnv>();
@@ -60,6 +59,7 @@ api.route('/questions', questionsRouter);
 api.route('/professors', professorsRouter);
 api.route('/courses', coursesRouter);
 api.route('/store', storeRouter);
+api.route('/admin/glimpses', adminGlimpsesRouter);
 api.route('/admin', adminRouter);
 api.route('/reseller', resellerRouter);
 api.route('/activation', activationRouter);
@@ -68,6 +68,7 @@ api.route('/exams', examsRouter);
 api.route('/notifications', notificationsRouter);
 api.route('/me/notifications', notificationsRouter);
 api.route('/students', studentsRouter);
+api.route('/glimpses', glimpsesRouter);
 api.route('/pearls', pearlsRouter);
 api.route('/public', publicRouter);
 
