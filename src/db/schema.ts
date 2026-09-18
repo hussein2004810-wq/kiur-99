@@ -26,6 +26,15 @@ export type BanStatus = (typeof banStatuses)[number];
 export const codeStatuses = ['idle', 'active', 'expired'] as const;
 export type CodeStatus = (typeof codeStatuses)[number];
 
+export const universityTypes = ['government', 'private'] as const;
+export type UniversityType = (typeof universityTypes)[number];
+
+export const studySystems = ['modular', 'traditional'] as const;
+export type StudySystem = (typeof studySystems)[number];
+
+export const subjectTerms = ['annual', 'semester_1', 'semester_2', 'modular_block'] as const;
+export type SubjectTerm = (typeof subjectTerms)[number];
+
 // ============================================================================
 // 1. SECTIONS
 // ============================================================================
@@ -38,44 +47,93 @@ export type Section = InferSelectModel<typeof sections>;
 export type NewSection = InferInsertModel<typeof sections>;
 
 // ============================================================================
-// 2. UNIVERSITIES
+// 2. UNIVERSITIES (الجامعات العراقية)
 // ============================================================================
 export const universities = sqliteTable('universities', {
   id: text('id').primaryKey().$defaultFn(genId),
   name: text('name').notNull(),
-  section_id: text('section_id').notNull().references(() => sections.id),
+  type: text('type', { enum: universityTypes }).notNull().default('government'),
+  province: text('province'),
+  logo_url: text('logo_url'),
+  section_id: text('section_id').references(() => sections.id),
+  created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
 }, (table) => ({
   section_id_idx: index('universities_section_id_idx').on(table.section_id),
+  type_idx: index('universities_type_idx').on(table.type),
+  province_idx: index('universities_province_idx').on(table.province),
 }));
 
 export type University = InferSelectModel<typeof universities>;
 export type NewUniversity = InferInsertModel<typeof universities>;
 
 // ============================================================================
-// 3. STAGES
+// 2b. COLLEGES (كليات المجموعة الطبية)
+// ============================================================================
+export const colleges = sqliteTable('colleges', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  name: text('name').notNull(),
+  code: text('code'),
+  default_stages: integer('default_stages').notNull().default(6),
+  created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+export type College = InferSelectModel<typeof colleges>;
+export type NewCollege = InferInsertModel<typeof colleges>;
+
+// ============================================================================
+// 2c. COLLEGE PROGRAMS (ربط الجامعة بالكلية والنظام الدراسي)
+// ============================================================================
+export const collegePrograms = sqliteTable('college_programs', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  university_id: text('university_id').notNull().references(() => universities.id, { onDelete: 'cascade' }),
+  college_id: text('college_id').notNull().references(() => colleges.id, { onDelete: 'cascade' }),
+  system_type: text('system_type', { enum: studySystems }).notNull().default('traditional'),
+  total_stages: integer('total_stages').notNull().default(6),
+  created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+}, (table) => ({
+  uni_college_idx: uniqueIndex('college_programs_uni_college_idx').on(table.university_id, table.college_id),
+  university_id_idx: index('college_programs_university_id_idx').on(table.university_id),
+  college_id_idx: index('college_programs_college_id_idx').on(table.college_id),
+}));
+
+export type CollegeProgram = InferSelectModel<typeof collegePrograms>;
+export type NewCollegeProgram = InferInsertModel<typeof collegePrograms>;
+
+// ============================================================================
+// 3. STAGES (المراحل الدراسية)
 // ============================================================================
 export const stages = sqliteTable('stages', {
   id: text('id').primaryKey().$defaultFn(genId),
   name: text('name').notNull(),
-  university_id: text('university_id').notNull().references(() => universities.id),
+  stage_number: integer('stage_number'),
+  university_id: text('university_id').references(() => universities.id),
+  program_id: text('program_id').references(() => collegePrograms.id),
+  college_id: text('college_id').references(() => colleges.id),
 }, (table) => ({
   university_id_idx: index('stages_university_id_idx').on(table.university_id),
+  program_id_idx: index('stages_program_id_idx').on(table.program_id),
+  college_id_idx: index('stages_college_id_idx').on(table.college_id),
 }));
 
 export type Stage = InferSelectModel<typeof stages>;
 export type NewStage = InferInsertModel<typeof stages>;
 
 // ============================================================================
-// 4. SUBJECTS
+// 4. SUBJECTS (المواد والموديولات)
 // ============================================================================
 export const subjects = sqliteTable('subjects', {
   id: text('id').primaryKey().$defaultFn(genId),
   name: text('name').notNull(),
+  code: text('code'),
   stage_id: text('stage_id').notNull().references(() => stages.id),
+  term: text('term', { enum: subjectTerms }).notNull().default('annual'),
+  is_ministerial: integer('is_ministerial', { mode: 'boolean' }).notNull().default(false),
+  has_practical: integer('has_practical', { mode: 'boolean' }).notNull().default(false),
   is_deleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
   deleted_at: text('deleted_at'),
 }, (table) => ({
   stage_id_idx: index('subjects_stage_id_idx').on(table.stage_id),
+  is_ministerial_idx: index('subjects_is_ministerial_idx').on(table.is_ministerial),
 }));
 
 export type Subject = InferSelectModel<typeof subjects>;
@@ -725,14 +783,28 @@ export const sectionsRelations = relations(sections, ({ many }) => ({
   users: many(users),
 }));
 
+export const collegesRelations = relations(colleges, ({ many }) => ({
+  programs: many(collegePrograms),
+  stages: many(stages),
+}));
+
+export const collegeProgramsRelations = relations(collegePrograms, ({ one, many }) => ({
+  university: one(universities, { fields: [collegePrograms.university_id], references: [universities.id] }),
+  college: one(colleges, { fields: [collegePrograms.college_id], references: [colleges.id] }),
+  stages: many(stages),
+}));
+
 export const universitiesRelations = relations(universities, ({ one, many }) => ({
   section: one(sections, { fields: [universities.section_id], references: [sections.id] }),
+  programs: many(collegePrograms),
   stages: many(stages),
   users: many(users),
 }));
 
 export const stagesRelations = relations(stages, ({ one, many }) => ({
   university: one(universities, { fields: [stages.university_id], references: [universities.id] }),
+  program: one(collegePrograms, { fields: [stages.program_id], references: [collegePrograms.id] }),
+  college: one(colleges, { fields: [stages.college_id], references: [colleges.id] }),
   subjects: many(subjects),
   users: many(users),
 }));

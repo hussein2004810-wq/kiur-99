@@ -697,9 +697,10 @@ describe('Tier 5 / Milestone 1: Empirical Database Schema & Constraint Stress Su
     it('should execute Drizzle ORM relational queries via MockD1Database successfully', async () => {
       const mockD1 = new MockD1Database(true);
       mockD1.db.exec('PRAGMA foreign_keys = ON;');
-      mockD1.db.exec(migrationSql);
-      if (fs.existsSync(MIGRATION_0001_PATH)) {
-        mockD1.db.exec(fs.readFileSync(MIGRATION_0001_PATH, 'utf-8'));
+      const migrationsDir = path.resolve(__dirname, '../../migrations');
+      const migrationFiles = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
+      for (const file of migrationFiles) {
+        mockD1.db.exec(fs.readFileSync(path.join(migrationsDir, file), 'utf-8'));
       }
 
       const drizzleDb = drizzle(mockD1 as any, { schema });

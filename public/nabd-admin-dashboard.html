@@ -213,10 +213,44 @@
   .hier-icon svg{width:13px; height:13px;}
   .hier-name{font-weight:700; flex:1;}
   .hier-meta{font-size:.72rem; color:var(--ink-faint);}
-  /* Compact but genuinely labelled — the whole point is that you can see
-     what this row adds without hovering for a tooltip. */
   .hier-add{padding:5px 10px; font-size:.72rem; gap:5px; flex:none;}
   .hier-add svg{width:12px; height:12px;}
+
+  /* ---------- Academic Medical Hierarchy ---------- */
+  .acad-uni-card{
+    background:var(--glass-bg-strong); border:1.5px solid var(--glass-border); border-radius:var(--radius-md);
+    margin-bottom:14px; overflow:hidden; transition:border-color .2s;
+  }
+  .acad-uni-card:hover{border-color:var(--accent);}
+  .acad-uni-head{
+    padding:14px 18px; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:var(--glass-bg); border-bottom:1px solid var(--glass-border); flex-wrap:wrap; cursor:pointer;
+  }
+  .acad-uni-title{font-weight:700; font-size:.92rem; display:flex; align-items:center; gap:8px;}
+  .acad-uni-body{padding:14px 18px; display:flex; flex-direction:column; gap:12px;}
+  .acad-prog-card{
+    background:var(--glass-bg); border:1px solid var(--glass-border); border-radius:var(--radius-sm);
+    padding:14px 16px; display:flex; flex-direction:column; gap:10px;
+  }
+  .acad-prog-head{display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;}
+  .acad-stage-box{
+    background:var(--glass-bg-strong); border:1px solid var(--glass-border); border-radius:10px;
+    padding:10px 14px; margin-top:6px;
+  }
+  .acad-stage-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; font-weight:700; font-size:.82rem;}
+  .acad-subject-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px;
+    border-radius:8px; border-bottom:1px solid var(--glass-border); font-size:.8rem; transition:background .15s;
+  }
+  .acad-subject-row:last-child{border-bottom:none;}
+  .acad-subject-row:hover{background:var(--track);}
+  .badge-gov{background:rgba(76,95,224,.14); color:var(--accent);}
+  .badge-pvt{background:rgba(123,110,246,.16); color:var(--accent-2);}
+  .badge-modular{background:rgba(168,85,247,.16); color:#9333ea; font-weight:700;}
+  .badge-trad{background:rgba(59,130,246,.16); color:#2563eb; font-weight:700;}
+  .badge-ministerial{background:rgba(245,158,11,.16); color:#d97706; font-weight:800; border:1px solid rgba(245,158,11,.3);}
+  .badge-practical{background:rgba(16,185,129,.14); color:#059669; font-weight:700;}
+  .badge-term{background:var(--track); color:var(--ink-soft); font-size:.68rem;}
 
   /* ---------- Media grid ---------- */
   .file-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:14px;}
@@ -452,17 +486,89 @@
         </div>
       </section>
 
-      <!-- ===== ADMIN: Catalog ===== -->
+      <!-- ===== ADMIN: Academic Hierarchy & Curriculum ===== -->
       <section class="dash-section" id="sec-catalog">
+        <!-- Academic Summary KPIs -->
+        <div class="kpi-grid" style="margin-bottom:18px;">
+          <div class="kpi-card glass">
+            <div class="kpi-label">إجمالي الجامعات</div>
+            <div class="kpi-value mono" id="acadKpiUnis">0</div>
+          </div>
+          <div class="kpi-card glass">
+            <div class="kpi-label">الكليات والبرامج الطبية</div>
+            <div class="kpi-value mono" id="acadKpiColleges">0</div>
+          </div>
+          <div class="kpi-card glass">
+            <div class="kpi-label">المراحل الدراسية</div>
+            <div class="kpi-value mono" id="acadKpiStages">0</div>
+          </div>
+          <div class="kpi-card glass">
+            <div class="kpi-label">المواد الدراسية (الوزارية)</div>
+            <div class="kpi-value mono" id="acadKpiSubjects">0</div>
+          </div>
+        </div>
+
         <div class="dash-card glass">
-          <div class="dash-card-head">
-            <span class="dash-card-title">إدارة المناهج</span>
+          <div class="dash-card-head" style="align-items:flex-start;">
+            <div>
+              <span class="dash-card-title" style="font-size:1.1rem;">الهيكل الأكاديمي لكليات المجموعة الطبية في العراق</span>
+              <div style="font-size:.78rem; color:var(--ink-soft); margin-top:4px;">
+                تنظيم الجامعات (حكومي/أهلي)، الكليات الطبية، أنظمة الدراسة (موديولات تكاملي / تقليدي)، والمواد التقويمية والسريرية
+              </div>
+            </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button class="btn" onclick="openCatalogImport()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>استيراد المنهج كامل</button>
-            <button class="btn btn-ghost" onclick="promptAddSection()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>إضافة قسم</button>
+              <button class="btn" onclick="openAddUniversityModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>إضافة جامعة</button>
+              <button class="btn btn-ghost" onclick="openAddCollegeModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>إضافة كلية عامة</button>
+              <button class="btn btn-ghost" onclick="openLinkProgramModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>ربط كلية بجامعة</button>
+              <button class="btn btn-ghost" onclick="openAcademicCsvImportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>استيراد CSV / Excel</button>
+              <button class="btn btn-ghost" onclick="exportAcademicCsv()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>تصدير الهيكل كامل</button>
+              <button class="icon-btn" onclick="loadCatalog()" title="تحديث البيانات" aria-label="تحديث البيانات"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg></button>
             </div>
           </div>
-          <div id="catalogTree"></div>
+
+          <!-- Academic Filter / Search Toolbar -->
+          <div class="toolbar" style="margin-top:14px; gap:8px;">
+            <input class="search-input" id="acadSearchInput" placeholder="بحث بالجامعة، الكلية، المرحلة، أو اسم المادة..." oninput="filterAcademicTree()" />
+            <select class="form-field-select" id="acadFilterType" onchange="filterAcademicTree()" style="padding:9px 14px; border-radius:999px; font-size:.8rem; border:1px solid var(--glass-border); background:var(--glass-bg-strong); color:var(--ink);">
+              <option value="all">كل الجامعات</option>
+              <option value="government">جامعات حكومية فقط</option>
+              <option value="private">جامعات أهلية فقط</option>
+            </select>
+            <select class="form-field-select" id="acadFilterProvince" onchange="filterAcademicTree()" style="padding:9px 14px; border-radius:999px; font-size:.8rem; border:1px solid var(--glass-border); background:var(--glass-bg-strong); color:var(--ink);">
+              <option value="all">كل المحافظات</option>
+              <option value="بغداد">بغداد</option>
+              <option value="البصرة">البصرة</option>
+              <option value="نينوى">نينوى</option>
+              <option value="أربيل">أربيل</option>
+              <option value="النجف">النجف الأشرف</option>
+              <option value="كربلاء">كربلاء المقدسة</option>
+              <option value="بابل">بابل</option>
+              <option value="ذي قار">ذي قار</option>
+              <option value="الأنبار">الأنبار</option>
+              <option value="ديالى">ديالى</option>
+              <option value="كركوك">كركوك</option>
+              <option value="صلاح الدين">صلاح الدين</option>
+              <option value="واسط">واسط</option>
+              <option value="ميسان">ميسان</option>
+              <option value="القادسية">القادسية</option>
+              <option value="المثنى">المثنى</option>
+              <option value="السليمانية">السليمانية</option>
+              <option value="دهوك">دهوك</option>
+            </select>
+            <select class="form-field-select" id="acadFilterSystem" onchange="filterAcademicTree()" style="padding:9px 14px; border-radius:999px; font-size:.8rem; border:1px solid var(--glass-border); background:var(--glass-bg-strong); color:var(--ink);">
+              <option value="all">كل الأنظمة الدراسية</option>
+              <option value="modular">نظام الموديولات التكاملي (Modular)</option>
+              <option value="traditional">نظام فصلي / سنوي تقليدي</option>
+            </select>
+            <select class="form-field-select" id="acadFilterMinisterial" onchange="filterAcademicTree()" style="padding:9px 14px; border-radius:999px; font-size:.8rem; border:1px solid var(--glass-border); background:var(--glass-bg-strong); color:var(--ink);">
+              <option value="all">كل المواد</option>
+              <option value="ministerial">المواد الوزارية التقويمية فقط</option>
+              <option value="practical">المواد ذات المختبر/السريري فقط</option>
+            </select>
+          </div>
+
+          <!-- The Academic Tree Viewer -->
+          <div id="catalogTree" style="margin-top:14px;"></div>
         </div>
       </section>
 
@@ -927,6 +1033,49 @@
       <button class="btn btn-ghost" style="flex:1; justify-content:center;" onclick="previewCatalogImport()">معاينة</button>
       <button class="btn" id="catalogImportConfirm" style="flex:1; justify-content:center; display:none;" onclick="runCatalogImport()">تأكيد الاستيراد</button>
       <button class="btn btn-ghost" style="flex:0 0 100px; justify-content:center;" onclick="closeCatalogImport()">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ACADEMIC CSV IMPORT MODAL ============ -->
+<div id="academicCsvImportOverlay" style="display:none; position:fixed; inset:0; background:rgba(10,15,30,.65); z-index:1001; align-items:center; justify-content:center; padding:16px;">
+  <div class="dash-card glass" style="max-width:720px; width:100%; max-height:92vh; overflow-y:auto;">
+    <div class="dash-card-head">
+      <span class="dash-card-title">استيراد الهيكل الأكاديمي الشامل (CSV / Excel)</span>
+      <button class="btn btn-ghost" style="padding:4px 10px; font-size:.75rem;" onclick="downloadSampleCsv()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>تحميل نموذج CSV فارغ جاهز
+      </button>
+    </div>
+    <div class="item-meta" style="line-height:1.8; margin-bottom:12px; font-size:.8rem;">
+      يمكنك استيراد الجامعات، الكليات، المراحل، والمواد دفعة واحدة عبر ملف <b>CSV</b> أو نسخه مباشرة من <b>Excel</b> ولصقه هنا.<br/>
+      <span style="color:var(--accent); font-weight:700;">ترتيب الأعمدة:</span>
+      الجامعة، نوع الجامعة (حكومي/أهلي)، المحافظة، الكلية، نظام الدراسة (موديول/تقليدي)، المرحلة، المادة، الرمز، الفصل، وزاري (نعم/لا)، عملي (نعم/لا).
+    </div>
+
+    <!-- File Picker Option -->
+    <div style="margin-bottom:12px; display:flex; gap:10px; align-items:center;">
+      <label class="btn btn-ghost" style="cursor:pointer; font-size:.8rem; padding:8px 16px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        اختيار ملف CSV من جهازك
+        <input type="file" id="acadCsvFileInput" accept=".csv,text/csv" style="display:none;" onchange="handleAcadCsvFileUpload(this)" />
+      </label>
+      <span style="font-size:.76rem; color:var(--ink-faint);">أو الصق النص في الحقل أدناه مباشرة:</span>
+    </div>
+
+    <textarea id="acadCsvText" rows="11" spellcheck="false"
+      placeholder="جامعة,نوع الجامعة,المحافظة,الكلية,نظام الدراسة,المرحلة,المادة,الرمز,الفصل,وزاري,عملي&#10;جامعة بغداد,حكومي,بغداد,كلية الطب البشري,موديول,المرحلة الأولى,التشريح العام,MED-101,سنوي,نعم,نعم"
+      style="width:100%; resize:vertical; font:inherit; font-family:'IBM Plex Mono',monospace; font-size:.8rem; line-height:1.8; padding:12px;
+             border-radius:var(--radius-sm); border:1.5px solid var(--glass-border);
+             background:var(--glass-bg-strong); color:var(--ink);"></textarea>
+
+    <div id="acadCsvResult" style="display:none; font-size:.82rem; line-height:1.8; margin-top:12px;
+         padding:12px 14px; border-radius:var(--radius-sm); background:var(--glass-bg-strong);
+         border:1px solid var(--glass-border);"></div>
+
+    <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
+      <button class="btn btn-ghost" style="flex:1; justify-content:center;" onclick="previewAcademicCsv()">معاينة البيانات</button>
+      <button class="btn" id="acadCsvConfirmBtn" style="flex:1; justify-content:center; display:none;" onclick="runAcademicCsvImport()">تأكيد وحفظ الاستيراد</button>
+      <button class="btn btn-ghost" style="flex:0 0 100px; justify-content:center;" onclick="closeAcademicCsvImportModal()">إغلاق</button>
     </div>
   </div>
 </div>
@@ -1479,7 +1628,7 @@
       {id:'overview', label:'نظرة عامة', icon:'grid'},
       {id:'accounts', label:'الحسابات', icon:'users'},
       {id:'notifications', label:'الإشعارات', icon:'bell'},
-      {id:'catalog', label:'المناهج', icon:'book'},
+      {id:'catalog', label:'الهيكل الأكاديمي والمناهج', icon:'book'},
       {id:'questions', label:'بنك الأسئلة', icon:'pdf'},
       {id:'pearls', label:'لمحات سريرية', icon:'book'},
       {id:'students', label:'الطلاب', icon:'student'},
@@ -1963,13 +2112,825 @@
   // adds ("+ مادة", "+ مرحلة", "+ جامعة") in a labelled button.
   const CATALOG_CHILD_NOUN = {section: 'جامعة', university: 'مرحلة', stage: 'مادة'};
 
-  async function loadCatalog(){
-    const rows = await liveOrDemo('/api/admin/catalog', [], []);
+  // =========================================================================
+  // ACADEMIC HIERARCHY & MEDICAL CURRICULUM (المجموعة الطبية في العراق)
+  // =========================================================================
+  const IRAQI_PROVINCES = ['بغداد', 'البصرة', 'نينوى', 'أربيل', 'النجف', 'كربلاء', 'بابل', 'ذي قار', 'الأنبار', 'ديالى', 'كركوك', 'صلاح الدين', 'واسط', 'ميسان', 'القادسية', 'المثنى', 'السليمانية', 'دهوك'];
+
+  const ACADEMIC_SAMPLE_CSV = `جامعة,نوع الجامعة,المحافظة,الكلية,نظام الدراسة,المرحلة,المادة,الرمز,الفصل,وزاري,عملي
+جامعة بغداد,حكومي,بغداد,كلية الطب البشري,موديول,المرحلة الأولى,التشريح العام,MED-101,سنوي,نعم,نعم
+جامعة بغداد,حكومي,بغداد,كلية الطب البشري,موديول,المرحلة الأولى,الفسلجة الطبية,MED-102,سنوي,نعم,نعم
+جامعة بغداد,حكومي,بغداد,كلية الطب البشري,موديول,المرحلة الثانية,علم الأمراض العام,MED-201,فصل أول,نعم,نعم
+جامعة بغداد,حكومي,بغداد,كلية الطب البشري,موديول,المرحلة الثانية,علم الأدوية الأساسي,MED-202,فصل ثاني,نعم,نعم
+جامعة النهرين,حكومي,بغداد,كلية الصيدلة,تقليدي,المرحلة الأولى,كيمياء صيدلانية,PHARM-101,فصل أول,نعم,نعم
+جامعة النهرين,حكومي,بغداد,كلية الصيدلة,تقليدي,المرحلة الثانية,صيدلانيات,PHARM-201,سنوي,نعم,نعم
+جامعة العميد,أهلي,كربلاء,كلية طب الأسنان,موديول,المرحلة الأولى,تشريح الأسنان,DENT-101,سنوي,نعم,نعم
+جامعة العميد,أهلي,كربلاء,كلية طب الأسنان,موديول,المرحلة الثانية,صناعة الأسنان,DENT-201,سنوي,نعم,نعم`;
+
+  let academicTreeData = { universities: [], all_colleges: [] };
+  let academicTreeFilter = { search: '', type: 'all', province: 'all', system: 'all', ministerial: 'all' };
+  let expandedUnis = new Set();
+  let expandedPrograms = new Set();
+
+  function syncCatalogRowsFromAcademicTree(data){
+    const rows = [];
+    (data.universities || []).forEach(u => {
+      rows.push({ id: u.id, type: 'university', name: u.name, level: 0, meta: `${u.type === 'private' ? 'أهلي' : 'حكومي'}${u.province ? ' · ' + u.province : ''}` });
+      (u.programs || []).forEach(p => {
+        (p.stages || []).forEach(stg => {
+          rows.push({ id: stg.id, type: 'stage', name: `${u.name} — ${p.college_name} — ${stg.name}`, level: 1, meta: p.college_name });
+          (stg.subjects || []).forEach(sub => {
+            rows.push({ id: sub.id, type: 'subject', name: sub.name, level: 2, meta: `${p.college_name} · ${stg.name}` });
+          });
+        });
+      });
+      (u.direct_stages || []).forEach(stg => {
+        rows.push({ id: stg.id, type: 'stage', name: `${u.name} — ${stg.name}`, level: 1, meta: u.name });
+        (stg.subjects || []).forEach(sub => {
+          rows.push({ id: sub.id, type: 'subject', name: sub.name, level: 2, meta: stg.name });
+        });
+      });
+    });
     allCatalogRows = rows;
+  }
+
+  async function loadCatalog(){
+    const treeEl = document.getElementById('catalogTree');
+    if (!treeEl) return;
+    treeEl.innerHTML = `<div class="empty-row" style="padding:40px;"><span class="status-dot live"></span> جارٍ تحميل الهيكل الأكاديمي لكليات المجموعة الطبية...</div>`;
+
+    try {
+      let data = null;
+      if (liveMode) {
+        data = await apiFetch('/api/admin/academic/tree');
+      } else {
+        data = { ok: true, universities: [], all_colleges: [] };
+      }
+      const rawCols = (data && (data.all_colleges || data.colleges)) || [];
+      academicTreeData = { ...(data || {}), universities: (data && data.universities) || [], all_colleges: rawCols, colleges: rawCols };
+      syncCatalogRowsFromAcademicTree(academicTreeData);
+      renderAcademicKpis(academicTreeData);
+      renderAcademicTree(academicTreeData);
+    } catch (e) {
+      console.warn('Academic tree load error, falling back to legacy catalog:', e);
+      try {
+        const rows = await liveOrDemo('/api/admin/catalog', [], []);
+        allCatalogRows = rows;
+        renderLegacyCatalog(rows);
+      } catch (err2) {
+        treeEl.innerHTML = `<div class="empty-row">تعذر تحميل الهيكل الأكاديمي: ${esc(e.detail || e.message || 'خطأ غير معروف')}</div>`;
+      }
+    }
+  }
+
+  function renderAcademicKpis(data){
+    const unis = data.universities || [];
+    let collegeCount = 0;
+    let stageCount = 0;
+    let subjectCount = 0;
+    let ministerialCount = 0;
+
+    unis.forEach(u => {
+      collegeCount += (u.programs || []).length;
+      (u.programs || []).forEach(p => {
+        stageCount += (p.stages || []).length;
+        (p.stages || []).forEach(st => {
+          (st.subjects || []).forEach(sub => {
+            subjectCount++;
+            if (sub.is_ministerial) ministerialCount++;
+          });
+        });
+      });
+      stageCount += (u.direct_stages || []).length;
+      (u.direct_stages || []).forEach(st => {
+        (st.subjects || []).forEach(sub => {
+          subjectCount++;
+          if (sub.is_ministerial) ministerialCount++;
+        });
+      });
+    });
+
+    const kpiUnis = document.getElementById('acadKpiUnis');
+    const kpiCols = document.getElementById('acadKpiColleges');
+    const kpiStages = document.getElementById('acadKpiStages');
+    const kpiSubs = document.getElementById('acadKpiSubjects');
+
+    if (kpiUnis) kpiUnis.textContent = unis.length;
+    if (kpiCols) kpiCols.textContent = collegeCount;
+    if (kpiStages) kpiStages.textContent = stageCount;
+    if (kpiSubs) kpiSubs.innerHTML = `${subjectCount} <span style="font-size:.7rem;font-weight:600;color:#d97706;">(${ministerialCount} تقويمي 🏛️)</span>`;
+  }
+
+  function filterAcademicTree(){
+    const searchVal = (document.getElementById('acadSearchInput')?.value || '').trim().toLowerCase();
+    const typeVal = document.getElementById('acadFilterType')?.value || 'all';
+    const provVal = document.getElementById('acadFilterProvince')?.value || 'all';
+    const sysVal = document.getElementById('acadFilterSystem')?.value || 'all';
+    const minVal = document.getElementById('acadFilterMinisterial')?.value || 'all';
+
+    academicTreeFilter = { search: searchVal, type: typeVal, province: provVal, system: sysVal, ministerial: minVal };
+    renderAcademicTree(academicTreeData);
+  }
+
+  function renderAcademicTree(data){
+    const treeEl = document.getElementById('catalogTree');
+    if (!treeEl) return;
+    const unis = data.universities || [];
+
+    if (!unis.length){
+      treeEl.innerHTML = `
+        <div style="text-align:center; padding:50px 20px; background:var(--glass-bg-strong); border:1.5px dashed var(--glass-border); border-radius:var(--radius-lg); margin-top:16px;">
+          <div style="font-size:2.8rem; margin-bottom:12px;">🏛️</div>
+          <div style="font-size:1.15rem; font-weight:800; margin-bottom:6px;">الهيكل الأكاديمي فارغ حالياً</div>
+          <div style="font-size:.85rem; color:var(--ink-soft); max-width:480px; margin:0 auto 20px; line-height:1.7;">
+            النظام جاهز لاستقبال بيانات كليات المجموعة الطبية في العراق. يمكنك البدء بإضافة جامعتك الأولى، أو استيراد ملف CSV / Excel دفعة واحدة.
+          </div>
+          <div style="display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+            <button class="btn" onclick="openAddUniversityModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>إضافة أول جامعة</button>
+            <button class="btn btn-ghost" onclick="openAcademicCsvImportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>استيراد ملف CSV / Excel</button>
+            <button class="btn btn-ghost" onclick="downloadSampleCsv()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>تحميل نموذج CSV الجاهز</button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const { search, type, province, system, ministerial } = academicTreeFilter;
+
+    const filteredUnis = unis.filter(u => {
+      if (type !== 'all' && u.type !== type) return false;
+      if (province !== 'all' && u.province !== province) return false;
+      return true;
+    }).map(u => {
+      const matchingProgs = (u.programs || []).filter(p => {
+        if (system !== 'all' && p.system_type !== system) return false;
+        return true;
+      }).map(p => {
+        const matchingStages = (p.stages || []).map(st => {
+          const matchingSubjects = (st.subjects || []).filter(sub => {
+            if (ministerial === 'ministerial' && !sub.is_ministerial) return false;
+            if (ministerial === 'practical' && !sub.has_practical) return false;
+            if (search) {
+              const q = search;
+              const matchesSub = sub.name.toLowerCase().includes(q) || (sub.code && sub.code.toLowerCase().includes(q));
+              const matchesStage = st.name.toLowerCase().includes(q);
+              const matchesCol = p.college_name.toLowerCase().includes(q);
+              const matchesUni = u.name.toLowerCase().includes(q);
+              return matchesSub || matchesStage || matchesCol || matchesUni;
+            }
+            return true;
+          });
+          return { ...st, subjects: matchingSubjects };
+        }).filter(st => {
+          if (search) {
+            const matchesStage = st.name.toLowerCase().includes(search);
+            const matchesCol = p.college_name.toLowerCase().includes(search);
+            const matchesUni = u.name.toLowerCase().includes(search);
+            return matchesStage || matchesCol || matchesUni || st.subjects.length > 0;
+          }
+          if (ministerial !== 'all') return st.subjects.length > 0;
+          return true;
+        });
+
+        return { ...p, stages: matchingStages };
+      }).filter(p => {
+        if (search) {
+          const matchesCol = p.college_name.toLowerCase().includes(search);
+          const matchesUni = u.name.toLowerCase().includes(search);
+          return matchesCol || matchesUni || p.stages.length > 0;
+        }
+        if (ministerial !== 'all') return p.stages.length > 0;
+        return true;
+      });
+
+      return { ...u, programs: matchingProgs };
+    }).filter(u => {
+      if (search) {
+        return u.name.toLowerCase().includes(search) || u.programs.length > 0;
+      }
+      if (ministerial !== 'all' || system !== 'all') {
+        return u.programs.length > 0;
+      }
+      return true;
+    });
+
+    if (!filteredUnis.length){
+      treeEl.innerHTML = `<div class="empty-row" style="padding:30px;">لا توجد نتائج تطابق خيارات البحث والفلترة</div>`;
+      return;
+    }
+
+    treeEl.innerHTML = filteredUnis.map(u => {
+      const isExpanded = expandedUnis.has(u.id) || search.length > 0;
+      const isGov = u.type !== 'private';
+      const uTotalSubjects = (u.programs || []).reduce((acc, p) => acc + (p.stages || []).reduce((a2, st) => a2 + st.subjects.length, 0), 0);
+
+      return `
+        <div class="acad-uni-card" id="uni-card-${u.id}">
+          <div class="acad-uni-head" onclick="toggleUniCollapse('${u.id}')">
+            <div class="acad-uni-title">
+              <span style="font-size:1.25rem;">🏛️</span>
+              <span style="font-size:.95rem; font-weight:800;">${esc(u.name)}</span>
+              <span class="badge ${isGov ? 'badge-gov' : 'badge-pvt'}">${isGov ? 'حكومية' : 'أهلية'}</span>
+              ${u.province ? `<span class="badge badge-idle">${esc(u.province)}</span>` : ''}
+              <span style="font-size:.72rem; color:var(--ink-faint); margin-inline-start:4px;">(${(u.programs||[]).length} كلية · ${uTotalSubjects} مادة)</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;" onclick="event.stopPropagation()">
+              <button class="btn btn-ghost" style="padding:5px 12px; font-size:.74rem; gap:4px;" onclick="openLinkProgramModal('${u.id}')" title="ربط كلية بهذه الجامعة">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M12 5v14M5 12h14"/></svg>ربط كلية
+              </button>
+              <button class="icon-btn" style="width:28px;height:28px;" onclick="openEditUniversityModal('${u.id}')" title="تعديل الجامعة" aria-label="تعديل الجامعة">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
+              <button class="icon-btn" style="width:28px;height:28px;" onclick="deleteUniversity('${u.id}', '${esc(u.name)}')" title="حذف الجامعة" aria-label="حذف الجامعة">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+              </button>
+              <span style="display:inline-block; transition:transform .2s; transform:${isExpanded ? 'rotate(180deg)' : 'none'}; margin-inline-start:6px; color:var(--ink-faint);">▼</span>
+            </div>
+          </div>
+
+          <div class="acad-uni-body" style="display:${isExpanded ? 'flex' : 'none'};">
+            ${!u.programs.length ? `
+              <div style="text-align:center; padding:18px; color:var(--ink-faint); font-size:.8rem;">
+                لا توجد كليات مربوطة بهذه الجامعة بعد. اضغط على "+ ربط كلية" لإضافة كلية الطب أو الأسنان أو الصيدلة.
+              </div>
+            ` : u.programs.map(p => {
+              const isProgExpanded = expandedPrograms.has(p.id) || search.length > 0;
+              const isModular = p.system_type === 'modular';
+              const pTotalSubjects = (p.stages || []).reduce((acc, st) => acc + st.subjects.length, 0);
+
+              return `
+                <div class="acad-prog-card">
+                  <div class="acad-prog-head">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; cursor:pointer;" onclick="toggleProgCollapse('${p.id}')">
+                      <span style="font-size:1.1rem;">🏥</span>
+                      <span style="font-weight:700; font-size:.88rem;">${esc(p.college_name)}</span>
+                      <span class="badge ${isModular ? 'badge-modular' : 'badge-trad'}">${isModular ? '🧬 موديولات تكاملي' : '📖 فصلي / سنوي'}</span>
+                      <span class="badge badge-idle">${p.total_stages || (p.stages||[]).length} مراحل</span>
+                      <span style="font-size:.7rem; color:var(--ink-faint);">(${pTotalSubjects} مادة)</span>
+                      <span style="font-size:.7rem; color:var(--ink-faint); margin-inline-start:4px;">${isProgExpanded ? '▲' : '▼'}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                      <button class="btn btn-ghost" style="padding:4px 10px; font-size:.72rem; gap:4px;" onclick="openAddStageModal('${p.id}', '${esc(p.college_name)}')" title="إضافة مرحلة للكلية">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M12 5v14M5 12h14"/></svg>+ مرحلة
+                      </button>
+                      <button class="icon-btn" style="width:26px;height:26px;" onclick="deleteProgram('${p.id}', '${esc(p.college_name)}')" title="فك ارتباط الكلية" aria-label="فك ارتباط الكلية">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style="display:${isProgExpanded ? 'block' : 'none'};">
+                    ${!p.stages.length ? `
+                      <div style="padding:10px; color:var(--ink-faint); font-size:.78rem; text-align:center;">
+                        لا توجد مراحل منشأة في هذه الكلية. اضغط على "+ مرحلة".
+                      </div>
+                    ` : p.stages.map(st => `
+                      <div class="acad-stage-box">
+                        <div class="acad-stage-head">
+                          <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="font-size:.9rem;">📚</span>
+                            <span>${esc(st.name)}</span>
+                            <span style="font-size:.7rem; color:var(--ink-faint); font-weight:normal;">(${st.subjects.length} مادة)</span>
+                          </div>
+                          <div style="display:flex; align-items:center; gap:4px;">
+                            <button class="btn btn-ghost" style="padding:3px 8px; font-size:.7rem; gap:3px;" onclick="openAddSubjectModal('${st.id}', '${esc(st.name)}')">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M12 5v14M5 12h14"/></svg>+ مادة
+                            </button>
+                            <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteStage('${st.id}', '${esc(st.name)}')" title="حذف المرحلة">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+                            </button>
+                          </div>
+                        </div>
+
+                        ${!st.subjects.length ? `
+                          <div style="padding:6px; color:var(--ink-faint); font-size:.74rem;">لا توجد مواد دراسية في هذه المرحلة بعد.</div>
+                        ` : st.subjects.map(sub => {
+                          const termLabelMap = {
+                            annual: 'سنوي',
+                            semester_1: 'فصل أول',
+                            semester_2: 'فصل ثاني',
+                            modular_block: 'بلوك موديول'
+                          };
+                          const termLabel = termLabelMap[sub.term] || sub.term || 'سنوي';
+
+                          return `
+                            <div class="acad-subject-row">
+                              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1;">
+                                ${sub.code ? `<span class="mono" style="font-size:.7rem; padding:2px 6px; border-radius:6px; background:var(--track); font-weight:700;">${esc(sub.code)}</span>` : ''}
+                                <span style="font-weight:700; cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;" onclick="openQuestionBank('${sub.id}')" title="فتح بنك أسئلة المادة">${esc(sub.name)}</span>
+                                ${sub.is_ministerial ? `<span class="badge badge-ministerial">🏛️ وزاري تقويمي</span>` : ''}
+                                ${sub.has_practical ? `<span class="badge badge-practical">🔬 نظري + عملي/سريري</span>` : `<span class="badge badge-idle" style="font-size:.65rem;">نظري</span>`}
+                                <span class="badge badge-term">${termLabel}</span>
+                                <span style="font-size:.68rem; color:var(--ink-faint); cursor:pointer;" onclick="openQuestionBank('${sub.id}')">❓ ${sub.questions_count || 0} أسئلة</span>
+                              </div>
+                              <div style="display:flex; align-items:center; gap:4px; flex:none;">
+                                <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem;" onclick="openQuestionBank('${sub.id}')" title="بنك الأسئلة">بنك الأسئلة</button>
+                                <button class="icon-btn" style="width:24px;height:24px;" onclick="openEditSubjectModal('${sub.id}')" title="تعديل المادة">
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                </button>
+                                <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteSubject('${sub.id}', '${esc(sub.name)}')" title="حذف المادة">
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+                                </button>
+                              </div>
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function toggleUniCollapse(id){
+    if (expandedUnis.has(id)) expandedUnis.delete(id);
+    else expandedUnis.add(id);
+    renderAcademicTree(academicTreeData);
+  }
+
+  function toggleProgCollapse(id){
+    if (expandedPrograms.has(id)) expandedPrograms.delete(id);
+    else expandedPrograms.add(id);
+    renderAcademicTree(academicTreeData);
+  }
+
+  function openAddUniversityModal(){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    openGenericModal('إضافة جامعة عراقية جديدة', [
+      {id: 'name', label: 'اسم الجامعة (مثال: جامعة بغداد / جامعة العميد)', type: 'text', placeholder: 'جامعة بغداد'},
+      {id: 'type', label: 'نوع الجامعة', type: 'select', value: 'government', options: [
+        {value: 'government', label: '🏛️ حكومية'},
+        {value: 'private', label: '🏢 أهلية'}
+      ]},
+      {id: 'province', label: 'المحافظة', type: 'select', value: 'بغداد', options: IRAQI_PROVINCES.map(p => ({value: p, label: p}))},
+      {id: 'logo_url', label: 'رابط الشعار Logo URL (اختياري)', type: 'text', placeholder: 'https://...'}
+    ], async (v) => {
+      if (!v.name.trim()) throw { detail: 'اسم الجامعة مطلوب' };
+      await apiFetch('/api/admin/academic/universities', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: v.name.trim(),
+          type: v.type,
+          province: v.province,
+          logo_url: v.logo_url?.trim() || null
+        })
+      });
+      showToast('تمت إضافة الجامعة بنجاح');
+      loadCatalog();
+    });
+  }
+
+  function openEditUniversityModal(uniId){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    const u = (academicTreeData.universities || []).find(x => x.id === uniId);
+    if (!u) return;
+
+    openGenericModal(`تعديل بيانات: ${u.name}`, [
+      {id: 'name', label: 'اسم الجامعة', type: 'text', value: u.name},
+      {id: 'type', label: 'نوع الجامعة', type: 'select', value: u.type || 'government', options: [
+        {value: 'government', label: '🏛️ حكومية'},
+        {value: 'private', label: '🏢 أهلية'}
+      ]},
+      {id: 'province', label: 'المحافظة', type: 'select', value: u.province || 'بغداد', options: IRAQI_PROVINCES.map(p => ({value: p, label: p}))},
+      {id: 'logo_url', label: 'رابط الشعار Logo URL (اختياري)', type: 'text', value: u.logo_url || ''}
+    ], async (v) => {
+      if (!v.name.trim()) throw { detail: 'اسم الجامعة مطلوب' };
+      await apiFetch(`/api/admin/academic/universities/${uniId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: v.name.trim(),
+          type: v.type,
+          province: v.province,
+          logo_url: v.logo_url?.trim() || null
+        })
+      });
+      showToast('تم تعديل الجامعة بنجاح');
+      loadCatalog();
+    });
+  }
+
+  async function deleteUniversity(uniId, name){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    if (!await confirmModal(`حذف جامعة "${name}" وجميع كلياتها ومراحلها وموادها نهائياً؟`)) return;
+    try {
+      await apiFetch(`/api/admin/academic/universities/${uniId}`, { method: 'DELETE' });
+      showToast(`تم حذف جامعة "${name}"`);
+      loadCatalog();
+    } catch (e) {
+      showToast(e.detail || 'تعذر حذف الجامعة', 'error');
+    }
+  }
+
+  function openAddCollegeModal(){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    openGenericModal('إضافة كلية عامة (قالب)', [
+      {id: 'name', label: 'اسم الكلية (مثال: كلية الطب البشري، كلية طب الأسنان، كلية الصيدلة)', type: 'text', placeholder: 'كلية الطب البشري'},
+      {id: 'code', label: 'الرمز المختصر Code (مثال: MED, DENT, PHARM)', type: 'text', placeholder: 'MED'},
+      {id: 'default_stages', label: 'عدد السنوات/المراحل الافتراضي', type: 'number', value: 6}
+    ], async (v) => {
+      if (!v.name.trim()) throw { detail: 'اسم الكلية مطلوب' };
+      await apiFetch('/api/admin/academic/colleges', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: v.name.trim(),
+          code: v.code?.trim() || null,
+          default_stages: parseInt(v.default_stages, 10) || 6
+        })
+      });
+      showToast('تمت إضافة الكلية العامة بنجاح');
+      loadCatalog();
+    });
+  }
+
+  function openLinkProgramModal(defaultUniId){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    const unis = (academicTreeData.universities || []).map(u => ({ value: u.id, label: `${u.name} (${u.type === 'private' ? 'أهلي' : 'حكومي'})` }));
+    const rawCols = academicTreeData.all_colleges || academicTreeData.colleges || [];
+
+    if (!unis.length){
+      showToast('أضف جامعة واحدة على الأقل أولاً', 'error');
+      return;
+    }
+
+    const standardPresets = [
+      { key: 'med', name: 'كلية الطب البشري', code: 'MED', stages: 6 },
+      { key: 'dent', name: 'كلية طب الأسنان', code: 'DENT', stages: 5 },
+      { key: 'pharm', name: 'كلية الصيدلة', code: 'PHARM', stages: 5 },
+      { key: 'nurs', name: 'كلية التمريض', code: 'NURS', stages: 4 },
+      { key: 'mlt', name: 'كلية التقنيات الطبية والتحليلات', code: 'MLT', stages: 4 }
+    ];
+
+    // Build the options:
+    // 1. Registered colleges from DB
+    const cols = rawCols.map(c => ({ value: c.id, label: `${c.name} (${c.default_stages || 6} مراحل)` }));
+
+    // 2. Presets not yet registered in DB
+    standardPresets.forEach(p => {
+      const exists = rawCols.some(c => c.name === p.name || (c.code && c.code.toUpperCase() === p.code));
+      if (!exists) {
+        cols.push({ value: p.key, label: `${p.name} (${p.stages} مراحل)` });
+      }
+    });
+
+    if (!cols.length){
+      standardPresets.forEach(p => {
+        cols.push({ value: p.key, label: `${p.name} (${p.stages} مراحل)` });
+      });
+    }
+
+    openGenericModal('ربط كلية بجامعة (إنشاء برنامج دراسي)', [
+      {id: 'university_id', label: 'الجامعة', type: 'select', value: defaultUniId || unis[0].value, options: unis},
+      {id: 'college_id', label: 'الكلية الطبية', type: 'select', value: cols[0]?.value || '', options: cols},
+      {id: 'system_type', label: 'نظام الدراسة', type: 'select', value: 'modular', options: [
+        {value: 'modular', label: '🧬 نظام الموديولات التكاملي (Modular)'},
+        {value: 'traditional', label: '📖 نظام فصلي وسنوي تقليدي (Traditional)'}
+      ]},
+      {id: 'total_stages', label: 'عدد المراحل', type: 'number', value: 6},
+      {id: 'auto_create_stages', label: 'إنشاء المراحل تلقائياً؟', type: 'select', value: 'true', options: [
+        {value: 'true', label: 'نعم — توليد المراحل تلقائياً (المرحلة الأولى إلى المرحلة N)'},
+        {value: 'false', label: 'لا — إنشاء الكلية فارغة بدون مراحل'}
+      ]}
+    ], async (v) => {
+      let cId = v.college_id;
+      const existingCol = rawCols.find(c => c.id === cId);
+      if (!existingCol) {
+        const presetNames = {
+          med: { name: 'كلية الطب البشري', code: 'MED', stages: 6 },
+          dent: { name: 'كلية طب الأسنان', code: 'DENT', stages: 5 },
+          pharm: { name: 'كلية الصيدلة', code: 'PHARM', stages: 5 },
+          nurs: { name: 'كلية التمريض', code: 'NURS', stages: 4 },
+          mlt: { name: 'كلية التقنيات الطبية والتحليلات', code: 'MLT', stages: 4 }
+        };
+        const pInfo = presetNames[cId] || { name: 'كلية الطب البشري', code: 'MED', stages: 6 };
+        
+        // Check if already in rawCols by name or code
+        const matched = rawCols.find(c => c.name === pInfo.name || (c.code && c.code.toUpperCase() === pInfo.code));
+        if (matched) {
+          cId = matched.id;
+        } else {
+          try {
+            const newCol = await apiFetch('/api/admin/academic/colleges', {
+              method: 'POST',
+              body: JSON.stringify({ name: pInfo.name, code: pInfo.code, default_stages: pInfo.stages })
+            });
+            cId = newCol?.id || newCol?.college?.id;
+          } catch (err) {
+            if (err?.id || err?.existing_id || err?.college?.id) {
+              cId = err.id || err.existing_id || err.college.id;
+            } else {
+              try {
+                const refreshed = await apiFetch('/api/admin/academic/colleges');
+                const found = (refreshed || []).find(c => c.name === pInfo.name || (c.code && c.code.toUpperCase() === pInfo.code));
+                if (found) {
+                  cId = found.id;
+                } else {
+                  throw err;
+                }
+              } catch (_) {
+                throw err;
+              }
+            }
+          }
+        }
+      }
+
+      try {
+        const progRes = await apiFetch('/api/admin/academic/programs', {
+          method: 'POST',
+          body: JSON.stringify({
+            university_id: v.university_id,
+            college_id: cId,
+            system_type: v.system_type,
+            total_stages: parseInt(v.total_stages, 10) || 6,
+            auto_create_stages: v.auto_create_stages === 'true'
+          })
+        });
+        expandedUnis.add(v.university_id);
+        if (progRes?.id) expandedPrograms.add(progRes.id);
+        showToast('تم ربط الكلية بالجامعة وتوليد المراحل بنجاح');
+      } catch (err) {
+        if (err?.existing_id || err?.program?.id || err?.detail?.includes('مضاف مسبقاً')) {
+          expandedUnis.add(v.university_id);
+          const progId = err?.existing_id || err?.program?.id;
+          if (progId) expandedPrograms.add(progId);
+          showToast('الكلية مرتبطة مسبقاً بهذه الجامعة وتم إظهارها في الشجرة الأكاديمية');
+        } else {
+          throw err;
+        }
+      }
+      await loadCatalog();
+    });
+  }
+
+  async function deleteProgram(progId, collegeName){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    if (!await confirmModal(`فك ارتباط كلية "${collegeName}" من هذه الجامعة؟ ستُحذف مراحلها وموادها التابعة لها.`)) return;
+    try {
+      await apiFetch(`/api/admin/academic/programs/${progId}`, { method: 'DELETE' });
+      showToast(`تم فك ارتباط ${collegeName}`);
+      loadCatalog();
+    } catch (e) {
+      showToast(e.detail || 'تعذر فك الارتباط', 'error');
+    }
+  }
+
+  function openAddStageModal(progId, collegeName){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    openGenericModal(`إضافة مرحلة إلى ${collegeName}`, [
+      {id: 'stage_number', label: 'رقم المرحلة (1, 2, 3...)', type: 'number', value: 1},
+      {id: 'name', label: 'اسم المرحلة (مثال: المرحلة الأولى)', type: 'text', value: 'المرحلة الأولى'}
+    ], async (v) => {
+      await apiFetch('/api/admin/academic/stages', {
+        method: 'POST',
+        body: JSON.stringify({
+          program_id: progId,
+          stage_number: parseInt(v.stage_number, 10) || 1,
+          name: v.name.trim() || `المرحلة ${v.stage_number}`
+        })
+      });
+      expandedPrograms.add(progId);
+      showToast('تمت إضافة المرحلة بنجاح');
+      loadCatalog();
+    });
+  }
+
+  async function deleteStage(stageId, name){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    if (!await confirmModal(`حذف "${name}" وجميع المواد التابعة لها نهائياً؟`)) return;
+    try {
+      await apiFetch(`/api/admin/academic/stages/${stageId}`, { method: 'DELETE' });
+      showToast(`تم حذف ${name}`);
+      loadCatalog();
+    } catch (e) {
+      showToast(e.detail || 'تعذر حذف المرحلة', 'error');
+    }
+  }
+
+  function openAddSubjectModal(stageId, stageName){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    openGenericModal(`إضافة مادة دراسية إلى ${stageName}`, [
+      {id: 'name', label: 'اسم المادة (مثال: Human Anatomy / الفسلجة الطبية)', type: 'text', placeholder: 'التشريح العام'},
+      {id: 'code', label: 'رمز المادة الكودي (مثال: MED-101)', type: 'text', placeholder: 'MED-101'},
+      {id: 'term', label: 'الفصل الدراسي / النظام', type: 'select', value: 'annual', options: [
+        {value: 'annual', label: 'سنوي (Annual)'},
+        {value: 'semester_1', label: 'فصل أول (First Semester)'},
+        {value: 'semester_2', label: 'فصل ثاني (Second Semester)'},
+        {value: 'modular_block', label: 'بلوك / موديول تكاملي (Modular Block)'}
+      ]},
+      {id: 'is_ministerial', label: 'الامتحان الوزاري التقويمي', type: 'select', value: 'false', options: [
+        {value: 'false', label: 'لا — مادة امتحانية جامعية اعتيادية'},
+        {value: 'true', label: '🏛️ نعم — مادة مشمولة بالامتحان التقويمي الوزاري'}
+      ]},
+      {id: 'has_practical', label: 'المختبر والتدريب العملي / السريري', type: 'select', value: 'true', options: [
+        {value: 'true', label: '🔬 نعم — تحتوي على تدريب عملي / سريري / OSCE'},
+        {value: 'false', label: 'نظري فقط'}
+      ]}
+    ], async (v) => {
+      if (!v.name.trim()) throw { detail: 'اسم المادة مطلوب' };
+      await apiFetch('/api/admin/academic/subjects', {
+        method: 'POST',
+        body: JSON.stringify({
+          stage_id: stageId,
+          name: v.name.trim(),
+          code: v.code?.trim() || null,
+          term: v.term,
+          is_ministerial: v.is_ministerial === 'true',
+          has_practical: v.has_practical === 'true'
+        })
+      });
+      showToast('تمت إضافة المادة بنجاح');
+      loadCatalog();
+    });
+  }
+
+  function openEditSubjectModal(subId){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    let foundSub = null;
+    (academicTreeData.universities || []).forEach(u => {
+      (u.programs || []).forEach(p => {
+        (p.stages || []).forEach(st => {
+          (st.subjects || []).forEach(sub => {
+            if (sub.id === subId) foundSub = sub;
+          });
+        });
+      });
+      (u.direct_stages || []).forEach(st => {
+        (st.subjects || []).forEach(sub => {
+          if (sub.id === subId) foundSub = sub;
+        });
+      });
+    });
+
+    if (!foundSub) return;
+
+    openGenericModal(`تعديل مادة: ${foundSub.name}`, [
+      {id: 'name', label: 'اسم المادة', type: 'text', value: foundSub.name},
+      {id: 'code', label: 'رمز المادة', type: 'text', value: foundSub.code || ''},
+      {id: 'term', label: 'الفصل الدراسي', type: 'select', value: foundSub.term || 'annual', options: [
+        {value: 'annual', label: 'سنوي (Annual)'},
+        {value: 'semester_1', label: 'فصل أول (First Semester)'},
+        {value: 'semester_2', label: 'فصل ثاني (Second Semester)'},
+        {value: 'modular_block', label: 'بلوك / موديول تكاملي (Modular Block)'}
+      ]},
+      {id: 'is_ministerial', label: 'الامتحان الوزاري التقويمي', type: 'select', value: foundSub.is_ministerial ? 'true' : 'false', options: [
+        {value: 'false', label: 'لا — مادة جامعية داخلية'},
+        {value: 'true', label: '🏛️ نعم — مشمولة بالامتحان التقويمي الوزاري'}
+      ]},
+      {id: 'has_practical', label: 'التدريب العملي والسريري', type: 'select', value: foundSub.has_practical ? 'true' : 'false', options: [
+        {value: 'true', label: '🔬 نعم — نظري + عملي / سريري / OSCE'},
+        {value: 'false', label: 'نظري فقط'}
+      ]}
+    ], async (v) => {
+      if (!v.name.trim()) throw { detail: 'اسم المادة مطلوب' };
+      await apiFetch(`/api/admin/academic/subjects/${subId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: v.name.trim(),
+          code: v.code?.trim() || null,
+          term: v.term,
+          is_ministerial: v.is_ministerial === 'true',
+          has_practical: v.has_practical === 'true'
+        })
+      });
+      showToast('تم تعديل المادة بنجاح');
+      loadCatalog();
+    });
+  }
+
+  async function deleteSubject(subId, name){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    if (!await confirmModal(`حذف مادة "${name}" نهائياً؟`)) return;
+    try {
+      await apiFetch(`/api/admin/academic/subjects/${subId}`, { method: 'DELETE' });
+      showToast(`تم حذف مادة "${name}"`);
+      loadCatalog();
+    } catch (e) {
+      showToast(e.detail || 'تعذر حذف المادة', 'error');
+    }
+  }
+
+  async function exportAcademicCsv(){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/academic/export-csv`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (!res.ok) throw new Error('فشل تصدير الملف');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kiur_iraq_medical_curriculum_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast('تم تنزيل الهيكل الأكاديمي كاملاً بتنسيق CSV');
+    } catch (e) {
+      showToast(e.message || 'تعذر تصدير الهيكل الأكاديمي', 'error');
+    }
+  }
+
+  function downloadSampleCsv(){
+    const csvContent = '\uFEFF' + ACADEMIC_SAMPLE_CSV;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'kiur_medical_academic_sample.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    showToast('تم تحميل نموذج CSV الجاهز');
+  }
+
+  function openAcademicCsvImportModal(){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    const overlay = document.getElementById('academicCsvImportOverlay');
+    if (overlay) {
+      document.getElementById('acadCsvText').value = '';
+      document.getElementById('acadCsvResult').style.display = 'none';
+      document.getElementById('acadCsvConfirmBtn').style.display = 'none';
+      overlay.style.display = 'flex';
+    }
+  }
+
+  function closeAcademicCsvImportModal(){
+    const overlay = document.getElementById('academicCsvImportOverlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  function handleAcadCsvFileUpload(input){
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      document.getElementById('acadCsvText').value = e.target.result;
+      previewAcademicCsv();
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  function previewAcademicCsv(){
+    const text = (document.getElementById('acadCsvText')?.value || '').trim();
+    const resultBox = document.getElementById('acadCsvResult');
+    const confirmBtn = document.getElementById('acadCsvConfirmBtn');
+    if (!text){
+      showToast('الصق النص أو اختر ملف CSV أولاً', 'error');
+      return;
+    }
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const hasHeader = lines[0]?.includes('جامعة') || lines[0]?.includes('university');
+    const rowCount = hasHeader ? lines.length - 1 : lines.length;
+
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = `
+      <div style="font-weight:700; color:var(--success); margin-bottom:4px;">جاهز للاستيراد</div>
+      <div>تم اكتشاف <b>${rowCount}</b> سطر دراسي في الملف.</div>
+      <div style="font-size:.75rem; color:var(--ink-faint); margin-top:4px;">
+        الأعمدة: الجامعة، نوع الجامعة، المحافظة، الكلية، نظام الدراسة، المرحلة، المادة، الرمز، الفصل، وزاري، عملي.
+      </div>
+    `;
+    confirmBtn.style.display = 'inline-flex';
+  }
+
+  async function runAcademicCsvImport(){
+    const text = (document.getElementById('acadCsvText')?.value || '').trim();
+    const confirmBtn = document.getElementById('acadCsvConfirmBtn');
+    if (!text) return;
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'جارٍ الاستيراد...';
+
+    try {
+      const res = await apiFetch('/api/admin/academic/import-csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: text
+      });
+      const c = res.created || {};
+      const msg = `تم الاستيراد بنجاح: ${c.universities||0} جامعة، ${c.colleges||0} كلية، ${c.stages||0} مرحلة، ${c.subjects||0} مادة!`;
+      showToast(msg);
+      closeAcademicCsvImportModal();
+      loadCatalog();
+    } catch (e) {
+      showToast(e.detail || 'فشل استيراد الملف', 'error');
+    } finally {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'تأكيد وحفظ الاستيراد';
+    }
+  }
+
+  function renderLegacyCatalog(rows){
     const typeIcon = {section:'book', university:'grid', stage:'log', subject:'pdf'};
     const tree = document.getElementById('catalogTree');
     if (!rows.length){
-      tree.innerHTML = `<div class="empty-row">لا يوجد منهج بعد — ابدأ بـ "إضافة قسم" في الأعلى</div>`;
+      tree.innerHTML = `<div class="empty-row">لا يوجد منهج بعد — ابدأ بإضافة جامعة أو استيراد CSV في الأعلى</div>`;
       return;
     }
     tree.innerHTML = rows.map(r => {

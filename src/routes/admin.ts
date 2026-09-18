@@ -342,7 +342,7 @@ adminRouter.get('/catalog', async (c) => {
   const questions = await db.select({ id: schema.questions.id, subject_id: schema.questions.subject_id }).from(schema.questions);
 
   const stagesByUni: Record<string, typeof stages> = {};
-  stages.forEach((s) => { stagesByUni[s.university_id] ??= []; stagesByUni[s.university_id].push(s); });
+  stages.forEach((s) => { if (s.university_id) { stagesByUni[s.university_id] ??= []; stagesByUni[s.university_id].push(s); } });
 
   const subjectsByStage: Record<string, typeof subjects> = {};
   subjects.forEach((s) => { if (s.stage_id) { subjectsByStage[s.stage_id] ??= []; subjectsByStage[s.stage_id].push(s); } });
@@ -506,6 +506,1138 @@ adminRouter.delete('/catalog/subjects/:id', async (c) => {
   });
 
   return c.json({ ok: true });
+});
+
+// ─────────────────────── Catalog Bulk, Import & Duplicate Helpers ──────────
+adminRouter.post('/catalog/import', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{ text: string; preview?: boolean }>();
+  const text = (body.text || '').trim();
+  if (!text) return c.json({ detail: 'النص فارغ' }, 400);
+
+  const lines = text.split('\n').filter((l) => l.trim().length > 0);
+  let curSection = '';
+  let curUni = '';
+  let curStage = '';
+
+  const parsedItems: Array<{ type: 'section' | 'university' | 'stage' | 'subject'; name: string; parentName?: string }> = [];
+
+  for (const rawLine of lines) {
+    const indentMatch = rawLine.match(/^(\s*)/);
+    const spaces = indentMatch ? indentMatch[1].length : 0;
+    const name = rawLine.trim();
+
+    if (spaces === 0) {
+      curSection = name;
+      parsedItems.push({ type: 'section', name });
+    } else if (spaces <= 2) {
+      curUni = name;
+      parsedItems.push({ type: 'university', name, parentName: curSection });
+    } else if (spaces <= 4) {
+      curStage = name;
+      parsedItems.push({ type: 'stage', name, parentName: curUni });
+    } else {
+      parsedItems.push({ type: 'subject', name, parentName: curStage });
+    }
+  }
+
+  const existingSections = await db.select().from(schema.sections);
+  const secMap = new Map(existingSections.map((s) => [s.name.trim().toLowerCase(), s.id]));
+
+  const existingUnis = await db.select().from(schema.universities);
+  const uniMap = new Map(existingUnis.map((u) => [u.name.trim().toLowerCase(), u.id]));
+
+  const existingStages = await db.select().from(schema.stages);
+  const stageMap = new Map(existingStages.map((st) => [st.name.trim().toLowerCase(), st.id]));
+
+  const existingSubs = await db.select().from(schema.subjects).where(eq(schema.subjects.is_deleted, false));
+  const subMap = new Map(existingSubs.map((sb) => [sb.name.trim().toLowerCase(), sb.id]));
+
+  let cSec = 0, cUni = 0, cStg = 0, cSub = 0;
+  let rSec = 0, rUni = 0, rStg = 0, rSub = 0;
+
+  for (const item of parsedItems) {
+    const key = item.name.toLowerCase();
+    if (item.type === 'section') {
+      if (secMap.has(key)) {
+        rSec++;
+      } else {
+        cSec++;
+        if (!body.preview) {
+          const id = schema.genId();
+          await db.insert(schema.sections).values({ id, name: item.name });
+          secMap.set(key, id);
+        }
+      }
+    } else if (item.type === 'university') {
+      if (uniMap.has(key)) {
+        rUni++;
+      } else {
+        cUni++;
+        if (!body.preview) {
+          const sId = secMap.get(item.parentName?.toLowerCase() || '') || null;
+          const id = schema.genId();
+          await db.insert(schema.universities).values({ id, name: item.name, section_id: sId });
+          uniMap.set(key, id);
+        }
+      }
+    } else if (item.type === 'stage') {
+      if (stageMap.has(key)) {
+        rStg++;
+      } else {
+        cStg++;
+        if (!body.preview) {
+          const uId = uniMap.get(item.parentName?.toLowerCase() || '') || null;
+          const id = schema.genId();
+          await db.insert(schema.stages).values({ id, name: item.name, university_id: uId });
+          stageMap.set(key, id);
+        }
+      }
+    } else if (item.type === 'subject') {
+      if (subMap.has(key)) {
+        rSub++;
+      } else {
+        cSub++;
+        if (!body.preview) {
+          const stId = stageMap.get(item.parentName?.toLowerCase() || '') || null;
+          const id = schema.genId();
+          if (stId) {
+            await db.insert(schema.subjects).values({ id, name: item.name, stage_id: stId });
+            subMap.set(key, id);
+          }
+        }
+      }
+    }
+  }
+
+  const totalCreated = cSec + cUni + cStg + cSub;
+  return c.json({
+    created: { sections: cSec, universities: cUni, stages: cStg, subjects: cSub },
+    reused: { sections: rSec, universities: rUni, stages: rStg, subjects: rSub },
+    total_created: totalCreated,
+    problems: [],
+  });
+});
+
+adminRouter.post('/catalog/bulk', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{ parent_type: string; parent_id: string | null; names: string[] }>();
+  const names = (body.names || []).map((n) => n.trim()).filter((n) => n.length > 0);
+  if (!names.length) return c.json({ detail: 'لا توجد أسماء' }, 400);
+
+  let created = 0;
+  let skipped = 0;
+
+  if (body.parent_type === 'root') {
+    const existing = await db.select().from(schema.sections);
+    const set = new Set(existing.map((s) => s.name.toLowerCase()));
+    for (const n of names) {
+      if (set.has(n.toLowerCase())) { skipped++; continue; }
+      await db.insert(schema.sections).values({ id: schema.genId(), name: n });
+      set.add(n.toLowerCase());
+      created++;
+    }
+  } else if (body.parent_type === 'section') {
+    const existing = await db.select().from(schema.universities).where(eq(schema.universities.section_id, body.parent_id!));
+    const set = new Set(existing.map((u) => u.name.toLowerCase()));
+    for (const n of names) {
+      if (set.has(n.toLowerCase())) { skipped++; continue; }
+      await db.insert(schema.universities).values({ id: schema.genId(), name: n, section_id: body.parent_id! });
+      set.add(n.toLowerCase());
+      created++;
+    }
+  } else if (body.parent_type === 'university') {
+    const existing = await db.select().from(schema.stages).where(eq(schema.stages.university_id, body.parent_id!));
+    const set = new Set(existing.map((st) => st.name.toLowerCase()));
+    for (const n of names) {
+      if (set.has(n.toLowerCase())) { skipped++; continue; }
+      await db.insert(schema.stages).values({ id: schema.genId(), name: n, university_id: body.parent_id! });
+      set.add(n.toLowerCase());
+      created++;
+    }
+  } else if (body.parent_type === 'stage') {
+    const existing = await db.select().from(schema.subjects).where(and(eq(schema.subjects.stage_id, body.parent_id!), eq(schema.subjects.is_deleted, false)));
+    const set = new Set(existing.map((sb) => sb.name.toLowerCase()));
+    for (const n of names) {
+      if (set.has(n.toLowerCase())) { skipped++; continue; }
+      await db.insert(schema.subjects).values({ id: schema.genId(), name: n, stage_id: body.parent_id!, is_deleted: false });
+      set.add(n.toLowerCase());
+      created++;
+    }
+  }
+
+  return c.json({ created, skipped });
+});
+
+adminRouter.post('/catalog/duplicate', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{ type: 'university' | 'stage'; id: string; new_names: string[]; target_parent_id?: string | null }>();
+  const names = (body.new_names || []).map((n) => n.trim()).filter((n) => n.length > 0);
+  if (!names.length) return c.json({ detail: 'الأسماء مطلوبة' }, 400);
+
+  const copies: string[] = [];
+  const skipped: string[] = [];
+  let uCount = 0, stgCount = 0, subCount = 0;
+
+  if (body.type === 'university') {
+    const srcUni = await db.select().from(schema.universities).where(eq(schema.universities.id, body.id)).get();
+    if (!srcUni) return c.json({ detail: 'الجامعة غير موجودة' }, 404);
+    const targetSectionId = body.target_parent_id || srcUni.section_id;
+
+    const srcStages = await db.select().from(schema.stages).where(eq(schema.stages.university_id, body.id));
+
+    for (const name of names) {
+      const dup = await db.select().from(schema.universities).where(eq(schema.universities.name, name)).get();
+      if (dup) { skipped.push(name); continue; }
+
+      const newUniId = schema.genId();
+      await db.insert(schema.universities).values({ id: newUniId, name, section_id: targetSectionId, type: srcUni.type, province: srcUni.province });
+      uCount++;
+
+      for (const stg of srcStages) {
+        const newStageId = schema.genId();
+        await db.insert(schema.stages).values({ id: newStageId, name: stg.name, stage_number: stg.stage_number, university_id: newUniId });
+        stgCount++;
+
+        const srcSubs = await db.select().from(schema.subjects).where(and(eq(schema.subjects.stage_id, stg.id), eq(schema.subjects.is_deleted, false)));
+        for (const sub of srcSubs) {
+          await db.insert(schema.subjects).values({ id: schema.genId(), name: sub.name, stage_id: newStageId, term: sub.term, is_ministerial: sub.is_ministerial, has_practical: sub.has_practical, is_deleted: false });
+          subCount++;
+        }
+      }
+      copies.push(name);
+    }
+  } else if (body.type === 'stage') {
+    const srcStage = await db.select().from(schema.stages).where(eq(schema.stages.id, body.id)).get();
+    if (!srcStage) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
+    const targetUniId = body.target_parent_id || srcStage.university_id;
+
+    const srcSubs = await db.select().from(schema.subjects).where(and(eq(schema.subjects.stage_id, body.id), eq(schema.subjects.is_deleted, false)));
+
+    for (const name of names) {
+      const newStageId = schema.genId();
+      await db.insert(schema.stages).values({ id: newStageId, name, stage_number: srcStage.stage_number, university_id: targetUniId });
+      stgCount++;
+
+      for (const sub of srcSubs) {
+        await db.insert(schema.subjects).values({ id: schema.genId(), name: sub.name, stage_id: newStageId, term: sub.term, is_ministerial: sub.is_ministerial, has_practical: sub.has_practical, is_deleted: false });
+        subCount++;
+      }
+      copies.push(name);
+    }
+  }
+
+  return c.json({ copies, skipped, universities: uCount, stages: stgCount, subjects: subCount });
+});
+
+// ─────────────────────── Iraqi Medical Group Academic Hierarchy ───────────────
+const ARABIC_STAGE_NAMES = ['المرحلة الأولى', 'المرحلة الثانية', 'المرحلة الثالثة', 'المرحلة الرابعة', 'المرحلة الخامسة', 'المرحلة السادسة'];
+
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if ((char === ',' || char === '\t') && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+// ── 1. Academic Tree (Full Hierarchy for Admin) ──
+adminRouter.get('/academic/tree', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const unis = await db.select().from(schema.universities);
+  const collist = await db.select().from(schema.colleges);
+  const proglist = await db.select().from(schema.collegePrograms);
+  const stagelist = await db.select().from(schema.stages);
+  const subjlist = await db.select().from(schema.subjects).where(eq(schema.subjects.is_deleted, false));
+  const questions = await db.select({ id: schema.questions.id, subject_id: schema.questions.subject_id }).from(schema.questions).where(eq(schema.questions.is_deleted, false));
+
+  const questionsCount: Record<string, number> = {};
+  for (const q of questions) {
+    if (q.subject_id) questionsCount[q.subject_id] = (questionsCount[q.subject_id] || 0) + 1;
+  }
+
+  const colMap = new Map(collist.map((col) => [col.id, col]));
+
+  const subsByStage: Record<string, typeof subjlist> = {};
+  for (const sub of subjlist) {
+    subsByStage[sub.stage_id] ??= [];
+    subsByStage[sub.stage_id].push(sub);
+  }
+
+  const stagesByProg: Record<string, typeof stagelist> = {};
+  const stagesByUniDirect: Record<string, typeof stagelist> = {};
+  for (const stg of stagelist) {
+    if (stg.program_id) {
+      stagesByProg[stg.program_id] ??= [];
+      stagesByProg[stg.program_id].push(stg);
+    } else if (stg.university_id) {
+      stagesByUniDirect[stg.university_id] ??= [];
+      stagesByUniDirect[stg.university_id].push(stg);
+    }
+  }
+
+  const progsByUni: Record<string, typeof proglist> = {};
+  for (const prg of proglist) {
+    progsByUni[prg.university_id] ??= [];
+    progsByUni[prg.university_id].push(prg);
+  }
+
+  const tree = unis.map((uni) => {
+    const uProgs = progsByUni[uni.id] ?? [];
+    const directStages = stagesByUniDirect[uni.id] ?? [];
+
+    return {
+      id: uni.id,
+      name: uni.name,
+      type: uni.type ?? 'government',
+      province: uni.province ?? null,
+      logo_url: uni.logo_url ?? null,
+      programs: uProgs.map((prg) => {
+        const col = colMap.get(prg.college_id);
+        const pStages = (stagesByProg[prg.id] ?? []).sort((a, b) => (a.stage_number ?? 0) - (b.stage_number ?? 0));
+        return {
+          id: prg.id,
+          college_id: prg.college_id,
+          college_name: col?.name ?? 'كلية غير معروفة',
+          college_code: col?.code ?? null,
+          system_type: prg.system_type,
+          total_stages: prg.total_stages,
+          stages: pStages.map((stg) => {
+            const sSubjects = subsByStage[stg.id] ?? [];
+            return {
+              id: stg.id,
+              name: stg.name,
+              stage_number: stg.stage_number ?? null,
+              subjects: sSubjects.map((sub) => ({
+                id: sub.id,
+                name: sub.name,
+                code: sub.code ?? null,
+                term: sub.term,
+                is_ministerial: sub.is_ministerial,
+                has_practical: sub.has_practical,
+                question_count: questionsCount[sub.id] ?? 0,
+              })),
+            };
+          }),
+        };
+      }),
+      direct_stages: directStages.map((stg) => {
+        const sSubjects = subsByStage[stg.id] ?? [];
+        return {
+          id: stg.id,
+          name: stg.name,
+          stage_number: stg.stage_number ?? null,
+          subjects: sSubjects.map((sub) => ({
+            id: sub.id,
+            name: sub.name,
+            code: sub.code ?? null,
+            term: sub.term,
+            is_ministerial: sub.is_ministerial,
+            has_practical: sub.has_practical,
+            question_count: questionsCount[sub.id] ?? 0,
+          })),
+        };
+      }),
+    };
+  });
+
+  return c.json({
+    universities: tree,
+    colleges: collist,
+    all_colleges: collist,
+    total_universities: unis.length,
+    total_colleges: collist.length,
+    total_programs: proglist.length,
+    total_stages: stagelist.length,
+    total_subjects: subjlist.length,
+  });
+});
+
+// Helper: ensure a default section exists to satisfy foreign key & NOT NULL constraints on universities
+async function ensureDefaultSection(db: any): Promise<string> {
+  const existing = await db.select().from(schema.sections).limit(1).get();
+  if (existing) return existing.id;
+  const id = schema.genId();
+  await db.insert(schema.sections).values({
+    id,
+    name: 'كليات المجموعة الطبية',
+  });
+  return id;
+}
+
+// ── 2. Universities CRUD ──
+adminRouter.get('/academic/universities', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const type = c.req.query('type');
+  const province = c.req.query('province');
+  const search = c.req.query('search')?.trim().toLowerCase();
+
+  let list = await db.select().from(schema.universities);
+  if (type) list = list.filter((u) => u.type === type);
+  if (province) list = list.filter((u) => u.province === province);
+  if (search) list = list.filter((u) => u.name.toLowerCase().includes(search) || (u.province && u.province.toLowerCase().includes(search)));
+
+  return c.json(list);
+});
+
+adminRouter.post('/academic/universities', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{ name: string; type?: 'government' | 'private'; province?: string; logo_url?: string; section_id?: string }>();
+  if (!body.name?.trim()) return c.json({ detail: 'اسم الجامعة مطلوب' }, 400);
+
+  const existing = await db.select().from(schema.universities).where(eq(schema.universities.name, body.name.trim())).get();
+  if (existing) return c.json({ detail: 'الجامعة مسجلة مسبقاً' }, 400);
+
+  const sectionId = body.section_id || await ensureDefaultSection(db);
+  const id = schema.genId();
+  await db.insert(schema.universities).values({
+    id,
+    name: body.name.trim(),
+    type: body.type === 'private' ? 'private' : 'government',
+    province: body.province?.trim() || null,
+    logo_url: body.logo_url?.trim() || null,
+    section_id: sectionId,
+  });
+
+  recordAuditEvent({
+    event: 'ADMIN_ACADEMIC_UNIVERSITY_CREATED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: id,
+    details: { name: body.name.trim(), type: body.type, province: body.province },
+  });
+
+  const created = await db.select().from(schema.universities).where(eq(schema.universities.id, id)).get();
+  return c.json(created, 201);
+});
+
+adminRouter.put('/academic/universities/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const body = await c.req.json<{ name?: string; type?: 'government' | 'private'; province?: string; logo_url?: string }>();
+
+  const uni = await db.select().from(schema.universities).where(eq(schema.universities.id, id)).get();
+  if (!uni) return c.json({ detail: 'الجامعة غير موجودة' }, 404);
+
+  const updates: Record<string, unknown> = {};
+  if (body.name !== undefined && body.name.trim()) updates.name = body.name.trim();
+  if (body.type !== undefined) updates.type = body.type;
+  if (body.province !== undefined) updates.province = body.province.trim() || null;
+  if (body.logo_url !== undefined) updates.logo_url = body.logo_url.trim() || null;
+
+  if (Object.keys(updates).length) {
+    await db.update(schema.universities).set(updates).where(eq(schema.universities.id, id));
+  }
+
+  const updated = await db.select().from(schema.universities).where(eq(schema.universities.id, id)).get();
+  return c.json(updated);
+});
+
+adminRouter.delete('/academic/universities/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const uni = await db.select().from(schema.universities).where(eq(schema.universities.id, id)).get();
+  if (!uni) return c.json({ detail: 'الجامعة غير موجودة' }, 404);
+
+  const enrolled = await db.select().from(schema.users).where(eq(schema.users.university_id, id)).limit(1);
+  if (enrolled.length > 0) return c.json({ detail: 'لا يمكن حذف الجامعة — يوجد طلاب مسجلون بها حالياً' }, 400);
+
+  await db.delete(schema.collegePrograms).where(eq(schema.collegePrograms.university_id, id));
+  await db.delete(schema.stages).where(eq(schema.stages.university_id, id));
+  await db.delete(schema.universities).where(eq(schema.universities.id, id));
+
+  recordAuditEvent({
+    event: 'ADMIN_ACADEMIC_UNIVERSITY_DELETED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: id,
+    details: { name: uni.name },
+  });
+
+  return c.json({ ok: true });
+});
+
+// ── 3. Colleges CRUD ──
+adminRouter.get('/academic/colleges', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const list = await db.select().from(schema.colleges);
+  return c.json(list);
+});
+
+adminRouter.post('/academic/colleges', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{ name: string; code?: string; default_stages?: number }>();
+  if (!body.name?.trim()) return c.json({ detail: 'اسم الكلية مطلوب' }, 400);
+
+  const existing = await db.select().from(schema.colleges).where(eq(schema.colleges.name, body.name.trim())).get();
+  if (existing) {
+    return c.json({
+      detail: 'الكلية مسجلة مسبقاً',
+      existing_id: existing.id,
+      college: existing,
+      ...existing,
+    }, 400);
+  }
+
+  const id = schema.genId();
+  await db.insert(schema.colleges).values({
+    id,
+    name: body.name.trim(),
+    code: body.code?.trim().toUpperCase() || null,
+    default_stages: typeof body.default_stages === 'number' && body.default_stages > 0 ? body.default_stages : 6,
+  });
+
+  const created = await db.select().from(schema.colleges).where(eq(schema.colleges.id, id)).get();
+  return c.json({ ...created, college: created }, 201);
+});
+
+adminRouter.put('/academic/colleges/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const body = await c.req.json<{ name?: string; code?: string; default_stages?: number }>();
+
+  const col = await db.select().from(schema.colleges).where(eq(schema.colleges.id, id)).get();
+  if (!col) return c.json({ detail: 'الكلية غير موجودة' }, 404);
+
+  const updates: Record<string, unknown> = {};
+  if (body.name !== undefined && body.name.trim()) updates.name = body.name.trim();
+  if (body.code !== undefined) updates.code = body.code.trim().toUpperCase() || null;
+  if (typeof body.default_stages === 'number' && body.default_stages > 0) updates.default_stages = body.default_stages;
+
+  if (Object.keys(updates).length) {
+    await db.update(schema.colleges).set(updates).where(eq(schema.colleges.id, id));
+  }
+
+  const updated = await db.select().from(schema.colleges).where(eq(schema.colleges.id, id)).get();
+  return c.json(updated);
+});
+
+adminRouter.delete('/academic/colleges/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const col = await db.select().from(schema.colleges).where(eq(schema.colleges.id, id)).get();
+  if (!col) return c.json({ detail: 'الكلية غير موجودة' }, 404);
+
+  const programs = await db.select().from(schema.collegePrograms).where(eq(schema.collegePrograms.college_id, id)).limit(1);
+  if (programs.length > 0) return c.json({ detail: 'لا يمكن حذف الكلية — مرتبطة ببرامج في جامعات' }, 400);
+
+  await db.delete(schema.colleges).where(eq(schema.colleges.id, id));
+  return c.json({ ok: true });
+});
+
+// ── 4. College Programs CRUD ──
+adminRouter.get('/academic/programs', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const uniId = c.req.query('university_id');
+  const colId = c.req.query('college_id');
+
+  let list = await db.select().from(schema.collegePrograms);
+  if (uniId) list = list.filter((p) => p.university_id === uniId);
+  if (colId) list = list.filter((p) => p.college_id === colId);
+
+  const unis = await db.select().from(schema.universities);
+  const cols = await db.select().from(schema.colleges);
+  const uniMap = new Map(unis.map((u) => [u.id, u]));
+  const colMap = new Map(cols.map((cl) => [cl.id, cl]));
+
+  const result = list.map((p) => ({
+    ...p,
+    university_name: uniMap.get(p.university_id)?.name ?? '—',
+    college_name: colMap.get(p.college_id)?.name ?? '—',
+    college_code: colMap.get(p.college_id)?.code ?? null,
+  }));
+
+  return c.json(result);
+});
+
+adminRouter.post('/academic/programs', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{
+    university_id: string;
+    college_id: string;
+    system_type?: 'modular' | 'traditional';
+    total_stages?: number;
+    auto_create_stages?: boolean;
+  }>();
+
+  if (!body.university_id || !body.college_id) return c.json({ detail: 'الجامعة والكلية مطلوبتان' }, 400);
+
+  const uni = await db.select().from(schema.universities).where(eq(schema.universities.id, body.university_id)).get();
+  if (!uni) return c.json({ detail: 'الجامعة غير موجودة' }, 404);
+
+  const col = await db.select().from(schema.colleges).where(eq(schema.colleges.id, body.college_id)).get();
+  if (!col) return c.json({ detail: 'الكلية غير موجودة' }, 404);
+
+  const existing = await db.select().from(schema.collegePrograms).where(
+    and(eq(schema.collegePrograms.university_id, body.university_id), eq(schema.collegePrograms.college_id, body.college_id))
+  ).get();
+  if (existing) {
+    return c.json({
+      detail: 'البرنامج مضاف مسبقاً لهذه الجامعة',
+      existing_id: existing.id,
+      program: existing,
+      ...existing,
+    }, 400);
+  }
+
+  const totalStages = typeof body.total_stages === 'number' && body.total_stages > 0 ? body.total_stages : col.default_stages;
+  const programId = schema.genId();
+
+  await db.insert(schema.collegePrograms).values({
+    id: programId,
+    university_id: body.university_id,
+    college_id: body.college_id,
+    system_type: body.system_type === 'modular' ? 'modular' : 'traditional',
+    total_stages: totalStages,
+  });
+
+  if (body.auto_create_stages !== false) {
+    for (let i = 1; i <= Math.min(totalStages, 6); i++) {
+      const stageName = ARABIC_STAGE_NAMES[i - 1] || `المرحلة ${i}`;
+      await db.insert(schema.stages).values({
+        id: schema.genId(),
+        name: stageName,
+        stage_number: i,
+        program_id: programId,
+        university_id: body.university_id,
+        college_id: body.college_id,
+      });
+    }
+  }
+
+  recordAuditEvent({
+    event: 'ADMIN_ACADEMIC_PROGRAM_CREATED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: programId,
+    details: { university_id: body.university_id, college_id: body.college_id, system_type: body.system_type },
+  });
+
+  const created = await db.select().from(schema.collegePrograms).where(eq(schema.collegePrograms.id, programId)).get();
+  return c.json(created, 201);
+});
+
+adminRouter.put('/academic/programs/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const body = await c.req.json<{ system_type?: 'modular' | 'traditional'; total_stages?: number }>();
+
+  const prog = await db.select().from(schema.collegePrograms).where(eq(schema.collegePrograms.id, id)).get();
+  if (!prog) return c.json({ detail: 'البرنامج غير موجود' }, 404);
+
+  const updates: Record<string, unknown> = {};
+  if (body.system_type) updates.system_type = body.system_type;
+  if (typeof body.total_stages === 'number' && body.total_stages > 0) updates.total_stages = body.total_stages;
+
+  if (Object.keys(updates).length) {
+    await db.update(schema.collegePrograms).set(updates).where(eq(schema.collegePrograms.id, id));
+  }
+
+  const updated = await db.select().from(schema.collegePrograms).where(eq(schema.collegePrograms.id, id)).get();
+  return c.json(updated);
+});
+
+adminRouter.delete('/academic/programs/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const prog = await db.select().from(schema.collegePrograms).where(eq(schema.collegePrograms.id, id)).get();
+  if (!prog) return c.json({ detail: 'البرنامج غير موجود' }, 404);
+
+  const pStages = await db.select().from(schema.stages).where(eq(schema.stages.program_id, id));
+  for (const stg of pStages) {
+    const hasSubs = await db.select().from(schema.subjects).where(eq(schema.subjects.stage_id, stg.id)).limit(1);
+    if (hasSubs.length > 0) {
+      return c.json({ detail: 'لا يمكن حذف البرنامج — توجد مواد دراسية في مراحله. احذف المواد أولاً.' }, 400);
+    }
+  }
+
+  await db.delete(schema.stages).where(eq(schema.stages.program_id, id));
+  await db.delete(schema.collegePrograms).where(eq(schema.collegePrograms.id, id));
+
+  return c.json({ ok: true });
+});
+
+// ── 5. Stages CRUD ──
+adminRouter.get('/academic/stages', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const progId = c.req.query('program_id');
+  const uniId = c.req.query('university_id');
+
+  let list = await db.select().from(schema.stages);
+  if (progId) list = list.filter((s) => s.program_id === progId);
+  if (uniId) list = list.filter((s) => s.university_id === uniId);
+
+  return c.json(list);
+});
+
+adminRouter.post('/academic/stages', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{
+    name: string;
+    stage_number?: number;
+    program_id?: string;
+    university_id?: string;
+    college_id?: string;
+  }>();
+
+  if (!body.name?.trim()) return c.json({ detail: 'اسم المرحلة مطلوب' }, 400);
+
+  let uniId = body.university_id;
+  let colId = body.college_id;
+
+  if (body.program_id) {
+    const prog = await db.select().from(schema.collegePrograms).where(eq(schema.collegePrograms.id, body.program_id)).get();
+    if (prog) {
+      uniId = uniId || prog.university_id;
+      colId = colId || prog.college_id;
+    }
+  }
+
+  const id = schema.genId();
+  await db.insert(schema.stages).values({
+    id,
+    name: body.name.trim(),
+    stage_number: typeof body.stage_number === 'number' ? body.stage_number : null,
+    program_id: body.program_id || null,
+    university_id: uniId || null,
+    college_id: colId || null,
+  });
+
+  const created = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
+  return c.json(created, 201);
+});
+
+adminRouter.put('/academic/stages/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const body = await c.req.json<{ name?: string; stage_number?: number }>();
+
+  const stg = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
+  if (!stg) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
+
+  const updates: Record<string, unknown> = {};
+  if (body.name !== undefined && body.name.trim()) updates.name = body.name.trim();
+  if (typeof body.stage_number === 'number') updates.stage_number = body.stage_number;
+
+  if (Object.keys(updates).length) {
+    await db.update(schema.stages).set(updates).where(eq(schema.stages.id, id));
+  }
+
+  const updated = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
+  return c.json(updated);
+});
+
+adminRouter.delete('/academic/stages/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const stg = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
+  if (!stg) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
+
+  const childSubjects = await db.select().from(schema.subjects).where(eq(schema.subjects.stage_id, id));
+  if (childSubjects.length > 0) return c.json({ detail: 'لا يمكن حذف المرحلة — تحتوي على مواد دراسية. احذفها أولاً.' }, 400);
+
+  await db.delete(schema.stages).where(eq(schema.stages.id, id));
+  return c.json({ ok: true });
+});
+
+// ── 6. Subjects CRUD ──
+adminRouter.get('/academic/subjects', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const stageId = c.req.query('stage_id');
+  const isMinisterial = c.req.query('is_ministerial');
+  const term = c.req.query('term');
+
+  let list = await db.select().from(schema.subjects).where(eq(schema.subjects.is_deleted, false));
+  if (stageId) list = list.filter((s) => s.stage_id === stageId);
+  if (isMinisterial !== undefined && isMinisterial !== '') list = list.filter((s) => String(s.is_ministerial) === isMinisterial || (isMinisterial === 'true' && s.is_ministerial));
+  if (term) list = list.filter((s) => s.term === term);
+
+  return c.json(list);
+});
+
+adminRouter.post('/academic/subjects', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{
+    name: string;
+    stage_id: string;
+    code?: string;
+    term?: 'annual' | 'semester_1' | 'semester_2' | 'modular_block';
+    is_ministerial?: boolean;
+    has_practical?: boolean;
+  }>();
+
+  if (!body.name?.trim() || !body.stage_id) return c.json({ detail: 'اسم المادة والمرحلة مطلوبان' }, 400);
+
+  const stage = await db.select().from(schema.stages).where(eq(schema.stages.id, body.stage_id)).get();
+  if (!stage) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
+
+  const validTerms = new Set(['annual', 'semester_1', 'semester_2', 'modular_block']);
+  const term = body.term && validTerms.has(body.term) ? body.term : 'annual';
+
+  const id = schema.genId();
+  await db.insert(schema.subjects).values({
+    id,
+    name: body.name.trim(),
+    code: body.code?.trim().toUpperCase() || null,
+    stage_id: body.stage_id,
+    term: term as 'annual' | 'semester_1' | 'semester_2' | 'modular_block',
+    is_ministerial: !!body.is_ministerial,
+    has_practical: !!body.has_practical,
+    is_deleted: false,
+  });
+
+  const created = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
+  return c.json(created, 201);
+});
+
+adminRouter.put('/academic/subjects/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const body = await c.req.json<{
+    name?: string;
+    code?: string;
+    term?: 'annual' | 'semester_1' | 'semester_2' | 'modular_block';
+    is_ministerial?: boolean;
+    has_practical?: boolean;
+  }>();
+
+  const subj = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
+  if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
+
+  const updates: Record<string, unknown> = {};
+  if (body.name !== undefined && body.name.trim()) updates.name = body.name.trim();
+  if (body.code !== undefined) updates.code = body.code.trim().toUpperCase() || null;
+  if (body.term !== undefined) updates.term = body.term;
+  if (body.is_ministerial !== undefined) updates.is_ministerial = !!body.is_ministerial;
+  if (body.has_practical !== undefined) updates.has_practical = !!body.has_practical;
+
+  if (Object.keys(updates).length) {
+    await db.update(schema.subjects).set(updates).where(eq(schema.subjects.id, id));
+  }
+
+  const updated = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
+  return c.json(updated);
+});
+
+adminRouter.delete('/academic/subjects/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const subj = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
+  if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
+
+  await db.update(schema.subjects).set({
+    is_deleted: true,
+    deleted_at: new Date().toISOString(),
+  }).where(eq(schema.subjects.id, id));
+
+  return c.json({ ok: true });
+});
+
+// ── 7. CSV Bulk Import & Export ──
+async function handleAcademicParsedRows(db: any, rows: any[], c: any) {
+  let createdUnis = 0;
+  let createdCols = 0;
+  let createdProgs = 0;
+  let createdStages = 0;
+  let createdSubs = 0;
+  let skipped = 0;
+
+  const unis = await db.select().from(schema.universities);
+  const uniMap = new Map(unis.map((u: any) => [u.name.trim().toLowerCase(), u]));
+
+  const cols = await db.select().from(schema.colleges);
+  const colMap = new Map(cols.map((cl: any) => [cl.name.trim().toLowerCase(), cl]));
+
+  const progs = await db.select().from(schema.collegePrograms);
+  const progMap = new Map(progs.map((p: any) => [`${p.university_id}:${p.college_id}`, p]));
+
+  const stages = await db.select().from(schema.stages);
+  const stageMap = new Map(stages.map((st: any) => [`${st.program_id || st.university_id}:${st.name.trim().toLowerCase()}`, st]));
+
+  const subs = await db.select().from(schema.subjects).where(eq(schema.subjects.is_deleted, false));
+  const subMap = new Map(subs.map((sb: any) => [`${sb.stage_id}:${sb.name.trim().toLowerCase()}`, sb]));
+
+  const defaultSectionId = await ensureDefaultSection(db);
+
+  for (const r of rows) {
+    const uniName = (r.university || '').trim();
+    if (!uniName) {
+      skipped++;
+      continue;
+    }
+
+    // 1. University
+    let uni: any = uniMap.get(uniName.toLowerCase());
+    if (!uni) {
+      const uId = schema.genId();
+      await db.insert(schema.universities).values({
+        id: uId,
+        name: uniName,
+        type: r.university_type === 'private' ? 'private' : 'government',
+        province: r.province?.trim() || null,
+        section_id: defaultSectionId,
+      });
+      uni = { id: uId, name: uniName, type: r.university_type, province: r.province, section_id: defaultSectionId };
+      uniMap.set(uniName.toLowerCase(), uni);
+      createdUnis++;
+    }
+
+    // 2. College
+    const colName = (r.college || '').trim();
+    let col: any = null;
+    if (colName) {
+      col = colMap.get(colName.toLowerCase());
+      if (!col) {
+        const cId = schema.genId();
+        let defaultStages = 6;
+        if (colName.includes('أسنان') || colName.includes('صيدلة')) defaultStages = 5;
+        else if (colName.includes('تمريض') || colName.includes('تقني') || colName.includes('مختبر')) defaultStages = 4;
+
+        await db.insert(schema.colleges).values({
+          id: cId,
+          name: colName,
+          default_stages: defaultStages,
+        });
+        col = { id: cId, name: colName, default_stages: defaultStages };
+        colMap.set(colName.toLowerCase(), col);
+        createdCols++;
+      }
+    }
+
+    // 3. Program
+    let prog: any = null;
+    if (col && uni) {
+      const progKey = `${uni.id}:${col.id}`;
+      prog = progMap.get(progKey);
+      if (!prog) {
+        const pId = schema.genId();
+        const sysType = r.system_type === 'modular' || r.system_type === 'تكاملي' || r.system_type === 'موديول' ? 'modular' : 'traditional';
+        await db.insert(schema.collegePrograms).values({
+          id: pId,
+          university_id: uni.id,
+          college_id: col.id,
+          system_type: sysType,
+          total_stages: col.default_stages || 6,
+        });
+        prog = { id: pId, university_id: uni.id, college_id: col.id, system_type: sysType, total_stages: col.default_stages || 6 };
+        progMap.set(progKey, prog);
+        createdProgs++;
+      }
+    }
+
+    // 4. Stage
+    const stageName = (r.stage || '').trim();
+    let stage: any = null;
+    if (stageName) {
+      const parentId = prog ? prog.id : uni.id;
+      const stageKey = `${parentId}:${stageName.toLowerCase()}`;
+      stage = stageMap.get(stageKey);
+      if (!stage) {
+        const stId = schema.genId();
+        let stageNum = null;
+        if (stageName.includes('أول') || stageName.includes('1')) stageNum = 1;
+        else if (stageName.includes('ثان') || stageName.includes('2')) stageNum = 2;
+        else if (stageName.includes('ثالث') || stageName.includes('3')) stageNum = 3;
+        else if (stageName.includes('رابع') || stageName.includes('4')) stageNum = 4;
+        else if (stageName.includes('خامس') || stageName.includes('5')) stageNum = 5;
+        else if (stageName.includes('سادس') || stageName.includes('6')) stageNum = 6;
+
+        await db.insert(schema.stages).values({
+          id: stId,
+          name: stageName,
+          stage_number: stageNum,
+          program_id: prog ? prog.id : null,
+          university_id: uni.id,
+          college_id: col ? col.id : null,
+        });
+        stage = { id: stId, name: stageName, stage_number: stageNum, program_id: prog ? prog.id : null, university_id: uni.id, college_id: col ? col.id : null };
+        stageMap.set(stageKey, stage);
+        createdStages++;
+      }
+    }
+
+    // 5. Subject
+    const subName = (r.subject || '').trim();
+    if (subName && stage) {
+      const subKey = `${stage.id}:${subName.toLowerCase()}`;
+      let sub = subMap.get(subKey);
+      if (!sub) {
+        const sId = schema.genId();
+        let termVal: 'annual' | 'semester_1' | 'semester_2' | 'modular_block' = 'annual';
+        if (r.term === 'semester_1' || r.term === 'كورس أول' || r.term === 'فصل أول') termVal = 'semester_1';
+        else if (r.term === 'semester_2' || r.term === 'كورس ثاني' || r.term === 'فصل ثاني') termVal = 'semester_2';
+        else if (r.term === 'modular_block' || r.term === 'موديول') termVal = 'modular_block';
+
+        await db.insert(schema.subjects).values({
+          id: sId,
+          name: subName,
+          stage_id: stage.id,
+          term: termVal,
+          is_ministerial: !!r.is_ministerial,
+          has_practical: !!r.has_practical,
+          is_deleted: false,
+        });
+        sub = { id: sId, name: subName, stage_id: stage.id };
+        subMap.set(subKey, sub);
+        createdSubs++;
+      } else {
+        skipped++;
+      }
+    }
+  }
+
+  recordAuditEvent({
+    event: 'ADMIN_ACADEMIC_CSV_IMPORTED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: 'academic_bulk',
+    details: { createdUnis, createdCols, createdProgs, createdStages, createdSubs, skipped },
+  });
+
+  return c.json({
+    ok: true,
+    created: {
+      universities: createdUnis,
+      colleges: createdCols,
+      programs: createdProgs,
+      stages: createdStages,
+      subjects: createdSubs,
+    },
+    skipped,
+  });
+}
+
+adminRouter.post('/academic/import-csv', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  let rawText = '';
+
+  const contentType = c.req.header('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const body = await c.req.json<{ csv?: string; rows?: any[] }>();
+    if (body.csv) {
+      rawText = body.csv;
+    } else if (Array.isArray(body.rows)) {
+      return handleAcademicParsedRows(db, body.rows, c);
+    }
+  } else {
+    rawText = await c.req.text();
+  }
+
+  if (!rawText.trim()) return c.json({ detail: 'الملف أو النص فارغ' }, 400);
+
+  if (rawText.charCodeAt(0) === 0xFEFF) {
+    rawText = rawText.slice(1);
+  }
+
+  const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+  if (lines.length === 0) return c.json({ detail: 'لا توجد بيانات للاستيراد' }, 400);
+
+  const firstLine = lines[0];
+  const isHeader = firstLine.includes('جامعة') || firstLine.includes('university') || firstLine.includes('الكلية') || firstLine.includes('college');
+  const dataLines = isHeader ? lines.slice(1) : lines;
+
+  const rowsToImport = dataLines.map((line) => {
+    const cols = parseCsvLine(line);
+    return {
+      university: cols[0] || '',
+      college: cols[1] || '',
+      system_type: cols[2] || 'traditional',
+      stage: cols[3] || '',
+      subject: cols[4] || '',
+      term: cols[5] || 'annual',
+      is_ministerial: cols[6] === '1' || cols[6] === 'true' || cols[6] === 'نعم' || cols[6] === 'وزاري',
+      has_practical: cols[7] === '1' || cols[7] === 'true' || cols[7] === 'نعم' || cols[7] === 'عملي',
+      province: cols[8] || null,
+      university_type: cols[9] === 'أهلي' || cols[9] === 'private' ? 'private' : 'government',
+    };
+  });
+
+  return handleAcademicParsedRows(db, rowsToImport, c);
+});
+
+adminRouter.get('/academic/export-csv', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const unis = await db.select().from(schema.universities);
+  const cols = await db.select().from(schema.colleges);
+  const progs = await db.select().from(schema.collegePrograms);
+  const stages = await db.select().from(schema.stages);
+  const subjects = await db.select().from(schema.subjects).where(eq(schema.subjects.is_deleted, false));
+
+  const uniMap = new Map(unis.map((u) => [u.id, u]));
+  const colMap = new Map(cols.map((cl) => [cl.id, cl]));
+  const progMap = new Map(progs.map((p) => [p.id, p]));
+  const stageMap = new Map(stages.map((st) => [st.id, st]));
+
+  const header = '\uFEFF' + [
+    'الجامعة',
+    'نوع الجامعة',
+    'المحافظة',
+    'الكلية',
+    'رمز الكلية',
+    'النظام الدراسي',
+    'المرحلة',
+    'رقم المرحلة',
+    'المادة',
+    'رمز المادة',
+    'الترم',
+    'وزاري تقويمي',
+    'عملي سريري',
+  ].map(escapeCsv).join(',') + '\r\n';
+
+  const rows: string[] = [];
+
+  for (const sub of subjects) {
+    const stg = stageMap.get(sub.stage_id);
+    const prog = stg?.program_id ? progMap.get(stg.program_id) : null;
+    const uni = (prog?.university_id ? uniMap.get(prog.university_id) : null) || (stg?.university_id ? uniMap.get(stg.university_id) : null);
+    const col = (prog?.college_id ? colMap.get(prog.college_id) : null) || (stg?.college_id ? colMap.get(stg.college_id) : null);
+
+    const termAr = sub.term === 'semester_1' ? 'كورس أول' : sub.term === 'semester_2' ? 'كورس ثاني' : sub.term === 'modular_block' ? 'موديول' : 'سنوي';
+    const sysAr = prog?.system_type === 'modular' ? 'نظام موديولات' : 'نظام فصلي/سنوي';
+    const uniTypeAr = uni?.type === 'private' ? 'أهلي' : 'حكومي';
+
+    rows.push([
+      uni?.name ?? '—',
+      uniTypeAr,
+      uni?.province ?? '—',
+      col?.name ?? '—',
+      col?.code ?? '—',
+      sysAr,
+      stg?.name ?? '—',
+      stg?.stage_number ?? '—',
+      sub.name,
+      sub.code ?? '—',
+      termAr,
+      sub.is_ministerial ? 'نعم' : 'لا',
+      sub.has_practical ? 'نعم' : 'لا',
+    ].map(escapeCsv).join(','));
+  }
+
+  const csv = header + rows.join('\r\n');
+  return new Response(csv, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="academic-hierarchy.csv"',
+      'Cache-Control': 'no-store',
+    },
+  });
 });
 
 // ─────────────────────── Questions CRUD ──────────────────────────────────────

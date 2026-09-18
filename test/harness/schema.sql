@@ -10,27 +10,65 @@ CREATE TABLE IF NOT EXISTS sections (
 CREATE TABLE IF NOT EXISTS universities (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
-    section_id TEXT NOT NULL REFERENCES sections(id)
+    type TEXT NOT NULL DEFAULT 'government',
+    province TEXT,
+    logo_url TEXT,
+    section_id TEXT REFERENCES sections(id),
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 );
 CREATE INDEX IF NOT EXISTS universities_section_id_idx ON universities(section_id);
+CREATE INDEX IF NOT EXISTS universities_type_idx ON universities(type);
+CREATE INDEX IF NOT EXISTS universities_province_idx ON universities(province);
+
+-- 2b. colleges
+CREATE TABLE IF NOT EXISTS colleges (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    code TEXT,
+    default_stages INTEGER NOT NULL DEFAULT 6,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+
+-- 2c. college_programs
+CREATE TABLE IF NOT EXISTS college_programs (
+    id TEXT PRIMARY KEY NOT NULL,
+    university_id TEXT NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
+    college_id TEXT NOT NULL REFERENCES colleges(id) ON DELETE CASCADE,
+    system_type TEXT NOT NULL DEFAULT 'traditional',
+    total_stages INTEGER NOT NULL DEFAULT 6,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS college_programs_uni_college_idx ON college_programs(university_id, college_id);
+CREATE INDEX IF NOT EXISTS college_programs_university_id_idx ON college_programs(university_id);
+CREATE INDEX IF NOT EXISTS college_programs_college_id_idx ON college_programs(college_id);
 
 -- 3. stages
 CREATE TABLE IF NOT EXISTS stages (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
-    university_id TEXT NOT NULL REFERENCES universities(id)
+    stage_number INTEGER,
+    university_id TEXT REFERENCES universities(id),
+    program_id TEXT REFERENCES college_programs(id),
+    college_id TEXT REFERENCES colleges(id)
 );
 CREATE INDEX IF NOT EXISTS stages_university_id_idx ON stages(university_id);
+CREATE INDEX IF NOT EXISTS stages_program_id_idx ON stages(program_id);
+CREATE INDEX IF NOT EXISTS stages_college_id_idx ON stages(college_id);
 
 -- 4. subjects
 CREATE TABLE IF NOT EXISTS subjects (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
+    code TEXT,
     stage_id TEXT NOT NULL REFERENCES stages(id),
+    term TEXT NOT NULL DEFAULT 'annual',
+    is_ministerial INTEGER NOT NULL DEFAULT 0,
+    has_practical INTEGER NOT NULL DEFAULT 0,
     is_deleted INTEGER NOT NULL DEFAULT 0,
     deleted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS subjects_stage_id_idx ON subjects(stage_id);
+CREATE INDEX IF NOT EXISTS subjects_is_ministerial_idx ON subjects(is_ministerial);
 
 -- 5. users
 CREATE TABLE IF NOT EXISTS users (
