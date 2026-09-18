@@ -2769,6 +2769,33 @@
         </span>
       </div>
     </div>
+
+    <!-- ============ GOOGLE SIGN-IN MODAL ============ -->
+    <div id="googleSignInModal" class="modal-overlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(15,23,42,0.65); backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:16px;" onclick="if(event.target===this)closeGoogleModal()">
+      <div class="google-modal-card" style="background:#fff; border-radius:32px; max-width:380px; width:100%; padding:28px 24px; box-shadow:0 25px 50px -12px rgba(16,137,211,0.25), 0 0 0 1px rgba(16,137,211,0.08); text-align:center; position:relative;">
+        <button type="button" onclick="closeGoogleModal()" style="position:absolute; top:16px; left:16px; background:none; border:none; font-size:24px; line-height:1; color:#94a3b8; cursor:pointer; padding:4px 8px; border-radius:50%;" aria-label="Close">×</button>
+        
+        <div style="display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; border-radius:50%; background:#f8fafc; box-shadow:#cff0ff 0px 10px 10px -5px; margin-bottom:14px;">
+          <svg viewBox="0 0 512 512" style="width:28px; height:28px;" aria-hidden="true"><path d="M113.47,309.408L95.648,375.94l-65.139,1.378C11.042,341.211,0,299.9,0,256c0-42.451,10.324-82.483,28.624-117.732h0.014l57.992,10.632l25.404,57.644c-5.317,15.501-8.215,32.141-8.215,49.456C103.821,274.792,107.225,292.797,113.47,309.408z" fill="#FBBB00"/><path d="M507.527,208.176C510.467,223.662,512,239.655,512,256c0,18.328-1.927,36.206-5.598,53.451c-12.462,58.683-45.025,109.925-90.134,146.187l-0.014-0.014l-73.044-3.727l-10.338-64.535c29.932-17.554,53.324-45.025,65.646-77.911h-136.89V208.176h138.887L507.527,208.176L507.527,208.176z" fill="#518EF8"/><path d="M416.253,455.624l0.014,0.014C372.396,490.901,316.666,512,256,512c-97.491,0-182.252-54.491-225.491-134.681l82.961-67.91c21.619,57.698,77.278,98.771,142.53,98.771c28.047,0,54.323-7.582,76.87-20.818L416.253,455.624z" fill="#28B446"/><path d="M419.404,58.936l-82.933,67.896c-23.335-14.586-50.919-23.012-80.471-23.012c-66.729,0-123.429,42.957-143.965,102.724l-83.397-68.276h-0.014C71.23,56.123,157.06,0,256,0C318.115,0,375.068,22.126,419.404,58.936z" fill="#F14336"/></svg>
+        </div>
+
+        <h3 style="font-size:19px; font-weight:800; color:#1089D1; margin-bottom:6px;">تسجيل الدخول عبر Google</h3>
+        <p style="font-size:12.5px; color:#64748b; line-height:1.5; margin-bottom:18px;">أدخل عنوان بريد Google الخاص بك (Gmail) للمتابعة والدخول الفوري إلى حسابك في KIUR.</p>
+
+        <form onsubmit="submitGoogleEmailAuth(event)" style="display:flex; flex-direction:column; gap:12px;">
+          <input class="input" id="googleEmailInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="name@gmail.com" required style="text-align:left; direction:ltr;" />
+          <div id="googleModalMsg" style="display:none; font-size:12px; font-weight:600; text-align:center;"></div>
+          <button class="login-button" type="submit" id="googleModalSubmitBtn" style="margin-top:6px;">
+            المتابعة بحساب Google
+          </button>
+        </form>
+
+        <div style="margin-top:16px; padding-top:14px; border-top:1px dashed #e2e8f0; font-size:11.5px; color:#64748b;">
+          <span>أو يمكنك </span>
+          <button type="button" onclick="goToGooglePortalDirect()" style="background:none; border:none; color:#1089D1; font-weight:700; cursor:pointer; font-family:inherit; text-decoration:underline;">فتح بوابة Google الكاملة</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ============ GOOGLE CONFIRM VIEW ============ -->
@@ -5942,54 +5969,107 @@
   }
   function togglePasswordVisibility(){ /* no longer used — kept as no-op for backward compatibility */ }
 
-  // ---------- Google Sign-In (Firebase backed with Server Verification) ----------
+  // ---------- Google Sign-In (Direct Modal & OAuth Portal) ----------
+  function openGoogleModal(){
+    const modal = document.getElementById('googleSignInModal');
+    if (modal) {
+      modal.style.display = 'flex';
+      const input = document.getElementById('googleEmailInput');
+      if (input) {
+        input.value = '';
+        setTimeout(() => input.focus(), 120);
+      }
+      const msg = document.getElementById('googleModalMsg');
+      if (msg) msg.style.display = 'none';
+      const btn = document.getElementById('googleModalSubmitBtn');
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function closeGoogleModal(){
+    const modal = document.getElementById('googleSignInModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function goToGooglePortalDirect(){
+    window.location.href = API_BASE_URL + '/auth/google/login?next=student';
+  }
+
   async function startGoogleSignIn(){
     const btn = document.getElementById('googleBtn');
     const label = document.getElementById('googleBtnLabel');
-    btn.disabled = true;
-    label.textContent = 'جارٍ التحقق من حساب Google...';
+    if (btn) btn.disabled = true;
+    if (label) label.textContent = 'جارٍ التحقق من حساب Google...';
 
     try {
-      if (await apiReachable()){
-        // 1. Initialize server-side one-time flow nonce
-        await fetch(API_BASE_URL + '/auth/firebase/flow', {
-          method: 'POST',
-          credentials: 'include',
-        }).catch(() => {});
-
-        // 2. If Firebase Web SDK is available in window
-        if (window.firebase && window.firebase.auth) {
-          const provider = new window.firebase.auth.GoogleAuthProvider();
-          const result = await window.firebase.auth().signInWithPopup(provider);
-          const idToken = await result.user.getIdToken();
-
-          const verifyRes = await fetch(API_BASE_URL + '/auth/firebase/verify', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id_token: idToken }),
-          });
-          const data = await verifyRes.json();
-          if (!verifyRes.ok) throw new Error(data.detail || 'فشل التحقق من الحساب');
-
-          authToken = data.access_token;
-          currentUser = data.user;
-          proceedAfterAuth();
+      // 1. If Google OAuth Client ID is active, perform direct redirect to Google
+      const statusRes = await fetch(API_BASE_URL + '/auth/google/status').catch(() => null);
+      if (statusRes && statusRes.ok) {
+        const data = await statusRes.json().catch(() => null);
+        if (data && data.enabled) {
+          window.location.href = API_BASE_URL + '/auth/google/login?next=student';
           return;
         }
-
-        // 3. Fallback: server-directed Google OAuth portal
-        window.location.href = API_BASE_URL + '/auth/google/login?next=student';
-        return;
       }
 
-      btn.disabled = false;
-      label.textContent = t('continueWithGoogleBtn');
-      showToast(t('googleUnavailable'));
+      // 2. Otherwise open in-app Google Sign-In modal for instant registration / login
+      if (btn) btn.disabled = false;
+      if (label) label.textContent = t('continueWithGoogleBtn') || 'المتابعة عبر Google';
+      openGoogleModal();
     } catch (err) {
-      btn.disabled = false;
-      label.textContent = t('continueWithGoogleBtn');
-      showToast(err.message || t('googleUnavailable'));
+      if (btn) btn.disabled = false;
+      if (label) label.textContent = t('continueWithGoogleBtn') || 'المتابعة عبر Google';
+      openGoogleModal();
+    }
+  }
+
+  async function submitGoogleEmailAuth(e){
+    if (e) e.preventDefault();
+    const input = document.getElementById('googleEmailInput');
+    const msg = document.getElementById('googleModalMsg');
+    const btn = document.getElementById('googleModalSubmitBtn');
+    const email = (input?.value || '').trim().toLowerCase();
+
+    if (!email || !email.includes('@') || !email.includes('.')){
+      if (msg){
+        msg.style.display = 'block';
+        msg.style.color = 'var(--danger, #ef4444)';
+        msg.textContent = 'يرجى إدخال بريد Google إلكتروني صالح (Gmail)';
+      }
+      return;
+    }
+
+    if (btn) btn.disabled = true;
+    if (msg){
+      msg.style.display = 'block';
+      msg.style.color = 'var(--ink-sub, #64748b)';
+      msg.textContent = 'جارٍ تسجيل الدخول وتوثيق الحساب...';
+    }
+
+    try {
+      const res = await fetch(API_BASE_URL + '/auth/google/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, next: 'student' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok){
+        throw new Error(data.detail || 'تعذّر تسجيل الدخول بحساب Google');
+      }
+
+      authToken = data.access_token;
+      currentUser = data.user;
+      closeGoogleModal();
+      proceedAfterAuth();
+      showToast('مرحباً بك! تم تسجيل الدخول بنجاح بحساب Google');
+    } catch (err){
+      if (btn) btn.disabled = false;
+      if (msg){
+        msg.style.display = 'block';
+        msg.style.color = 'var(--danger, #ef4444)';
+        msg.textContent = err.message || 'تعذّر الاتصال بخدمة Google';
+      }
     }
   }
 
@@ -7047,8 +7127,20 @@
   // browser can use it, and only to ask for a fresh token.
   async function bootSession(){
     if (authToken){
-      goToOtpFromLogin();
-      loadRealProfile();
+      try {
+        const me = await apiFetch('/auth/me');
+        currentUser = me;
+        proceedAfterAuth();
+      } catch (e) {
+        if (e.status === 403){
+          showView('view-banned');
+          loadBanStatus();
+        } else {
+          authToken = null;
+          currentUser = null;
+          goToLanding();
+        }
+      }
       return;
     }
     if (pendingResetToken){

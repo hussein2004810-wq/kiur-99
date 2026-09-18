@@ -68,11 +68,14 @@ function domainAllowed(email: string, allowedDomains: string): boolean {
 }
 
 function userOut(user: typeof schema.users.$inferSelect) {
+  const isStudent = !user.role || user.role === 'student';
+  const profileComplete = !isStudent || Boolean(user.university_id && user.section_id && (user.is_graduate || user.stage_id));
   return {
     id: user.id,
     email: user.email,
     full_name: user.full_name,
     role: user.role,
+    profile_complete: profileComplete,
     photo_url: user.photo_url,
     caption: user.caption,
     phone: user.phone,
@@ -92,6 +95,12 @@ function userOut(user: typeof schema.users.$inferSelect) {
 }
 
 // ─────────────────────────────────────────── Google OAuth ────────────────────
+
+authRouter.get('/google/status', (c) => {
+  const clientId = c.env.GOOGLE_CLIENT_ID;
+  const enabled = Boolean(clientId && clientId.trim() !== '' && !clientId.includes('your-client-id'));
+  return c.json({ enabled, client_id: enabled ? clientId : null });
+});
 
 authRouter.get('/google/login', async (c) => {
   const clientId = c.env.GOOGLE_CLIENT_ID;
@@ -370,6 +379,9 @@ authRouter.post('/google/login', async (c) => {
       await db.update(schema.users).set({ role: 'admin' }).where(eq(schema.users.id, user.id));
       user = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).get();
     }
+    if (user && !user.google_sub) {
+      await db.update(schema.users).set({ google_sub: `google:${email}` }).where(eq(schema.users.id, user.id));
+    }
     if (user && !user.email_verified_at) {
       await db.update(schema.users).set({ email_verified_at: new Date().toISOString() }).where(eq(schema.users.id, user.id));
     }
@@ -455,8 +467,8 @@ authRouter.get('/google/callback', async (c) => {
   const userInfo = await userInfoRes.json<{ email: string; name: string; sub: string }>();
 
   const { email, name, sub } = userInfo;
+  const isAdminFlow = state === 'admin' || state.startsWith('admin:');
   if (!domainAllowed(email, c.env.ALLOWED_UNIVERSITY_DOMAINS ?? '')) {
-    const isAdminFlow = state === 'admin';
     const base = new URL(c.req.url).origin;
     const redirectBase = isAdminFlow ? `${base}/admin` : base;
     return c.redirect(`${redirectBase}#google_error=domain`);
@@ -486,7 +498,6 @@ authRouter.get('/google/callback', async (c) => {
 
   if (!user) return c.json({ detail: 'خطأ في إنشاء المستخدم' }, 500);
 
-  const isAdminFlow = state === 'admin';
   const base = new URL(c.req.url).origin;
   const adminBase = c.env.ADMIN_FRONTEND_URL || `${base}/admin`;
   const studentBase = c.env.FRONTEND_URL || base;
