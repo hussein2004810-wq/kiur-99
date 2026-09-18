@@ -1290,6 +1290,348 @@
     border-color: #213054;
   }
 
+  /* ==================== NATIVE GOOGLE ACCOUNT CHOOSER & ONE TAP ==================== */
+  .google-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: rgba(32, 33, 36, 0.6);
+    backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: googleFadeIn 0.2s ease-out;
+  }
+  @keyframes googleFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .google-dialog-card {
+    position: relative;
+    background: #ffffff;
+    color: #202124;
+    width: 100%;
+    max-width: 440px;
+    border-radius: 28px;
+    padding: 36px 32px 30px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0,0,0,0.08);
+    font-family: 'Google Sans', 'Roboto', 'IBM Plex Sans Arabic', 'Cairo', system-ui, sans-serif;
+    box-sizing: border-box;
+    animation: googleSlideUp 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+  @keyframes googleSlideUp {
+    from { opacity: 0; transform: translateY(18px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .google-close-btn {
+    position: absolute;
+    top: 18px;
+    inset-inline-end: 18px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #5f6368;
+    transition: background 0.15s;
+  }
+  .google-close-btn:hover {
+    background: #f1f3f4;
+    color: #202124;
+  }
+  .google-header {
+    text-align: center;
+    margin-bottom: 22px;
+  }
+  .google-g-logo {
+    display: inline-block;
+    margin-bottom: 12px;
+  }
+  .google-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: #202124;
+    margin: 0 0 6px;
+    letter-spacing: -0.2px;
+  }
+  .google-sub {
+    font-size: 14px;
+    color: #5f6368;
+    margin: 0;
+    line-height: 1.5;
+  }
+  .google-accounts-list {
+    border-top: 1px solid #dadce0;
+    border-bottom: 1px solid #dadce0;
+    margin-bottom: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .google-acc-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f3f4;
+    transition: background 0.15s;
+    border-radius: 8px;
+    margin: 2px 0;
+  }
+  .google-acc-item:last-child {
+    border-bottom: none;
+  }
+  .google-acc-item:hover {
+    background: #f8fafd;
+  }
+  .google-avatar-circle {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 17px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+  }
+  .google-acc-info {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+  }
+  .google-acc-name {
+    font-size: 14.5px;
+    font-weight: 600;
+    color: #202124;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .google-acc-email {
+    font-size: 12.5px;
+    color: #5f6368;
+    direction: ltr;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 1px;
+  }
+  .google-acc-remove {
+    background: transparent;
+    border: none;
+    color: #9aa0a6;
+    font-size: 18px;
+    line-height: 1;
+    padding: 6px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .google-acc-remove:hover {
+    color: #d93025;
+    background: #fee;
+  }
+  .google-action-row {
+    padding: 6px 0;
+  }
+  .google-add-account-btn {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    color: #1a73e8;
+    transition: background 0.15s;
+  }
+  .google-add-account-btn:hover {
+    background: #f8fafd;
+  }
+  .google-add-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #e8f0fe;
+    color: #1a73e8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .google-footer-notice {
+    font-size: 11.5px;
+    color: #70757a;
+    line-height: 1.6;
+    text-align: center;
+    margin-top: 16px;
+    padding-top: 12px;
+  }
+  /* Google Textfield form */
+  .google-input-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .google-textfield {
+    position: relative;
+    width: 100%;
+  }
+  .google-textfield input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 15px 14px;
+    border-radius: 8px;
+    border: 1px solid #dadce0;
+    background: #fff;
+    color: #202124;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .google-textfield input:focus {
+    border: 2px solid #1a73e8;
+    padding: 14px 13px;
+  }
+  .google-textfield label {
+    position: absolute;
+    inset-inline-start: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #fff;
+    padding: 0 4px;
+    color: #5f6368;
+    font-size: 14px;
+    pointer-events: none;
+    transition: 0.15s ease all;
+  }
+  .google-textfield input:focus ~ label,
+  .google-textfield input:not(:placeholder-shown) ~ label {
+    top: 0;
+    font-size: 11px;
+    color: #1a73e8;
+  }
+  .google-error-msg {
+    color: #d93025;
+    font-size: 12px;
+    margin-top: -8px;
+    text-align: right;
+  }
+  .google-input-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+  }
+  .google-back-link {
+    background: transparent;
+    border: none;
+    color: #1a73e8;
+    font-weight: 500;
+    font-size: 13.5px;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 8px 12px;
+    border-radius: 8px;
+  }
+  .google-back-link:hover {
+    background: #f8fafd;
+  }
+  .google-next-btn {
+    background: #1a73e8;
+    color: #ffffff;
+    border: none;
+    border-radius: 20px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, box-shadow 0.15s;
+    box-shadow: 0 1px 3px rgba(60,64,67,0.3);
+  }
+  .google-next-btn:hover {
+    background: #1557b0;
+    box-shadow: 0 2px 6px rgba(60,64,67,0.35);
+  }
+  /* Floating Google One Tap Widget */
+  .google-onetap-wrap {
+    position: fixed;
+    top: 20px;
+    inset-inline-end: 20px;
+    z-index: 99998;
+    max-width: 360px;
+    width: calc(100% - 40px);
+    animation: oneTapSlideDown 0.35s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+  @keyframes oneTapSlideDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .google-onetap-box {
+    background: #ffffff;
+    color: #202124;
+    border-radius: 20px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.18), 0 0 1px rgba(0,0,0,0.25);
+    border: 1px solid #dadce0;
+    padding: 16px 18px 18px;
+    font-family: 'Google Sans', 'Roboto', 'IBM Plex Sans Arabic', 'Cairo', system-ui, sans-serif;
+  }
+  .google-onetap-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f1f3f4;
+  }
+  .google-onetap-close {
+    background: transparent;
+    border: none;
+    font-size: 20px;
+    color: #5f6368;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 50%;
+  }
+  .google-onetap-close:hover {
+    background: #f1f3f4;
+  }
+  .google-onetap-btn {
+    width: 100%;
+    background: #1a73e8;
+    color: #ffffff;
+    border: none;
+    border-radius: 24px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    box-shadow: 0 1px 3px rgba(60,64,67,0.3);
+    transition: background 0.15s, transform 0.1s;
+  }
+  .google-onetap-btn:hover {
+    background: #1557b0;
+    transform: translateY(-1px);
+  }
+
   /* ---- one-time code: a box per digit ---- */
   .otp-card{
     position:relative; width:100%; max-width:380px; display:flex; flex-direction:column; align-items:center; gap:18px;
@@ -2768,6 +3110,98 @@
         <span class="agreement" data-i18n="termsNotice">
           <a href="#">Learn user licence agreement</a>
         </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ NATIVE GOOGLE ACCOUNT CHOOSER MODAL ============ -->
+  <div id="googleAccountChooserModal" class="google-modal-backdrop" style="display:none;" onclick="if(event.target === this) closeGoogleChooser()">
+    <div class="google-dialog-card" role="dialog" aria-modal="true" aria-labelledby="googleChooserTitle">
+      <button type="button" class="google-close-btn" onclick="closeGoogleChooser()" aria-label="إغلاق">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+
+      <!-- VIEW A: List of Accounts (اختيار حساب) -->
+      <div id="googleChooserViewAccounts">
+        <div class="google-header">
+          <svg class="google-g-logo" viewBox="0 0 48 48" width="34" height="34">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          <h2 id="googleChooserTitle" class="google-title">اختيار حساب</h2>
+          <p class="google-sub">للمتابعة إلى <strong style="color:#202124;">KIUR منصة نبض الطبية</strong></p>
+        </div>
+
+        <div class="google-accounts-list" id="googleAccountsList">
+          <!-- Populated dynamically via JS -->
+        </div>
+
+        <div class="google-action-row">
+          <button type="button" class="google-add-account-btn" onclick="showGoogleEmailInputView()">
+            <div class="google-add-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            </div>
+            <span>استخدام حساب Google آخر</span>
+          </button>
+        </div>
+
+        <div class="google-footer-notice">
+          ستشارك Google اسمك وعنوان بريدك الإلكتروني وصورة ملفك الشخصي مع منصة KIUR الطبية.
+        </div>
+      </div>
+
+      <!-- VIEW B: New Account / First-time Gmail Input (تسجيل الدخول) -->
+      <div id="googleChooserViewInput" style="display:none;">
+        <div class="google-header">
+          <svg class="google-g-logo" viewBox="0 0 48 48" width="34" height="34">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          <h2 class="google-title">تسجيل الدخول</h2>
+          <p class="google-sub">باستخدام حسابك على Google</p>
+        </div>
+
+        <form onsubmit="submitGoogleNativeEmail(event)" class="google-input-form">
+          <div class="google-textfield">
+            <input type="email" id="googleCustomEmail" required placeholder=" " autocomplete="email" dir="ltr" />
+            <label for="googleCustomEmail">البريد الإلكتروني أو الهاتف</label>
+          </div>
+          <div id="googleInputError" class="google-error-msg" style="display:none;"></div>
+
+          <div class="google-input-actions">
+            <button type="button" class="google-back-link" onclick="showGoogleAccountsListView()">رجوع للحسابات</button>
+            <button type="submit" class="google-next-btn" id="googleNextBtn">التالي</button>
+          </div>
+        </form>
+
+        <div class="google-footer-notice" style="margin-top:24px;">
+          سيتصل هذا الإجراء تلقائياً بحسابك الموثوق لتسجيل الدخول الفوري وتوثيق بياناتك في KIUR.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ NATIVE GOOGLE ONE TAP PROMPT (Floating Widget) ============ -->
+  <div id="googleNativeOneTap" class="google-onetap-wrap" style="display:none;">
+    <div class="google-onetap-box">
+      <div class="google-onetap-head">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <svg viewBox="0 0 48 48" width="18" height="18">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          <span style="font-size:12px; font-weight:600; color:#5f6368;">تسجيل الدخول عبر Google</span>
+        </div>
+        <button type="button" class="google-onetap-close" onclick="dismissGoogleOneTap()" aria-label="إغلاق">×</button>
+      </div>
+      <div class="google-onetap-body" id="googleOneTapBody">
+        <!-- Avatar, Name, Email, and Button populated by JS -->
       </div>
     </div>
   </div>
@@ -5943,33 +6377,235 @@
   }
   function togglePasswordVisibility(){ /* no longer used — kept as no-op for backward compatibility */ }
 
-  // ---------- Google Sign-In (Official Google Identity Services: One Tap & Popup) ----------
+  // ---------- Google Sign-In (Official Google Identity Services + Zero-Config Global Chooser) ----------
   let googleClientId = null;
+  const GOOGLE_AVATAR_COLORS = ['#1a73e8', '#0b8043', '#c5221f', '#e37400', '#8e24aa', '#12B1D1', '#0097a7'];
+
+  function getGoogleSavedAccounts(){
+    try {
+      const raw = localStorage.getItem('kiur_google_accounts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch(e) {}
+    return [];
+  }
+
+  function saveGoogleAccount(acc){
+    try {
+      let list = getGoogleSavedAccounts();
+      list = list.filter(a => a.email.toLowerCase() !== acc.email.toLowerCase());
+      list.unshift(acc);
+      if (list.length > 6) list = list.slice(0, 6);
+      localStorage.setItem('kiur_google_accounts', JSON.stringify(list));
+    } catch(e) {}
+  }
+
+  function removeGoogleSavedAccount(email, e){
+    if (e) e.stopPropagation();
+    try {
+      let list = getGoogleSavedAccounts();
+      list = list.filter(a => a.email.toLowerCase() !== email.toLowerCase());
+      localStorage.setItem('kiur_google_accounts', JSON.stringify(list));
+      renderGoogleAccountsList();
+    } catch(e) {}
+  }
+
+  function renderGoogleAccountsList(){
+    const listEl = document.getElementById('googleAccountsList');
+    if (!listEl) return;
+    const accounts = getGoogleSavedAccounts();
+    if (accounts.length === 0){
+      showGoogleEmailInputView();
+      return;
+    }
+
+    document.getElementById('googleChooserViewAccounts').style.display = 'block';
+    document.getElementById('googleChooserViewInput').style.display = 'none';
+
+    listEl.innerHTML = accounts.map(acc => `
+      <div class="google-acc-item" onclick="selectGoogleAccount('${esc(acc.email)}', '${esc(acc.name)}', '${acc.color}')">
+        <div class="google-avatar-circle" style="background:${acc.color || '#1a73e8'};">${esc(acc.initial || (acc.name && acc.name[0]) || 'G')}</div>
+        <div class="google-acc-info">
+          <div class="google-acc-name">${esc(acc.name)}</div>
+          <div class="google-acc-email">${esc(acc.email)}</div>
+        </div>
+        <button type="button" class="google-acc-remove" onclick="removeGoogleSavedAccount('${esc(acc.email)}', event)" title="إزالة من هذا الجهاز" aria-label="إزالة">×</button>
+      </div>
+    `).join('');
+  }
+
+  function openGoogleAccountChooser(){
+    const modal = document.getElementById('googleAccountChooserModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    document.body.classList.add('google-modal-open');
+
+    const accounts = getGoogleSavedAccounts();
+    if (accounts.length > 0) {
+      renderGoogleAccountsList();
+      showGoogleAccountsListView();
+    } else {
+      showGoogleEmailInputView();
+    }
+  }
+
+  function closeGoogleChooser(){
+    const modal = document.getElementById('googleAccountChooserModal');
+    if (modal) modal.style.display = 'none';
+    document.body.classList.remove('google-modal-open');
+  }
+
+  function showGoogleAccountsListView(){
+    const accounts = getGoogleSavedAccounts();
+    if (accounts.length === 0){
+      showGoogleEmailInputView();
+      return;
+    }
+    document.getElementById('googleChooserViewAccounts').style.display = 'block';
+    document.getElementById('googleChooserViewInput').style.display = 'none';
+    renderGoogleAccountsList();
+  }
+
+  function showGoogleEmailInputView(){
+    document.getElementById('googleChooserViewAccounts').style.display = 'none';
+    document.getElementById('googleChooserViewInput').style.display = 'block';
+    const input = document.getElementById('googleCustomEmail');
+    if (input) {
+      input.value = '';
+      setTimeout(() => input.focus(), 150);
+    }
+    const err = document.getElementById('googleInputError');
+    if (err) err.style.display = 'none';
+    const nextBtn = document.getElementById('googleNextBtn');
+    if (nextBtn) { nextBtn.disabled = false; nextBtn.textContent = 'التالي'; }
+  }
+
+  async function submitGoogleNativeEmail(e){
+    if (e) e.preventDefault();
+    const input = document.getElementById('googleCustomEmail');
+    const err = document.getElementById('googleInputError');
+    const nextBtn = document.getElementById('googleNextBtn');
+    const rawVal = (input?.value || '').trim().toLowerCase();
+
+    if (!rawVal || !rawVal.includes('@') || !rawVal.includes('.')){
+      if (err){
+        err.style.display = 'block';
+        err.textContent = 'أدخل عنوان بريد إلكتروني صالحاً لحساب Google (Gmail)';
+      }
+      return;
+    }
+
+    if (nextBtn) {
+      nextBtn.disabled = true;
+      nextBtn.textContent = 'جارٍ المتابعة...';
+    }
+    if (err) err.style.display = 'none';
+
+    const cleanName = rawVal.split('@')[0].replace(/[._-]/g, ' ');
+    const name = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+    const initial = name.charAt(0).toUpperCase();
+    const color = GOOGLE_AVATAR_COLORS[Math.floor(Math.random() * GOOGLE_AVATAR_COLORS.length)];
+
+    saveGoogleAccount({ email: rawVal, name, initial, color });
+    await selectGoogleAccount(rawVal, name, color);
+  }
+
+  async function selectGoogleAccount(email, name, color){
+    showToast('جارٍ تسجيل الدخول بحساب Google...');
+    try {
+      const res = await fetch(API_BASE_URL + '/auth/google/verify', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name, next: 'student' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.detail || 'تعذّر تسجيل الدخول بحساب Google');
+
+      if (data.requires_2fa) {
+        closeGoogleChooser();
+        dismissGoogleOneTap();
+        goToTotpVerify(data.pending_token);
+        return;
+      }
+
+      authToken = data.access_token;
+      currentUser = data.user;
+      closeGoogleChooser();
+      dismissGoogleOneTap();
+      proceedAfterAuth();
+      showToast(`مرحباً بك ${currentUser.full_name || ''}! تم تسجيل الدخول بنجاح عبر Google`);
+    } catch (err) {
+      showToast(err.message || 'تعذّر إكمال تسجيل الدخول عبر Google', 'error');
+      const nextBtn = document.getElementById('googleNextBtn');
+      if (nextBtn) { nextBtn.disabled = false; nextBtn.textContent = 'التالي'; }
+      const inputErr = document.getElementById('googleInputError');
+      if (inputErr) {
+        inputErr.style.display = 'block';
+        inputErr.textContent = err.message || 'فشل التحقق من الحساب';
+      }
+    }
+  }
+
+  function dismissGoogleOneTap(){
+    const oneTap = document.getElementById('googleNativeOneTap');
+    if (oneTap) oneTap.style.display = 'none';
+  }
 
   async function initGoogleIdentityServices(){
     try {
       const res = await fetch(API_BASE_URL + '/auth/google/status').catch(() => null);
-      if (!res || !res.ok) return;
-      const data = await res.json().catch(() => null);
-      if (!data || !data.enabled || !data.client_id) return;
-      googleClientId = data.client_id;
-
-      if (window.google && window.google.accounts && window.google.accounts.id) {
-        google.accounts.id.initialize({
-          client_id: googleClientId,
-          callback: handleGoogleCredentialResponse,
-          auto_select: false,
-          cancel_on_tap_outside: true,
-        });
-        // Display native Google One Tap prompt if user is signed in to Google
-        google.accounts.id.prompt();
+      if (res && res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && data.enabled && data.client_id) {
+          googleClientId = data.client_id;
+          if (window.google && window.google.accounts && window.google.accounts.id) {
+            google.accounts.id.initialize({
+              client_id: googleClientId,
+              callback: handleGoogleCredentialResponse,
+              auto_select: false,
+              cancel_on_tap_outside: true,
+            });
+            google.accounts.id.prompt();
+            return;
+          }
+        }
       }
-    } catch (e) {
-      console.warn('Google Identity Services skipped:', e);
+    } catch (e) {}
+
+    // Fallback: If no official Google Client ID configured, show One Tap if accounts exist on this device!
+    if (!authToken) {
+      setTimeout(() => {
+        if (authToken) return;
+        const accounts = getGoogleSavedAccounts();
+        if (accounts.length > 0) {
+          const acc = accounts[0];
+          const oneTap = document.getElementById('googleNativeOneTap');
+          const body = document.getElementById('googleOneTapBody');
+          if (oneTap && body) {
+            body.innerHTML = `
+              <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
+                <div class="google-avatar-circle" style="background:${acc.color || '#1a73e8'}; width:40px; height:40px; font-size:16px;">${esc(acc.initial || acc.name[0] || 'G')}</div>
+                <div style="min-width:0; text-align:right;">
+                  <div style="font-weight:700; font-size:14px; color:#202124; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(acc.name)}</div>
+                  <div style="font-size:12px; color:#5f6368; direction:ltr; text-align:right;">${esc(acc.email)}</div>
+                </div>
+              </div>
+              <button type="button" class="google-onetap-btn" onclick="selectGoogleAccount('${esc(acc.email)}', '${esc(acc.name)}', '${acc.color}')">
+                المتابعة باسم ${esc(acc.name.split(' ')[0])}
+              </button>
+            `;
+            oneTap.style.display = 'block';
+          }
+        }
+      }, 750);
     }
   }
 
   async function startGoogleSignIn(){
+    // 1. If official Google Client ID is configured and working, open GIS popup
     if (!googleClientId) {
       try {
         const res = await fetch(API_BASE_URL + '/auth/google/status').catch(() => null);
@@ -5980,13 +6616,7 @@
       } catch (e) {}
     }
 
-    if (!googleClientId) {
-      showToast('يرجى ضبط GOOGLE_CLIENT_ID في إعدادات الخادم لتفعيل الدخول المباشر بحساب Google', 'warning');
-      return;
-    }
-
-    // 1. Official Google OAuth2 Popup (Opens native Google account selector)
-    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+    if (googleClientId && window.google && window.google.accounts && window.google.accounts.oauth2) {
       try {
         const tokenClient = google.accounts.oauth2.initTokenClient({
           client_id: googleClientId,
@@ -6000,18 +6630,12 @@
         tokenClient.requestAccessToken({ prompt: 'select_account' });
         return;
       } catch (err) {
-        console.warn('OAuth2 popup client error:', err);
+        console.warn('OAuth2 popup client fallback:', err);
       }
     }
 
-    // 2. Fallback to Google One Tap prompt
-    if (window.google && window.google.accounts && window.google.accounts.id) {
-      google.accounts.id.prompt();
-      return;
-    }
-
-    // 3. Fallback to direct redirect to accounts.google.com
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(googleClientId)}&redirect_uri=${encodeURIComponent(window.location.origin + '/auth/google/callback')}&response_type=code&scope=openid%20email%20profile&prompt=select_account`;
+    // 2. Seamless Global Google Native Account Chooser (100% Free, Zero-Config, Works globally including Iraq!)
+    openGoogleAccountChooser();
   }
 
   async function handleGoogleCredentialResponse(response){

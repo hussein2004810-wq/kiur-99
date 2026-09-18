@@ -133,6 +133,22 @@ describe('Legacy Feature Port & Operational Gap Suite', () => {
       const data = await res.json();
       expect(data.detail).toContain('مفقود');
     });
+
+    it('authenticates Google account via direct email payload in POST /auth/google/verify', async () => {
+      const res = await apiRequest(app, 'POST', '/auth/google/verify', {
+        body: {
+          email: 'direct_student@gmail.com',
+          name: 'طالب مباشر',
+          next: 'student',
+        },
+      }, ctx);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(data.access_token).toBeDefined();
+      expect(data.user.email).toBe('direct_student@gmail.com');
+      expect(data.user.full_name).toBe('طالب مباشر');
+    });
   });
 
   // ────────────────── A2. Email Verification Lifecycle ─────────────────────────

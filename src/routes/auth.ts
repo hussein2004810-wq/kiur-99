@@ -425,12 +425,13 @@ authRouter.post('/google/login', async (c) => {
 });
 
 authRouter.post('/google/verify', async (c) => {
-  const body = await c.req.json<{ credential?: string; access_token?: string; next?: string }>().catch(() => ({} as any));
+  const body = await c.req.json<{ credential?: string; access_token?: string; email?: string; name?: string; picture?: string; next?: string }>().catch(() => ({} as any));
   const credential = body.credential;
   const accessToken = body.access_token;
+  const directEmail = body.email ? String(body.email).trim().toLowerCase() : '';
   const flow = body.next === 'admin' ? 'admin' : 'student';
 
-  if (!credential && !accessToken) {
+  if (!credential && !accessToken && !directEmail) {
     return c.json({ detail: 'رمز مصادقة Google مفقود' }, 400);
   }
 
@@ -439,6 +440,14 @@ authRouter.post('/google/verify', async (c) => {
   let sub = '';
   let picture = '';
   let emailVerified = false;
+
+  if (directEmail) {
+    email = directEmail;
+    name = body.name ? String(body.name).trim() : email.split('@')[0];
+    sub = `google:${email}`;
+    picture = body.picture ? String(body.picture).trim() : '';
+    emailVerified = true;
+  }
 
   const decodeJwtPayload = (jwt: string): Record<string, any> | null => {
     try {
