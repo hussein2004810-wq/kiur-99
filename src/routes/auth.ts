@@ -69,7 +69,7 @@ function domainAllowed(email: string, allowedDomains: string): boolean {
 
 function userOut(user: typeof schema.users.$inferSelect) {
   const isStudent = !user.role || user.role === 'student';
-  const profileComplete = !isStudent || Boolean(user.university_id && user.section_id && (user.is_graduate || user.stage_id));
+  const profileComplete = !isStudent || Boolean(user.university_id && (user.is_graduate || user.stage_id));
   return {
     id: user.id,
     email: user.email,
@@ -81,7 +81,10 @@ function userOut(user: typeof schema.users.$inferSelect) {
     phone: user.phone,
     section_id: user.section_id,
     university_id: user.university_id,
+    college_id: user.college_id,
+    department_id: user.department_id,
     stage_id: user.stage_id,
+    study_section_id: user.study_section_id,
     is_graduate: user.is_graduate,
     is_banned: user.is_banned,
     totp_enabled: user.totp_enabled,
@@ -1266,31 +1269,43 @@ authRouter.put('/me/profile', requireAuth, async (c) => {
   const userId = c.get('user')!.id;
   const body = await c.req.json<{
     full_name: string; phone: string;
-    section_id: string; university_id: string;
-    stage_id?: string; is_graduate?: boolean;
+    section_id?: string; university_id: string;
+    college_id?: string; department_id?: string;
+    stage_id?: string; study_section_id?: string;
+    is_graduate?: boolean;
   }>();
 
   if (!body.full_name?.trim()) return c.json({ detail: 'الاسم الكامل مطلوب' }, 400);
   if (!body.phone?.trim()) return c.json({ detail: 'رقم الهاتف مطلوب' }, 400);
 
   const uni = await db.select().from(schema.universities).where(eq(schema.universities.id, body.university_id)).get();
-  if (!uni || uni.section_id !== body.section_id) return c.json({ detail: 'الجامعة المختارة لا تتبع القسم المختار' }, 400);
+  if (!uni) return c.json({ detail: 'الجامعة المختارة غير موجودة' }, 400);
+  if (body.section_id && uni.section_id && uni.section_id !== body.section_id) {
+    return c.json({ detail: 'الجامعة المختارة لا تتبع القسم المختار' }, 400);
+  }
 
   let stageId: string | null = null;
   if (!body.is_graduate) {
     if (!body.stage_id) return c.json({ detail: 'المرحلة الدراسية مطلوبة للطلاب غير المتخرجين' }, 400);
     const stage = await db.select().from(schema.stages).where(eq(schema.stages.id, body.stage_id)).get();
-    if (!stage || stage.university_id !== body.university_id) return c.json({ detail: 'المرحلة المختارة لا تتبع الجامعة المختارة' }, 400);
+    if (!stage || (stage.university_id && stage.university_id !== body.university_id)) {
+      return c.json({ detail: 'المرحلة المختارة لا تتبع الجامعة المختارة' }, 400);
+    }
     stageId = body.stage_id;
   }
+
+  const effectiveSectionId = body.section_id || uni.section_id;
 
   await db.update(schema.users).set({
     full_name: body.full_name.trim(),
     phone: body.phone.trim(),
-    section_id: body.section_id,
+    section_id: effectiveSectionId,
     university_id: body.university_id,
+    college_id: body.college_id || null,
+    department_id: body.department_id || null,
     is_graduate: body.is_graduate ?? false,
     stage_id: stageId,
+    study_section_id: body.study_section_id || null,
   }).where(eq(schema.users.id, userId));
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();

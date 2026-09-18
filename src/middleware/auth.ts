@@ -58,7 +58,10 @@ export async function requireAuth(c: Context<AppEnv>, next: Next) {
     role: user.role as CurrentUser['role'],
     is_banned: user.is_banned ?? false,
     university_id: user.university_id,
+    college_id: user.college_id,
+    department_id: user.department_id,
     stage_id: user.stage_id,
+    study_section_id: user.study_section_id,
     section_id: user.section_id,
   };
 

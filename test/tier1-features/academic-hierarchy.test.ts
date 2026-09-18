@@ -349,4 +349,106 @@ describe('Tier 1: Feature - Iraqi Medical Group Academic Hierarchy & Admin Tools
     expect(pDupData.detail).toBe('البرنامج مضاف مسبقاً لهذه الجامعة');
     expect(pDupData.existing_id).toBe(pData.id);
   });
+
+  it('should support academic departments (أقسام طبية) and study sections (شعب دراسية) in hierarchy and tree', async () => {
+    // 1. Create a college for testing departments (الكلية التقنية الطبية)
+    const cRes = await apiRequest(app, 'POST', '/api/admin/academic/colleges', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { name: 'الكلية التقنية الطبية', code: 'TMC', default_stages: 4 },
+    }, ctx);
+    expect(cRes.status).toBe(201);
+    const college = await cRes.json();
+
+    // 2. Link college to university
+    const pRes = await apiRequest(app, 'POST', '/api/admin/academic/programs', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { university_id: ctx.fixtures.universityId, college_id: college.id, system_type: 'traditional', auto_create_stages: false },
+    }, ctx);
+    expect(pRes.status).toBe(201);
+    const program = await pRes.json();
+
+    // 3. Create departments under the college
+    const dRes1 = await apiRequest(app, 'POST', '/api/admin/academic/departments', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { college_id: college.id, name: 'قسم تقنيات التخدير والعناية المركزة', code: 'ANES' },
+    }, ctx);
+    expect(dRes1.status).toBe(201);
+    const dept1 = await dRes1.json();
+    expect(dept1.name).toBe('قسم تقنيات التخدير والعناية المركزة');
+
+    const dRes2 = await apiRequest(app, 'POST', '/api/admin/academic/departments', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { college_id: college.id, name: 'قسم تقنيات الأشعة والسونار', code: 'RAD' },
+    }, ctx);
+    expect(dRes2.status).toBe(201);
+    const dept2 = await dRes2.json();
+
+    // 4. List departments by college
+    const dListRes = await apiRequest(app, 'GET', `/api/admin/academic/departments?college_id=${college.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(dListRes.status).toBe(200);
+    const deptList = await dListRes.json();
+    expect(deptList.length).toBe(2);
+
+    // 5. Create a stage linked to department 1
+    const stgRes = await apiRequest(app, 'POST', '/api/admin/academic/stages', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'المرحلة الأولى - تخدير',
+        stage_number: 1,
+        program_id: program.id,
+        university_id: ctx.fixtures.universityId,
+        college_id: college.id,
+        department_id: dept1.id,
+      },
+    }, ctx);
+    expect(stgRes.status).toBe(201);
+    const stage1 = await stgRes.json();
+    expect(stage1.department_id).toBe(dept1.id);
+
+    // 6. Create study sections (شعب دراسية) inside stage 1
+    const secRes1 = await apiRequest(app, 'POST', '/api/admin/academic/study-sections', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { stage_id: stage1.id, name: 'شعبة أ (صباحي)' },
+    }, ctx);
+    expect(secRes1.status).toBe(201);
+    const sec1 = await secRes1.json();
+    expect(sec1.name).toBe('شعبة أ (صباحي)');
+
+    const secRes2 = await apiRequest(app, 'POST', '/api/admin/academic/study-sections', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { stage_id: stage1.id, name: 'شعبة ب (مسائي)' },
+    }, ctx);
+    expect(secRes2.status).toBe(201);
+
+    // 7. List study sections by stage
+    const secListRes = await apiRequest(app, 'GET', `/api/admin/academic/study-sections?stage_id=${stage1.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(secListRes.status).toBe(200);
+    const sections = await secListRes.json();
+    expect(sections.length).toBe(2);
+
+    // 8. Verify academic tree returns departments, stages, and sections
+    const treeRes = await apiRequest(app, 'GET', '/api/admin/academic/tree', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(treeRes.status).toBe(200);
+    const treeData = await treeRes.json();
+    expect(treeData.total_departments).toBeGreaterThanOrEqual(2);
+    expect(treeData.total_study_sections).toBeGreaterThanOrEqual(2);
+
+    const targetUni = treeData.universities.find((u: any) => u.id === ctx.fixtures.universityId);
+    expect(targetUni).toBeDefined();
+    const targetProg = targetUni.programs.find((p: any) => p.college_id === college.id);
+    expect(targetProg).toBeDefined();
+    expect(targetProg.departments.length).toBe(2);
+
+    const targetDept = targetProg.departments.find((d: any) => d.id === dept1.id);
+    expect(targetDept).toBeDefined();
+    expect(targetDept.stages.length).toBe(1);
+    expect(targetDept.stages[0].sections.length).toBe(2);
+    expect(targetDept.stages[0].sections[0].name).toBe('شعبة أ (صباحي)');
+  });
 });

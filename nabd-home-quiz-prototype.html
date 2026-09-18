@@ -1823,34 +1823,64 @@
     --kiur-danger: var(--danger);
   }
 
+  /* Containment on grid to isolate 3D layout bounds */
+  .pearl-flip-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    contain: layout;
+    isolation: isolate;
+  }
+  .pearl-flip-grid.wide-grid {
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  }
+
   .clinicalFlipCard {
     position: relative;
     height: 420px;
-    perspective: 1200px;
     border-radius: 22px;
     background: transparent;
     cursor: pointer;
     outline: 0;
     text-align: start;
     touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    /* Hardware acceleration & layout containment eliminates vibration ("زلزال") */
+    contain: layout paint;
+    isolation: isolate;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    perspective: 1200px;
+    -webkit-perspective: 1200px;
+    overflow: hidden;
+    transition: transform .28s cubic-bezier(.2,.72,.2,1), box-shadow .28s ease;
   }
   .wide-grid .clinicalFlipCard {
     height: 440px;
+  }
+  @media(hover:hover) and (pointer:fine) {
+    .clinicalFlipCard:hover {
+      transform: translateY(-4px) translateZ(0);
+      box-shadow: 0 16px 36px rgba(0,0,0,.25);
+    }
   }
   .clinicalFlipCardInner {
     position: relative;
     width: 100%;
     height: 100%;
+    border-radius: 22px;
     transform-style: preserve-3d;
-    transition: transform .72s cubic-bezier(.2,.72,.2,1);
+    -webkit-transform-style: preserve-3d;
+    transition: transform .65s cubic-bezier(.2,.72,.2,1);
+    will-change: transform;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
   }
   .clinicalFlipCard.isFlipped .clinicalFlipCardInner {
-    transform: rotateY(180deg);
-  }
-  @media(hover:hover) and (pointer:fine) {
-    .clinicalFlipCard:hover .clinicalFlipCardInner {
-      transform: rotateY(180deg);
-    }
+    transform: rotateY(180deg) translateZ(0);
+    -webkit-transform: rotateY(180deg) translateZ(0);
   }
   .clinicalFlipCard:focus-visible {
     outline: 3px solid color-mix(in srgb, var(--kiur-primary, #4386ee) 40%, transparent);
@@ -1865,29 +1895,97 @@
     flex-direction: column;
     justify-content: space-between;
     padding: 22px;
-    overflow: hidden;
     border: 1px solid var(--kiur-line, #283958);
     border-radius: 22px;
-    box-shadow: 0 16px 42px rgba(12,31,75,.16);
+    box-shadow: 0 12px 32px rgba(12,31,75,.16);
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+    will-change: transform;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
     transition: border-color .25s ease, box-shadow .25s ease;
+    box-sizing: border-box;
   }
   .clinicalFlipCard:hover .clinicalFlipCardFace {
     border-color: color-mix(in srgb, var(--kiur-primary, #69a6ff) 45%, var(--kiur-line, #283958));
-    box-shadow: 0 20px 48px rgba(12,31,75,.22);
   }
   .clinicalFlipCardFront {
     background: linear-gradient(145deg, var(--kiur-surface, #0d1930) 45%, var(--kiur-primary-soft, #172c50));
     color: var(--kiur-text, #f6f8ff);
+    overflow: hidden;
   }
   .clinicalFlipCardBack {
-    transform: rotateY(180deg);
+    transform: rotateY(180deg) translateZ(0);
+    -webkit-transform: rotateY(180deg) translateZ(0);
     border-color: color-mix(in srgb, var(--kiur-primary, #69a6ff) 48%, var(--kiur-line, #283958));
     background: linear-gradient(145deg, var(--kiur-surface-soft, #13223d), color-mix(in srgb, var(--kiur-primary-soft, #172c50) 76%, var(--kiur-surface, #0d1930)));
     color: var(--kiur-text, #f6f8ff);
     overflow-y: auto;
+    overflow-x: hidden;
     scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+    contain: content;
+  }
+
+  /* Glimpse Search Controls (Luxury Glass Pill Design) */
+  .glimpse-search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 260px;
+    display: flex;
+    align-items: center;
+  }
+  .glimpse-search-input {
+    width: 100%;
+    padding: 12px 42px 12px 42px;
+    border-radius: 999px;
+    border: 1.5px solid var(--glass-border);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    font-size: .84rem;
+    font-family: inherit;
+    color: var(--ink);
+    outline: none;
+    transition: all .25s ease;
+    box-shadow: 0 4px 18px rgba(0,0,0,.04);
+  }
+  .glimpse-search-input:focus {
+    border-color: var(--accent);
+    background: var(--glass-bg-hover, var(--glass-bg-strong));
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent), 0 8px 24px rgba(0,0,0,.09);
+  }
+  .glimpse-search-input::placeholder {
+    color: var(--ink-faint);
+  }
+  .glimpse-search-icon {
+    position: absolute;
+    inset-inline-start: 14px;
+    width: 18px;
+    height: 18px;
+    color: var(--accent);
+    pointer-events: none;
+    transition: transform .2s ease;
+  }
+  .glimpse-search-clear {
+    position: absolute;
+    inset-inline-end: 12px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: var(--track);
+    border: none;
+    color: var(--ink-faint);
+    cursor: pointer;
+    transition: all .2s ease;
+    padding: 0;
+  }
+  .glimpse-search-clear:hover {
+    background: var(--accent);
+    color: #fff;
   }
   .clinicalFlipVisual {
     position: relative;
@@ -2988,21 +3086,24 @@
     </div>
 
     <!-- Search and Display Mode Controls -->
-    <div style="display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:20px;">
-      <div style="position:relative; flex:1; min-width:260px;">
-        <input class="search-input" id="glimpseSearchInput" placeholder="ابحث في اللمحات أو التوجيه السريري أو المراجع..." oninput="filterGlimpsesUI()" style="width:100%; padding-inline-start:38px; border-radius:14px;" />
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; inset-inline-start:12px; top:50%; transform:translateY(-50%); width:16px; height:16px; opacity:.5; pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <div style="display:flex; gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:24px;">
+      <div class="glimpse-search-wrap">
+        <svg class="glimpse-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="glimpse-search-input" id="glimpseSearchInput" placeholder="ابحث في اللمحات أو التوجيه السريري أو المراجع..." oninput="onGlimpseSearchInput(this)" />
+        <button type="button" class="glimpse-search-clear" id="glimpseSearchClearBtn" onclick="clearGlimpseSearch()" title="مسح البحث" aria-label="مسح البحث">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <span id="glimpseCountBadge" class="badge badge-idle" style="font-size:.78rem; padding:6px 12px;"></span>
-        <div class="glimpse-view-modes" style="display:inline-flex; border-radius:12px; background:var(--glass-bg-strong); border:1px solid var(--glass-border); padding:3px; gap:2px;">
-          <button type="button" id="glimpseGridModeBtn" class="btn btn-ghost is-active" onclick="setGlimpseGridMode('grid')" title="عرض شبكي قياسي" style="padding:6px 12px; font-size:.76rem; border:0; border-radius:9px; gap:6px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span id="glimpseCountBadge" class="badge badge-active" style="font-size:.78rem; padding:8px 14px; border-radius:999px;"></span>
+        <div class="glimpse-view-modes" style="display:inline-flex; border-radius:999px; background:var(--glass-bg-strong); border:1.5px solid var(--glass-border); padding:4px; gap:4px;">
+          <button type="button" id="glimpseGridModeBtn" class="btn btn-ghost is-active" onclick="setGlimpseGridMode('grid')" title="عرض شبكي قياسي" style="padding:6px 14px; font-size:.76rem; border:0; border-radius:999px; gap:6px;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:14px;height:14px;"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-            <span>شبكة متناسقة</span>
+            <span>شبكة</span>
           </button>
-          <button type="button" id="glimpseWideModeBtn" class="btn btn-ghost" onclick="setGlimpseGridMode('wide')" title="عرض بطاقات عريضة وموسعة" style="padding:6px 12px; font-size:.76rem; border:0; border-radius:9px; gap:6px;">
+          <button type="button" id="glimpseWideModeBtn" class="btn btn-ghost" onclick="setGlimpseGridMode('wide')" title="عرض بطاقات عريضة وموسعة" style="padding:6px 14px; font-size:.76rem; border:0; border-radius:999px; gap:6px;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:14px;height:14px;"><rect width="18" height="7" x="3" y="3" rx="1"/><rect width="18" height="7" x="3" y="14" rx="1"/></svg>
-            <span>عرض عريض</span>
+            <span>عريض</span>
           </button>
         </div>
       </div>
@@ -3345,12 +3446,14 @@
         <div class="form-field"><input id="cpPhone" type="tel" placeholder="رقم الهاتف" data-i18n-placeholder="phone" /></div>
         <div class="form-field"><select id="cpSection" onchange="onCpSectionChange()"><option value="" data-i18n="selectCollege">اختر التخصص/الكلية</option></select></div>
         <div class="form-field"><select id="cpUniversity" onchange="onCpUniversityChange()" disabled><option value="" data-i18n="selectUniversity">اختر الجامعة</option></select></div>
+        <div class="form-field" id="cpDepartmentField" style="display:none;"><select id="cpDepartment" onchange="onCpDepartmentChange()"><option value="">اختر القسم الطبي</option></select></div>
         <div class="form-field"><select id="cpGraduate" onchange="onCpGraduateChange()">
           <option value="" data-i18n="studentOrGraduate">هل أنت طالب أم متخرج؟</option>
           <option value="0" data-i18n="stillStudent">ما زلت طالباً</option>
           <option value="1" data-i18n="graduated">متخرج</option>
         </select></div>
-        <div class="form-field" id="cpStageField" style="display:none;"><select id="cpStage"><option value="" data-i18n="selectStage">اختر المرحلة</option></select></div>
+        <div class="form-field" id="cpStageField" style="display:none;"><select id="cpStage" onchange="onCpStageChange()"><option value="" data-i18n="selectStage">اختر المرحلة</option></select></div>
+        <div class="form-field" id="cpStudySectionField" style="display:none;"><select id="cpStudySection"><option value="">اختر الشعبة الدراسية (مثال: شعبة أ، شعبة ب)</option></select></div>
         <div id="cpMsg" style="display:none; font-size:.78rem; margin-bottom:10px; text-align:center;"></div>
         <button class="btn" style="width:100%; justify-content:center; padding:12px;" onclick="submitCompleteProfile()" data-i18n="saveAndContinue">حفظ ومتابعة</button>
       </div>
@@ -3576,12 +3679,14 @@
         <div class="glass" id="academicPathForm" style="display:none; padding:16px 18px;">
           <div class="form-field"><select id="acSection" onchange="onAcSectionChange()"><option value="" data-i18n="selectSection">اختر القسم</option></select></div>
           <div class="form-field"><select id="acUniversity" onchange="onAcUniversityChange()" disabled><option value="" data-i18n="selectUniversity">اختر الجامعة</option></select></div>
+          <div class="form-field" id="acDepartmentField" style="display:none;"><select id="acDepartment" onchange="onAcDepartmentChange()"><option value="">اختر القسم الطبي</option></select></div>
           <div class="form-field"><select id="acGraduate" onchange="onAcGraduateChange()">
             <option value="" data-i18n="studentOrGraduate">هل أنت طالب أم متخرج؟</option>
             <option value="0" data-i18n="stillStudent">ما زلت طالباً</option>
             <option value="1" data-i18n="graduated">متخرج</option>
           </select></div>
-          <div class="form-field" id="acStageField" style="display:none;"><select id="acStage"><option value="" data-i18n="selectStage">اختر المرحلة</option></select></div>
+          <div class="form-field" id="acStageField" style="display:none;"><select id="acStage" onchange="onAcStageChange()"><option value="" data-i18n="selectStage">اختر المرحلة</option></select></div>
+          <div class="form-field" id="acStudySectionField" style="display:none;"><select id="acStudySection"><option value="">اختر الشعبة الدراسية (مثال: شعبة أ)</option></select></div>
           <button class="btn" style="width:100%; justify-content:center; padding:11px;" onclick="saveAcademicPath()" data-i18n="save">حفظ</button>
           <div id="acPathMsg" style="font-size:.78rem; margin-top:8px; text-align:center; display:none;"></div>
         </div>
@@ -5720,13 +5825,22 @@
     const u = currentUser;
     if (!u) return;
     const summary = document.getElementById('acPathSummary');
-    if (!u.section_id || !u.university_id){ summary.textContent = 'لم تُحدَّد بعد'; return; }
+    if (!u.section_id && !u.university_id){ summary.textContent = 'لم تُحدَّد بعد'; return; }
     try {
       const tree = await loadCatalogTreeForProfile();
-      const section = tree.find(s => s.id === u.section_id);
-      const uni = section?.universities.find(x => x.id === u.university_id);
-      const stage = uni?.stages.find(x => x.id === u.stage_id);
-      const parts = [section?.name, uni?.name, u.is_graduate ? 'متخرج' : stage?.name].filter(Boolean);
+      const section = tree.find(s => s.id === (u.college_id || u.section_id));
+      const uni = section?.universities?.find(x => x.id === u.university_id);
+      const dept = (uni?.departments || section?.departments || []).find(d => d.id === u.department_id);
+      const stage = uni?.stages?.find(x => x.id === u.stage_id);
+      const studySec = stage?.sections?.find(sec => sec.id === u.study_section_id);
+
+      const parts = [
+        uni?.name,
+        section?.name,
+        dept ? `قسم ${dept.name}` : null,
+        u.is_graduate ? 'متخرج' : stage?.name,
+        !u.is_graduate && studySec ? `شعبة ${studySec.name}` : null
+      ].filter(Boolean);
       summary.textContent = parts.join(' · ') || 'لم تُحدَّد بعد';
     } catch (e) { summary.textContent = 'لم تُحدَّد بعد'; }
   }
@@ -5736,36 +5850,95 @@
     if (form.style.display === 'block'){ form.style.display = 'none'; return; }
     const tree = await loadCatalogTreeForProfile();
     const u = currentUser;
+    const selectedSecId = u.college_id || u.section_id;
     document.getElementById('acSection').innerHTML = `<option value="">${t('selectSection')}</option>` +
-      tree.map(s => `<option value="${s.id}" ${s.id === u.section_id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
-    onAcSectionChange(u.university_id, u.stage_id);
+      tree.map(s => `<option value="${s.id}" ${s.id === selectedSecId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+    onAcSectionChange(u.university_id, u.department_id, u.stage_id, u.study_section_id);
     document.getElementById('acGraduate').value = u.is_graduate === true ? '1' : (u.is_graduate === false ? '0' : '');
     onAcGraduateChange();
     document.getElementById('acPathMsg').style.display = 'none';
     form.style.display = 'block';
   }
 
-  function onAcSectionChange(preselectUniId, preselectStageId){
+  function onAcSectionChange(preselectUniId, preselectDeptId, preselectStageId, preselectStudySecId){
     const tree = catalogTreeCache || [];
     const section = tree.find(s => s.id === document.getElementById('acSection').value);
     const uniSel = document.getElementById('acUniversity');
     uniSel.disabled = !section;
     uniSel.innerHTML = `<option value="">${t('selectUniversity')}</option>` +
-      (section ? section.universities.map(u => `<option value="${u.id}" ${u.id === preselectUniId ? 'selected' : ''}>${esc(u.name)}</option>`).join('') : '');
-    onAcUniversityChange(preselectStageId);
+      (section ? (section.universities || []).map(u => `<option value="${u.id}" ${u.id === preselectUniId ? 'selected' : ''}>${esc(u.name)}</option>`).join('') : '');
+    onAcUniversityChange(preselectDeptId, preselectStageId, preselectStudySecId);
   }
-  function onAcUniversityChange(preselectStageId){
+
+  function onAcUniversityChange(preselectDeptId, preselectStageId, preselectStudySecId){
     const tree = catalogTreeCache || [];
     const section = tree.find(s => s.id === document.getElementById('acSection').value);
-    const uni = section?.universities.find(u => u.id === document.getElementById('acUniversity').value);
+    const uni = section?.universities?.find(u => u.id === document.getElementById('acUniversity').value);
+    
+    // Departments
+    const depts = uni?.departments || section?.departments || [];
+    const deptField = document.getElementById('acDepartmentField');
+    const deptSel = document.getElementById('acDepartment');
+    if (depts.length > 0) {
+      deptField.style.display = 'block';
+      deptSel.innerHTML = `<option value="">اختر القسم الطبي</option>` +
+        depts.map(d => `<option value="${d.id}" ${d.id === preselectDeptId ? 'selected' : ''}>🩺 ${esc(d.name)}</option>`).join('');
+    } else {
+      deptField.style.display = 'none';
+      deptSel.innerHTML = `<option value="">اختر القسم الطبي</option>`;
+    }
+
+    onAcDepartmentChange(preselectStageId, preselectStudySecId);
+  }
+
+  function onAcDepartmentChange(preselectStageId, preselectStudySecId){
+    const tree = catalogTreeCache || [];
+    const section = tree.find(s => s.id === document.getElementById('acSection').value);
+    const uni = section?.universities?.find(u => u.id === document.getElementById('acUniversity').value);
+    const chosenDeptId = document.getElementById('acDepartment')?.value;
     const stageSel = document.getElementById('acStage');
     stageSel.disabled = !uni;
+
+    let availableStages = uni?.stages || [];
+    if (chosenDeptId) {
+      availableStages = availableStages.filter(st => st.department_id === chosenDeptId);
+    }
+
     stageSel.innerHTML = `<option value="">${t('selectStage')}</option>` +
-      (uni ? uni.stages.map(st => `<option value="${st.id}" ${st.id === preselectStageId ? 'selected' : ''}>${esc(st.name)}</option>`).join('') : '');
+      availableStages.map(st => `<option value="${st.id}" ${st.id === preselectStageId ? 'selected' : ''}>${esc(st.name)}</option>`).join('');
+
+    onAcStageChange(preselectStudySecId);
   }
+
+  function onAcStageChange(preselectStudySecId){
+    const tree = catalogTreeCache || [];
+    const section = tree.find(s => s.id === document.getElementById('acSection').value);
+    const uni = section?.universities?.find(u => u.id === document.getElementById('acUniversity').value);
+    const chosenStageId = document.getElementById('acStage').value;
+    const stage = uni?.stages?.find(st => st.id === chosenStageId);
+
+    const studySecField = document.getElementById('acStudySectionField');
+    const studySecSel = document.getElementById('acStudySection');
+    const sections = stage?.sections || [];
+
+    if (sections.length > 0) {
+      studySecField.style.display = 'block';
+      studySecSel.innerHTML = `<option value="">اختر الشعبة الدراسية (مثال: شعبة أ)</option>` +
+        sections.map(sec => `<option value="${sec.id}" ${sec.id === preselectStudySecId ? 'selected' : ''}>👥 ${esc(sec.name)}</option>`).join('');
+    } else {
+      studySecField.style.display = 'none';
+      studySecSel.innerHTML = `<option value="">اختر الشعبة الدراسية</option>`;
+    }
+  }
+
   function onAcGraduateChange(){
     const isGraduate = document.getElementById('acGraduate').value === '1';
     document.getElementById('acStageField').style.display = isGraduate ? 'none' : 'block';
+    if (isGraduate) {
+      document.getElementById('acStudySectionField').style.display = 'none';
+    } else {
+      onAcStageChange();
+    }
   }
 
   async function saveAcademicPath(){
@@ -5773,11 +5946,14 @@
     msg.style.display = 'block';
     const sectionId = document.getElementById('acSection').value;
     const universityId = document.getElementById('acUniversity').value;
+    const departmentId = document.getElementById('acDepartment')?.value || null;
     const graduateVal = document.getElementById('acGraduate').value;
     const stageId = document.getElementById('acStage').value;
+    const studySectionId = document.getElementById('acStudySection')?.value || null;
+
     if (!sectionId || !universityId || graduateVal === ''){
       msg.style.color = 'var(--danger)';
-      msg.textContent = 'الرجاء تعبئة جميع الحقول';
+      msg.textContent = 'الرجاء تعبئة جميع الحقول المطلوبة';
       return;
     }
     const isGraduate = graduateVal === '1';
@@ -5786,15 +5962,32 @@
       msg.textContent = 'الرجاء اختيار المرحلة الدراسية';
       return;
     }
+
+    const tree = catalogTreeCache || [];
+    const section = tree.find(s => s.id === sectionId);
+    const uni = section?.universities?.find(u => u.id === universityId);
+    const stage = uni?.stages?.find(st => st.id === stageId);
+    if (!isGraduate && stage?.sections?.length > 0 && !studySectionId) {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = 'الرجاء اختيار الشعبة الدراسية التابع لها';
+      return;
+    }
+
     msg.style.color = 'var(--ink-faint)';
     msg.textContent = 'جارٍ الحفظ...';
     try {
       const updated = await apiFetch('/auth/me/profile', {
         method: 'PUT',
         body: JSON.stringify({
-          full_name: currentUser.full_name, phone: currentUser.phone || '',
-          section_id: sectionId, university_id: universityId,
-          is_graduate: isGraduate, stage_id: isGraduate ? null : stageId,
+          full_name: currentUser.full_name,
+          phone: currentUser.phone || '',
+          section_id: sectionId,
+          university_id: universityId,
+          college_id: uni?.college_id || sectionId || null,
+          department_id: departmentId || null,
+          is_graduate: isGraduate,
+          stage_id: isGraduate ? null : stageId,
+          study_section_id: isGraduate ? null : (studySectionId || null)
         }),
       });
       currentUser = updated;
@@ -6852,15 +7045,19 @@
     showView('view-complete-profile');
     document.body.classList.add('auth-mode');
     document.getElementById('cpFullName').value = currentUser?.full_name || '';
-    document.getElementById('cpPhone').value = '';
+    document.getElementById('cpPhone').value = currentUser?.phone || '';
     document.getElementById('cpGraduate').value = '';
+    document.getElementById('cpDepartmentField').style.display = 'none';
     document.getElementById('cpStageField').style.display = 'none';
+    document.getElementById('cpStudySectionField').style.display = 'none';
     const tree = await loadCatalogTreeForProfile();
     document.getElementById('cpSection').innerHTML = `<option value="">${t('selectCollege')}</option>` +
       tree.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
     document.getElementById('cpUniversity').innerHTML = `<option value="">${t('selectUniversity')}</option>`;
     document.getElementById('cpUniversity').disabled = true;
+    document.getElementById('cpDepartment').innerHTML = `<option value="">اختر القسم الطبي</option>`;
     document.getElementById('cpStage').innerHTML = `<option value="">${t('selectStage')}</option>`;
+    document.getElementById('cpStudySection').innerHTML = `<option value="">اختر الشعبة الدراسية</option>`;
   }
 
   function onCpSectionChange(){
@@ -6869,21 +7066,78 @@
     const uniSel = document.getElementById('cpUniversity');
     uniSel.disabled = !section;
     uniSel.innerHTML = `<option value="">${t('selectUniversity')}</option>` +
-      (section ? section.universities.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('') : '');
+      (section ? (section.universities || []).map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('') : '');
     onCpUniversityChange();
   }
 
   function onCpUniversityChange(){
     const tree = catalogTreeCache || [];
     const section = tree.find(s => s.id === document.getElementById('cpSection').value);
-    const uni = section?.universities.find(u => u.id === document.getElementById('cpUniversity').value);
-    document.getElementById('cpStage').innerHTML = `<option value="">${t('selectStage')}</option>` +
-      (uni ? uni.stages.map(st => `<option value="${st.id}">${esc(st.name)}</option>`).join('') : '');
+    const uni = section?.universities?.find(u => u.id === document.getElementById('cpUniversity').value);
+    
+    // Departments
+    const depts = uni?.departments || section?.departments || [];
+    const deptField = document.getElementById('cpDepartmentField');
+    const deptSel = document.getElementById('cpDepartment');
+    if (depts.length > 0) {
+      deptField.style.display = 'block';
+      deptSel.innerHTML = `<option value="">اختر القسم الطبي</option>` +
+        depts.map(d => `<option value="${d.id}">🩺 ${esc(d.name)}</option>`).join('');
+    } else {
+      deptField.style.display = 'none';
+      deptSel.innerHTML = `<option value="">اختر القسم الطبي</option>`;
+    }
+
+    onCpDepartmentChange();
+  }
+
+  function onCpDepartmentChange(){
+    const tree = catalogTreeCache || [];
+    const section = tree.find(s => s.id === document.getElementById('cpSection').value);
+    const uni = section?.universities?.find(u => u.id === document.getElementById('cpUniversity').value);
+    const chosenDeptId = document.getElementById('cpDepartment')?.value;
+    const stageSel = document.getElementById('cpStage');
+
+    let availableStages = uni?.stages || [];
+    if (chosenDeptId) {
+      availableStages = availableStages.filter(st => st.department_id === chosenDeptId);
+    }
+
+    stageSel.innerHTML = `<option value="">${t('selectStage')}</option>` +
+      availableStages.map(st => `<option value="${st.id}">${esc(st.name)}</option>`).join('');
+
+    onCpStageChange();
+  }
+
+  function onCpStageChange(){
+    const tree = catalogTreeCache || [];
+    const section = tree.find(s => s.id === document.getElementById('cpSection').value);
+    const uni = section?.universities?.find(u => u.id === document.getElementById('cpUniversity').value);
+    const chosenStageId = document.getElementById('cpStage').value;
+    const stage = uni?.stages?.find(st => st.id === chosenStageId);
+
+    const studySecField = document.getElementById('cpStudySectionField');
+    const studySecSel = document.getElementById('cpStudySection');
+    const sections = stage?.sections || [];
+
+    if (sections.length > 0) {
+      studySecField.style.display = 'block';
+      studySecSel.innerHTML = `<option value="">اختر الشعبة الدراسية (مثال: شعبة أ، شعبة ب)</option>` +
+        sections.map(sec => `<option value="${sec.id}">👥 ${esc(sec.name)}</option>`).join('');
+    } else {
+      studySecField.style.display = 'none';
+      studySecSel.innerHTML = `<option value="">اختر الشعبة الدراسية</option>`;
+    }
   }
 
   function onCpGraduateChange(){
     const isGraduate = document.getElementById('cpGraduate').value === '1';
     document.getElementById('cpStageField').style.display = isGraduate ? 'none' : 'block';
+    if (isGraduate) {
+      document.getElementById('cpStudySectionField').style.display = 'none';
+    } else {
+      onCpStageChange();
+    }
   }
 
   async function submitCompleteProfile(){
@@ -6893,11 +7147,14 @@
     const phone = document.getElementById('cpPhone').value.trim();
     const sectionId = document.getElementById('cpSection').value;
     const universityId = document.getElementById('cpUniversity').value;
+    const departmentId = document.getElementById('cpDepartment')?.value || null;
     const graduateVal = document.getElementById('cpGraduate').value;
     const stageId = document.getElementById('cpStage').value;
+    const studySectionId = document.getElementById('cpStudySection')?.value || null;
+
     if (!fullName || !phone || !sectionId || !universityId || graduateVal === ''){
       msg.style.color = 'var(--danger)';
-      msg.textContent = 'الرجاء تعبئة جميع الحقول';
+      msg.textContent = 'الرجاء تعبئة جميع الحقول المطلوبة';
       return;
     }
     const isGraduate = graduateVal === '1';
@@ -6906,14 +7163,32 @@
       msg.textContent = 'الرجاء اختيار المرحلة الدراسية';
       return;
     }
+
+    const tree = catalogTreeCache || [];
+    const section = tree.find(s => s.id === sectionId);
+    const uni = section?.universities?.find(u => u.id === universityId);
+    const stage = uni?.stages?.find(st => st.id === stageId);
+    if (!isGraduate && stage?.sections?.length > 0 && !studySectionId) {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = 'الرجاء اختيار الشعبة الدراسية التابع لها';
+      return;
+    }
+
     msg.style.color = 'var(--ink-faint)';
     msg.textContent = 'جارٍ الحفظ...';
     try {
       const updated = await apiFetch('/auth/me/profile', {
         method: 'PUT',
         body: JSON.stringify({
-          full_name: fullName, phone, section_id: sectionId, university_id: universityId,
-          is_graduate: isGraduate, stage_id: isGraduate ? null : stageId,
+          full_name: fullName,
+          phone,
+          section_id: sectionId,
+          university_id: universityId,
+          college_id: uni?.college_id || sectionId || null,
+          department_id: departmentId || null,
+          is_graduate: isGraduate,
+          stage_id: isGraduate ? null : stageId,
+          study_section_id: isGraduate ? null : (studySectionId || null)
         }),
       });
       currentUser = updated;
@@ -7290,6 +7565,25 @@
       wideBtn?.classList.remove('is-active');
       try { localStorage.setItem('kiur_glimpse_mode', 'grid'); } catch (_) {}
     }
+  }
+
+  function onGlimpseSearchInput(inputEl){
+    const clearBtn = document.getElementById('glimpseSearchClearBtn');
+    if (clearBtn){
+      clearBtn.style.display = (inputEl.value || '').trim() ? 'flex' : 'none';
+    }
+    filterGlimpsesUI();
+  }
+
+  function clearGlimpseSearch(){
+    const input = document.getElementById('glimpseSearchInput');
+    const clearBtn = document.getElementById('glimpseSearchClearBtn');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    if (clearBtn) clearBtn.style.display = 'none';
+    filterGlimpsesUI();
   }
 
   function filterGlimpsesUI(){

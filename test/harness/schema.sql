@@ -42,6 +42,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS college_programs_uni_college_idx ON college_pr
 CREATE INDEX IF NOT EXISTS college_programs_university_id_idx ON college_programs(university_id);
 CREATE INDEX IF NOT EXISTS college_programs_college_id_idx ON college_programs(college_id);
 
+-- 2d. departments
+CREATE TABLE IF NOT EXISTS departments (
+    id TEXT PRIMARY KEY NOT NULL,
+    college_id TEXT NOT NULL REFERENCES colleges(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    code TEXT,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS departments_college_id_idx ON departments(college_id);
+
 -- 3. stages
 CREATE TABLE IF NOT EXISTS stages (
     id TEXT PRIMARY KEY NOT NULL,
@@ -49,11 +59,22 @@ CREATE TABLE IF NOT EXISTS stages (
     stage_number INTEGER,
     university_id TEXT REFERENCES universities(id),
     program_id TEXT REFERENCES college_programs(id),
-    college_id TEXT REFERENCES colleges(id)
+    college_id TEXT REFERENCES colleges(id),
+    department_id TEXT REFERENCES departments(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS stages_university_id_idx ON stages(university_id);
 CREATE INDEX IF NOT EXISTS stages_program_id_idx ON stages(program_id);
 CREATE INDEX IF NOT EXISTS stages_college_id_idx ON stages(college_id);
+CREATE INDEX IF NOT EXISTS stages_department_id_idx ON stages(department_id);
+
+-- 3b. study_sections
+CREATE TABLE IF NOT EXISTS study_sections (
+    id TEXT PRIMARY KEY NOT NULL,
+    stage_id TEXT NOT NULL REFERENCES stages(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+CREATE INDEX IF NOT EXISTS study_sections_stage_id_idx ON study_sections(stage_id);
 
 -- 4. subjects
 CREATE TABLE IF NOT EXISTS subjects (
@@ -79,7 +100,10 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT,
     role TEXT NOT NULL DEFAULT 'student',
     university_id TEXT REFERENCES universities(id),
+    college_id TEXT REFERENCES colleges(id),
+    department_id TEXT REFERENCES departments(id),
     stage_id TEXT REFERENCES stages(id),
+    study_section_id TEXT REFERENCES study_sections(id),
     section_id TEXT REFERENCES sections(id),
     phone TEXT,
     is_graduate INTEGER,
@@ -108,6 +132,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx ON users(google_sub);
 CREATE UNIQUE INDEX IF NOT EXISTS users_firebase_uid_idx ON users(firebase_uid);
 CREATE INDEX IF NOT EXISTS users_email_verified_idx ON users(email_verified_at);
 CREATE INDEX IF NOT EXISTS users_university_id_idx ON users(university_id);
+CREATE INDEX IF NOT EXISTS users_college_id_idx ON users(college_id);
+CREATE INDEX IF NOT EXISTS users_department_id_idx ON users(department_id);
+CREATE INDEX IF NOT EXISTS users_stage_id_idx ON users(stage_id);
+CREATE INDEX IF NOT EXISTS users_study_section_id_idx ON users(study_section_id);
+CREATE INDEX IF NOT EXISTS users_section_id_idx ON users(section_id);
 CREATE INDEX IF NOT EXISTS users_stage_id_idx ON users(stage_id);
 CREATE INDEX IF NOT EXISTS users_section_id_idx ON users(section_id);
 

@@ -18,7 +18,9 @@ catalogRouter.get('/tree', async (c) => {
   const colleges = await db.select().from(schema.colleges);
   const collegePrograms = await db.select().from(schema.collegePrograms);
   const universities = await db.select().from(schema.universities);
+  const departments = await db.select().from(schema.departments);
   const stages = await db.select().from(schema.stages);
+  const studySections = await db.select().from(schema.studySections);
   const subjects = await db.select().from(schema.subjects).where(eq(schema.subjects.is_deleted, false));
 
   const uniMap = new Map(universities.map((u) => [u.id, u]));
@@ -39,6 +41,9 @@ catalogRouter.get('/tree', async (c) => {
             id: stage.id,
             name: stage.name,
             university_id: stage.university_id,
+            sections: studySections
+              .filter((sec) => sec.stage_id === stage.id)
+              .map((sec) => ({ id: sec.id, name: sec.name, code: sec.code, capacity: sec.capacity })),
             subjects: subjects
               .filter((sub) => sub.stage_id === stage.id)
               .map((sub) => ({ id: sub.id, name: sub.name, stage_id: sub.stage_id })),
@@ -53,6 +58,14 @@ catalogRouter.get('/tree', async (c) => {
     .filter((col) => !existingSectionNames.has(col.name.trim().toLowerCase()))
     .map((col) => {
       const progsForCol = collegePrograms.filter((cp) => cp.college_id === col.id);
+      const colDepartments = departments
+        .filter((d) => d.college_id === col.id)
+        .map((d) => ({
+          id: d.id,
+          name: d.name,
+          code: d.code,
+        }));
+
       const unisForCol = progsForCol
         .map((prg) => {
           const uni = uniMap.get(prg.university_id);
@@ -65,25 +78,42 @@ catalogRouter.get('/tree', async (c) => {
             id: uni.id,
             name: uni.name,
             section_id: col.id,
+            college_id: col.id,
             type: uni.type,
             province: uni.province,
-            stages: pStages.map((stage) => ({
-              id: stage.id,
-              name: stage.name,
-              university_id: uni.id,
-              stage_number: stage.stage_number,
-              subjects: subjects
-                .filter((sub) => sub.stage_id === stage.id)
-                .map((sub) => ({
-                  id: sub.id,
-                  name: sub.name,
-                  code: sub.code,
-                  term: sub.term,
-                  is_ministerial: Boolean(sub.is_ministerial),
-                  has_practical: Boolean(sub.has_practical),
-                  stage_id: sub.stage_id,
-                })),
-            })),
+            departments: colDepartments,
+            stages: pStages.map((stage) => {
+              const dept = colDepartments.find((d) => d.id === stage.department_id);
+              const stageSections = studySections
+                .filter((sec) => sec.stage_id === stage.id)
+                .map((sec) => ({
+                  id: sec.id,
+                  name: sec.name,
+                  code: sec.code,
+                  capacity: sec.capacity,
+                }));
+
+              return {
+                id: stage.id,
+                name: stage.name,
+                university_id: uni.id,
+                stage_number: stage.stage_number,
+                department_id: stage.department_id || null,
+                department_name: dept?.name || null,
+                sections: stageSections,
+                subjects: subjects
+                  .filter((sub) => sub.stage_id === stage.id)
+                  .map((sub) => ({
+                    id: sub.id,
+                    name: sub.name,
+                    code: sub.code,
+                    term: sub.term,
+                    is_ministerial: Boolean(sub.is_ministerial),
+                    has_practical: Boolean(sub.has_practical),
+                    stage_id: sub.stage_id,
+                  })),
+              };
+            }),
           };
         })
         .filter(Boolean);
@@ -92,6 +122,7 @@ catalogRouter.get('/tree', async (c) => {
         id: col.id,
         name: col.name,
         code: col.code,
+        departments: colDepartments,
         universities: unisForCol,
       };
     })

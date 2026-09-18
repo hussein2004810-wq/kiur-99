@@ -43,7 +43,10 @@ export interface CurrentUser {
   role: Role;
   is_banned: boolean;
   university_id?: string | null;
+  college_id?: string | null;
+  department_id?: string | null;
   stage_id?: string | null;
+  study_section_id?: string | null;
   section_id?: string | null;
 }
 

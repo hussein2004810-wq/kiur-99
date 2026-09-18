@@ -2356,7 +2356,10 @@
             ` : u.programs.map(p => {
               const isProgExpanded = expandedPrograms.has(p.id) || search.length > 0;
               const isModular = p.system_type === 'modular';
-              const pTotalSubjects = (p.stages || []).reduce((acc, st) => acc + st.subjects.length, 0);
+              const pTotalSubjects = ((p.all_stages || p.stages) || []).reduce((acc, st) => acc + (st.subjects || []).length, 0);
+              const pDepartments = p.departments || [];
+              const pDirectStages = p.stages || [];
+              const hasContent = pDepartments.length > 0 || pDirectStages.length > 0;
 
               return `
                 <div class="acad-prog-card">
@@ -2365,12 +2368,16 @@
                       <span style="font-size:1.1rem;">🏥</span>
                       <span style="font-weight:700; font-size:.88rem;">${esc(p.college_name)}</span>
                       <span class="badge ${isModular ? 'badge-modular' : 'badge-trad'}">${isModular ? '🧬 موديولات تكاملي' : '📖 فصلي / سنوي'}</span>
-                      <span class="badge badge-idle">${p.total_stages || (p.stages||[]).length} مراحل</span>
+                      ${pDepartments.length ? `<span class="badge badge-active">🩺 ${pDepartments.length} أقسام</span>` : ''}
+                      <span class="badge badge-idle">${p.total_stages || ((p.all_stages||p.stages)||[]).length} مراحل</span>
                       <span style="font-size:.7rem; color:var(--ink-faint);">(${pTotalSubjects} مادة)</span>
                       <span style="font-size:.7rem; color:var(--ink-faint); margin-inline-start:4px;">${isProgExpanded ? '▲' : '▼'}</span>
                     </div>
                     <div style="display:flex; align-items:center; gap:6px;">
-                      <button class="btn btn-ghost" style="padding:4px 10px; font-size:.72rem; gap:4px;" onclick="openAddStageModal('${p.id}', '${esc(p.college_name)}')" title="إضافة مرحلة للكلية">
+                      <button class="btn btn-ghost" style="padding:4px 10px; font-size:.72rem; gap:4px;" onclick="openAddDepartmentModal('${p.college_id}', '${esc(p.college_name)}')" title="إضافة قسم طبي لهذه الكلية">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M12 5v14M5 12h14"/></svg>+ قسم طبي
+                      </button>
+                      <button class="btn btn-ghost" style="padding:4px 10px; font-size:.72rem; gap:4px;" onclick="openAddStageModal('${p.id}', '${esc(p.college_name)}', '', '${p.college_id}')" title="إضافة مرحلة للكلية">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M12 5v14M5 12h14"/></svg>+ مرحلة
                       </button>
                       <button class="icon-btn" style="width:26px;height:26px;" onclick="deleteProgram('${p.id}', '${esc(p.college_name)}')" title="فك ارتباط الكلية" aria-label="فك ارتباط الكلية">
@@ -2380,63 +2387,40 @@
                   </div>
 
                   <div style="display:${isProgExpanded ? 'block' : 'none'};">
-                    ${!p.stages.length ? `
+                    ${!hasContent ? `
                       <div style="padding:10px; color:var(--ink-faint); font-size:.78rem; text-align:center;">
-                        لا توجد مراحل منشأة في هذه الكلية. اضغط على "+ مرحلة".
+                        لا توجد أقسام أو مراحل منشأة في هذه الكلية بعد. اضغط على "+ قسم طبي" أو "+ مرحلة".
                       </div>
-                    ` : p.stages.map(st => `
-                      <div class="acad-stage-box">
-                        <div class="acad-stage-head">
-                          <div style="display:flex; align-items:center; gap:6px;">
-                            <span style="font-size:.9rem;">📚</span>
-                            <span>${esc(st.name)}</span>
-                            <span style="font-size:.7rem; color:var(--ink-faint); font-weight:normal;">(${st.subjects.length} مادة)</span>
-                          </div>
-                          <div style="display:flex; align-items:center; gap:4px;">
-                            <button class="btn btn-ghost" style="padding:3px 8px; font-size:.7rem; gap:3px;" onclick="openAddSubjectModal('${st.id}', '${esc(st.name)}')">
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M12 5v14M5 12h14"/></svg>+ مادة
-                            </button>
-                            <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteStage('${st.id}', '${esc(st.name)}')" title="حذف المرحلة">
-                              <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
-                            </button>
-                          </div>
-                        </div>
-
-                        ${!st.subjects.length ? `
-                          <div style="padding:6px; color:var(--ink-faint); font-size:.74rem;">لا توجد مواد دراسية في هذه المرحلة بعد.</div>
-                        ` : st.subjects.map(sub => {
-                          const termLabelMap = {
-                            annual: 'سنوي',
-                            semester_1: 'فصل أول',
-                            semester_2: 'فصل ثاني',
-                            modular_block: 'بلوك موديول'
-                          };
-                          const termLabel = termLabelMap[sub.term] || sub.term || 'سنوي';
-
-                          return `
-                            <div class="acad-subject-row">
-                              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1;">
-                                ${sub.code ? `<span class="mono" style="font-size:.7rem; padding:2px 6px; border-radius:6px; background:var(--track); font-weight:700;">${esc(sub.code)}</span>` : ''}
-                                <span style="font-weight:700; cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;" onclick="openQuestionBank('${sub.id}')" title="فتح بنك أسئلة المادة">${esc(sub.name)}</span>
-                                ${sub.is_ministerial ? `<span class="badge badge-ministerial">🏛️ وزاري تقويمي</span>` : ''}
-                                ${sub.has_practical ? `<span class="badge badge-practical">🔬 نظري + عملي/سريري</span>` : `<span class="badge badge-idle" style="font-size:.65rem;">نظري</span>`}
-                                <span class="badge badge-term">${termLabel}</span>
-                                <span style="font-size:.68rem; color:var(--ink-faint); cursor:pointer;" onclick="openQuestionBank('${sub.id}')">❓ ${sub.questions_count || 0} أسئلة</span>
-                              </div>
-                              <div style="display:flex; align-items:center; gap:4px; flex:none;">
-                                <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem;" onclick="openQuestionBank('${sub.id}')" title="بنك الأسئلة">بنك الأسئلة</button>
-                                <button class="icon-btn" style="width:24px;height:24px;" onclick="openEditSubjectModal('${sub.id}')" title="تعديل المادة">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                                </button>
-                                <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteSubject('${sub.id}', '${esc(sub.name)}')" title="حذف المادة">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
-                                </button>
-                              </div>
+                    ` : `
+                      ${pDepartments.map(dept => `
+                        <div class="acad-dept-box" style="margin:10px 0; padding:12px 14px; border-radius:12px; background:color-mix(in srgb, var(--accent) 7%, var(--glass-bg-strong)); border:1.5px solid color-mix(in srgb, var(--accent) 24%, var(--glass-border));">
+                          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+                            <div style="display:flex; align-items:center; gap:6px;">
+                              <span style="font-size:1rem;">🩺</span>
+                              <span style="font-weight:800; font-size:.85rem; color:var(--ink);">${esc(dept.name)}</span>
+                              ${dept.code ? `<span class="mono" style="font-size:.68rem; padding:2px 6px; border-radius:6px; background:var(--track); font-weight:700;">${esc(dept.code)}</span>` : ''}
+                              <span style="font-size:.7rem; color:var(--ink-faint);">(${dept.stages.length} مراحل)</span>
                             </div>
-                          `;
-                        }).join('')}
-                      </div>
-                    `).join('')}
+                            <div style="display:flex; align-items:center; gap:4px;">
+                              <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem; gap:3px;" onclick="openAddStageModal('${p.id}', '${esc(p.college_name)}', '${dept.id}', '${p.college_id}')" title="إضافة مرحلة لهذا القسم">+ مرحلة للقسم</button>
+                              <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteDepartment('${dept.id}', '${esc(dept.name)}')" title="حذف القسم">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="width:11px;height:11px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+                              </button>
+                            </div>
+                          </div>
+                          ${!dept.stages.length ? `
+                            <div style="padding:6px; color:var(--ink-faint); font-size:.72rem; text-align:center;">لا توجد مراحل في هذا القسم بعد. اضغط على "+ مرحلة للقسم".</div>
+                          ` : dept.stages.map(st => renderAdminStageItem(st)).join('')}
+                        </div>
+                      `).join('')}
+
+                      ${pDirectStages.length ? `
+                        <div style="margin-top:10px;">
+                          ${pDepartments.length ? `<div style="font-size:.72rem; font-weight:700; color:var(--ink-faint); margin-bottom:6px;">المراحل العامة بالكلية (غير التابعة لقسم محدد):</div>` : ''}
+                          ${pDirectStages.map(st => renderAdminStageItem(st)).join('')}
+                        </div>
+                      ` : ''}
+                    `}
                   </div>
                 </div>
               `;
@@ -2679,16 +2663,186 @@
     }
   }
 
-  function openAddStageModal(progId, collegeName){
+  function renderAdminStageItem(st) {
+    const sections = st.sections || [];
+    const subjects = st.subjects || [];
+
+    return `
+      <div class="acad-stage-box" style="margin:8px 0; padding:10px 12px; border-radius:10px; background:var(--glass-bg); border:1px solid var(--glass-border);">
+        <div class="acad-stage-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:.9rem;">📚</span>
+            <span style="font-weight:700;">${esc(st.name)}</span>
+            <span style="font-size:.7rem; color:var(--ink-faint); font-weight:normal;">(${subjects.length} مادة | ${sections.length} شعب)</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem; gap:3px;" onclick="openAddStudySectionModal('${st.id}', '${esc(st.name)}')" title="إضافة شعبة دراسية لهذه المرحلة">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>+ شعبة
+            </button>
+            <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem; gap:3px;" onclick="openAddSubjectModal('${st.id}', '${esc(st.name)}')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M12 5v14M5 12h14"/></svg>+ مادة
+            </button>
+            <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteStage('${st.id}', '${esc(st.name)}')" title="حذف المرحلة">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Study Sections Chips (الشعب الدراسية) -->
+        ${sections.length ? `
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0; padding:6px 8px; background:color-mix(in srgb, var(--accent) 5%, transparent); border-radius:8px; border:1px dashed color-mix(in srgb, var(--accent) 20%, transparent);">
+            <span style="font-size:.68rem; font-weight:700; color:var(--ink-faint);">الشعب الدراسية:</span>
+            ${sections.map(sec => `
+              <span class="badge" style="background:var(--track); color:var(--ink); font-size:.7rem; display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px;">
+                👥 ${esc(sec.name)} ${sec.code ? `<span class="mono" style="opacity:0.7;">(${esc(sec.code)})</span>` : ''}
+                <button onclick="deleteStudySection('${sec.id}', '${esc(sec.name)}')" style="background:none; border:none; color:var(--danger); cursor:pointer; padding:0 2px; font-size:.75rem; line-height:1;" title="حذف الشعبة">&times;</button>
+              </span>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <!-- Subjects List -->
+        ${!subjects.length ? `
+          <div style="padding:6px; color:var(--ink-faint); font-size:.74rem;">لا توجد مواد دراسية في هذه المرحلة بعد.</div>
+        ` : subjects.map(sub => {
+          const termLabelMap = {
+            annual: 'سنوي',
+            semester_1: 'فصل أول',
+            semester_2: 'فصل ثاني',
+            modular_block: 'بلوك موديول'
+          };
+          const termLabel = termLabelMap[sub.term] || sub.term || 'سنوي';
+
+          return `
+            <div class="acad-subject-row" style="display:flex; align-items:center; justify-content:space-between; padding:5px 8px; border-radius:6px; margin-top:3px; background:var(--glass-bg-subtle);">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1;">
+                ${sub.code ? `<span class="mono" style="font-size:.7rem; padding:2px 6px; border-radius:6px; background:var(--track); font-weight:700;">${esc(sub.code)}</span>` : ''}
+                <span style="font-weight:700; cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;" onclick="openQuestionBank('${sub.id}')" title="فتح بنك أسئلة المادة">${esc(sub.name)}</span>
+                ${sub.is_ministerial ? `<span class="badge badge-ministerial">🏛️ وزاري تقويمي</span>` : ''}
+                ${sub.has_practical ? `<span class="badge badge-practical">🔬 نظري + عملي/سريري</span>` : `<span class="badge badge-idle" style="font-size:.65rem;">نظري</span>`}
+                <span class="badge badge-term">${termLabel}</span>
+                <span style="font-size:.68rem; color:var(--ink-faint); cursor:pointer;" onclick="openQuestionBank('${sub.id}')">❓ ${sub.questions_count || 0} أسئلة</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:4px; flex:none;">
+                <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem;" onclick="openQuestionBank('${sub.id}')" title="بنك الأسئلة">بنك الأسئلة</button>
+                <button class="icon-btn" style="width:24px;height:24px;" onclick="openEditSubjectModal('${sub.id}')" title="تعديل المادة">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                </button>
+                <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteSubject('${sub.id}', '${esc(sub.name)}')" title="حذف المادة">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  function openAddDepartmentModal(collegeId, collegeName){
     if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
-    openGenericModal(`إضافة مرحلة إلى ${collegeName}`, [
+    openGenericModal(`إضافة قسم طبي إلى ${collegeName}`, [
+      {id: 'name', label: 'اسم القسم (مثال: قسم تقنيات التخدير والعناية المركزة / قسم الأشعة والسونار / قسم التحليلات المرضية)', type: 'text', placeholder: 'قسم تقنيات التخدير والعناية المركزة'},
+      {id: 'code', label: 'الرمز المختصر Code (مثال: ANE, RAD, MLT)', type: 'text', placeholder: 'ANE'}
+    ], async (v) => {
+      if (!v.name.trim()) throw { detail: 'اسم القسم مطلوب' };
+      await apiFetch('/api/admin/academic/departments', {
+        method: 'POST',
+        body: JSON.stringify({
+          college_id: collegeId,
+          name: v.name.trim(),
+          code: v.code?.trim() || null
+        })
+      });
+      showToast('تمت إضافة القسم الطبي بنجاح');
+      loadCatalog();
+    });
+  }
+
+  async function deleteDepartment(deptId, deptName){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    if (!await confirmModal(`حذف قسم "${deptName}" وجميع مراحله ومواده وشعبه نهائياً؟`)) return;
+    try {
+      await apiFetch(`/api/admin/academic/departments/${deptId}`, { method: 'DELETE' });
+      showToast(`تم حذف قسم "${deptName}"`);
+      loadCatalog();
+    } catch (e) {
+      showToast(e.detail || 'تعذر حذف القسم', 'error');
+    }
+  }
+
+  function openAddStudySectionModal(stageId, stageName){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    openGenericModal(`إضافة شعبة دراسية إلى ${stageName}`, [
+      {id: 'name', label: 'اسم الشعبة (مثال: شعبة أ / شعبة B / شعبة الصباحي 1)', type: 'text', placeholder: 'شعبة أ'},
+      {id: 'code', label: 'رمز الشعبة (اختياري، مثال: SEC-A)', type: 'text', placeholder: 'SEC-A'},
+      {id: 'capacity', label: 'السعة الاستيعابية للطلبة (اختياري)', type: 'number', value: 100}
+    ], async (v) => {
+      if (!v.name.trim()) throw { detail: 'اسم الشعبة مطلوب' };
+      await apiFetch('/api/admin/academic/study-sections', {
+        method: 'POST',
+        body: JSON.stringify({
+          stage_id: stageId,
+          name: v.name.trim(),
+          code: v.code?.trim() || null,
+          capacity: parseInt(v.capacity, 10) || 100
+        })
+      });
+      showToast('تمت إضافة الشعبة بنجاح');
+      loadCatalog();
+    });
+  }
+
+  async function deleteStudySection(secId, secName){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+    if (!await confirmModal(`حذف شعبة "${secName}" نهائياً؟`)) return;
+    try {
+      await apiFetch(`/api/admin/academic/study-sections/${secId}`, { method: 'DELETE' });
+      showToast(`تم حذف شعبة "${secName}"`);
+      loadCatalog();
+    } catch (e) {
+      showToast(e.detail || 'تعذر حذف الشعبة', 'error');
+    }
+  }
+
+  function openAddStageModal(progId, collegeName, deptId, collegeId){
+    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً'); return; }
+
+    let departments = [];
+    (academicTreeData.universities || []).forEach(u => {
+      (u.programs || []).forEach(p => {
+        if (p.id === progId && p.departments) {
+          departments = p.departments;
+        }
+      });
+    });
+
+    const fields = [
       {id: 'stage_number', label: 'رقم المرحلة (1, 2, 3...)', type: 'number', value: 1},
       {id: 'name', label: 'اسم المرحلة (مثال: المرحلة الأولى)', type: 'text', value: 'المرحلة الأولى'}
-    ], async (v) => {
+    ];
+
+    if (departments.length > 0) {
+      const deptOptions = [
+        { value: '', label: 'بدون قسم (مرحلة عامة للكلية ككل)' },
+        ...departments.map(d => ({ value: d.id, label: `🩺 ${d.name}` }))
+      ];
+      fields.unshift({
+        id: 'department_id',
+        label: 'القسم الطبي التابع له',
+        type: 'select',
+        value: deptId || '',
+        options: deptOptions
+      });
+    }
+
+    openGenericModal(`إضافة مرحلة إلى ${collegeName}`, fields, async (v) => {
+      const targetDeptId = v.department_id !== undefined ? (v.department_id || null) : (deptId || null);
       await apiFetch('/api/admin/academic/stages', {
         method: 'POST',
         body: JSON.stringify({
           program_id: progId,
+          department_id: targetDeptId,
           stage_number: parseInt(v.stage_number, 10) || 1,
           name: v.name.trim() || `المرحلة ${v.stage_number}`
         })
@@ -2756,6 +2910,13 @@
         (p.stages || []).forEach(st => {
           (st.subjects || []).forEach(sub => {
             if (sub.id === subId) foundSub = sub;
+          });
+        });
+        (p.departments || []).forEach(dept => {
+          (dept.stages || []).forEach(st => {
+            (st.subjects || []).forEach(sub => {
+              if (sub.id === subId) foundSub = sub;
+            });
           });
         });
       });

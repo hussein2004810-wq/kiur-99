@@ -763,7 +763,9 @@ adminRouter.get('/academic/tree', async (c) => {
   const unis = await db.select().from(schema.universities);
   const collist = await db.select().from(schema.colleges);
   const proglist = await db.select().from(schema.collegePrograms);
+  const depts = await db.select().from(schema.departments);
   const stagelist = await db.select().from(schema.stages);
+  const studySecs = await db.select().from(schema.studySections);
   const subjlist = await db.select().from(schema.subjects).where(eq(schema.subjects.is_deleted, false));
   const questions = await db.select({ id: schema.questions.id, subject_id: schema.questions.subject_id }).from(schema.questions).where(eq(schema.questions.is_deleted, false));
 
@@ -778,6 +780,18 @@ adminRouter.get('/academic/tree', async (c) => {
   for (const sub of subjlist) {
     subsByStage[sub.stage_id] ??= [];
     subsByStage[sub.stage_id].push(sub);
+  }
+
+  const studySecsByStage: Record<string, typeof studySecs> = {};
+  for (const sec of studySecs) {
+    studySecsByStage[sec.stage_id] ??= [];
+    studySecsByStage[sec.stage_id].push(sec);
+  }
+
+  const deptsByCollege: Record<string, typeof depts> = {};
+  for (const d of depts) {
+    deptsByCollege[d.college_id] ??= [];
+    deptsByCollege[d.college_id].push(d);
   }
 
   const stagesByProg: Record<string, typeof stagelist> = {};
@@ -798,6 +812,31 @@ adminRouter.get('/academic/tree', async (c) => {
     progsByUni[prg.university_id].push(prg);
   }
 
+  const formatStageItem = (stg: typeof stagelist[number]) => {
+    const sSubjects = subsByStage[stg.id] ?? [];
+    const sSections = studySecsByStage[stg.id] ?? [];
+    return {
+      id: stg.id,
+      name: stg.name,
+      stage_number: stg.stage_number ?? null,
+      department_id: stg.department_id ?? null,
+      sections: sSections.map((sec) => ({
+        id: sec.id,
+        name: sec.name,
+        stage_id: sec.stage_id,
+      })),
+      subjects: sSubjects.map((sub) => ({
+        id: sub.id,
+        name: sub.name,
+        code: sub.code ?? null,
+        term: sub.term,
+        is_ministerial: sub.is_ministerial,
+        has_practical: sub.has_practical,
+        question_count: questionsCount[sub.id] ?? 0,
+      })),
+    };
+  };
+
   const tree = unis.map((uni) => {
     const uProgs = progsByUni[uni.id] ?? [];
     const directStages = stagesByUniDirect[uni.id] ?? [];
@@ -810,7 +849,22 @@ adminRouter.get('/academic/tree', async (c) => {
       logo_url: uni.logo_url ?? null,
       programs: uProgs.map((prg) => {
         const col = colMap.get(prg.college_id);
+        const colDepts = deptsByCollege[prg.college_id] ?? [];
         const pStages = (stagesByProg[prg.id] ?? []).sort((a, b) => (a.stage_number ?? 0) - (b.stage_number ?? 0));
+
+        const deptTree = colDepts.map((dept) => {
+          const dStages = pStages.filter((stg) => stg.department_id === dept.id);
+          return {
+            id: dept.id,
+            name: dept.name,
+            code: dept.code ?? null,
+            college_id: dept.college_id,
+            stages: dStages.map(formatStageItem),
+          };
+        });
+
+        const directStagesOfProg = pStages.filter((stg) => !stg.department_id);
+
         return {
           id: prg.id,
           college_id: prg.college_id,
@@ -818,42 +872,12 @@ adminRouter.get('/academic/tree', async (c) => {
           college_code: col?.code ?? null,
           system_type: prg.system_type,
           total_stages: prg.total_stages,
-          stages: pStages.map((stg) => {
-            const sSubjects = subsByStage[stg.id] ?? [];
-            return {
-              id: stg.id,
-              name: stg.name,
-              stage_number: stg.stage_number ?? null,
-              subjects: sSubjects.map((sub) => ({
-                id: sub.id,
-                name: sub.name,
-                code: sub.code ?? null,
-                term: sub.term,
-                is_ministerial: sub.is_ministerial,
-                has_practical: sub.has_practical,
-                question_count: questionsCount[sub.id] ?? 0,
-              })),
-            };
-          }),
+          departments: deptTree,
+          stages: directStagesOfProg.map(formatStageItem),
+          all_stages: pStages.map(formatStageItem),
         };
       }),
-      direct_stages: directStages.map((stg) => {
-        const sSubjects = subsByStage[stg.id] ?? [];
-        return {
-          id: stg.id,
-          name: stg.name,
-          stage_number: stg.stage_number ?? null,
-          subjects: sSubjects.map((sub) => ({
-            id: sub.id,
-            name: sub.name,
-            code: sub.code ?? null,
-            term: sub.term,
-            is_ministerial: sub.is_ministerial,
-            has_practical: sub.has_practical,
-            question_count: questionsCount[sub.id] ?? 0,
-          })),
-        };
-      }),
+      direct_stages: directStages.map(formatStageItem),
     };
   });
 
@@ -861,10 +885,13 @@ adminRouter.get('/academic/tree', async (c) => {
     universities: tree,
     colleges: collist,
     all_colleges: collist,
+    departments: depts,
     total_universities: unis.length,
     total_colleges: collist.length,
     total_programs: proglist.length,
+    total_departments: depts.length,
     total_stages: stagelist.length,
+    total_study_sections: studySecs.length,
     total_subjects: subjlist.length,
   });
 });
@@ -1041,6 +1068,83 @@ adminRouter.delete('/academic/colleges/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+// ── 3b. Departments CRUD (الأقسام الطبية والعلمية) ──
+adminRouter.get('/academic/departments', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const collegeId = c.req.query('college_id');
+  let list = await db.select().from(schema.departments);
+  if (collegeId) list = list.filter((d) => d.college_id === collegeId);
+  return c.json(list);
+});
+
+adminRouter.post('/academic/departments', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{ name: string; college_id: string; code?: string }>();
+  if (!body.name?.trim() || !body.college_id) return c.json({ detail: 'اسم القسم والكلية مطلوبان' }, 400);
+
+  const col = await db.select().from(schema.colleges).where(eq(schema.colleges.id, body.college_id)).get();
+  if (!col) return c.json({ detail: 'الكلية غير موجودة' }, 404);
+
+  const existing = await db.select().from(schema.departments).where(
+    and(eq(schema.departments.college_id, body.college_id), eq(schema.departments.name, body.name.trim()))
+  ).get();
+  if (existing) {
+    return c.json({ detail: 'القسم مسجل مسبقاً في هذه الكلية', existing_id: existing.id, ...existing }, 400);
+  }
+
+  const id = schema.genId();
+  await db.insert(schema.departments).values({
+    id,
+    college_id: body.college_id,
+    name: body.name.trim(),
+    code: body.code?.trim().toUpperCase() || null,
+  });
+
+  recordAuditEvent({
+    event: 'ADMIN_ACADEMIC_DEPARTMENT_CREATED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: id,
+    details: { name: body.name.trim(), college_id: body.college_id },
+  });
+
+  const created = await db.select().from(schema.departments).where(eq(schema.departments.id, id)).get();
+  return c.json(created, 201);
+});
+
+adminRouter.put('/academic/departments/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const body = await c.req.json<{ name?: string; code?: string }>();
+
+  const dept = await db.select().from(schema.departments).where(eq(schema.departments.id, id)).get();
+  if (!dept) return c.json({ detail: 'القسم غير موجود' }, 404);
+
+  const updates: Record<string, unknown> = {};
+  if (body.name !== undefined && body.name.trim()) updates.name = body.name.trim();
+  if (body.code !== undefined) updates.code = body.code.trim().toUpperCase() || null;
+
+  if (Object.keys(updates).length) {
+    await db.update(schema.departments).set(updates).where(eq(schema.departments.id, id));
+  }
+
+  const updated = await db.select().from(schema.departments).where(eq(schema.departments.id, id)).get();
+  return c.json(updated);
+});
+
+adminRouter.delete('/academic/departments/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const dept = await db.select().from(schema.departments).where(eq(schema.departments.id, id)).get();
+  if (!dept) return c.json({ detail: 'القسم غير موجود' }, 404);
+
+  const childStages = await db.select().from(schema.stages).where(eq(schema.stages.department_id, id)).limit(1);
+  if (childStages.length > 0) return c.json({ detail: 'لا يمكن حذف القسم — توجد مراحل دراسية مرتبطة به. احذفها أو انقلها أولاً.' }, 400);
+
+  await db.delete(schema.departments).where(eq(schema.departments.id, id));
+  return c.json({ ok: true });
+});
+
 // ── 4. College Programs CRUD ──
 adminRouter.get('/academic/programs', async (c) => {
   const db = drizzle(c.env.DB, { schema });
@@ -1178,10 +1282,12 @@ adminRouter.get('/academic/stages', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const progId = c.req.query('program_id');
   const uniId = c.req.query('university_id');
+  const deptId = c.req.query('department_id');
 
   let list = await db.select().from(schema.stages);
   if (progId) list = list.filter((s) => s.program_id === progId);
   if (uniId) list = list.filter((s) => s.university_id === uniId);
+  if (deptId) list = list.filter((s) => s.department_id === deptId);
 
   return c.json(list);
 });
@@ -1194,6 +1300,7 @@ adminRouter.post('/academic/stages', async (c) => {
     program_id?: string;
     university_id?: string;
     college_id?: string;
+    department_id?: string;
   }>();
 
   if (!body.name?.trim()) return c.json({ detail: 'اسم المرحلة مطلوب' }, 400);
@@ -1209,6 +1316,16 @@ adminRouter.post('/academic/stages', async (c) => {
     }
   }
 
+  let deptId = body.department_id || null;
+  if (deptId) {
+    const dept = await db.select().from(schema.departments).where(eq(schema.departments.id, deptId)).get();
+    if (dept) {
+      colId = colId || dept.college_id;
+    } else {
+      deptId = null;
+    }
+  }
+
   const id = schema.genId();
   await db.insert(schema.stages).values({
     id,
@@ -1217,6 +1334,7 @@ adminRouter.post('/academic/stages', async (c) => {
     program_id: body.program_id || null,
     university_id: uniId || null,
     college_id: colId || null,
+    department_id: deptId,
   });
 
   const created = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
@@ -1226,7 +1344,7 @@ adminRouter.post('/academic/stages', async (c) => {
 adminRouter.put('/academic/stages/:id', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const id = c.req.param('id');
-  const body = await c.req.json<{ name?: string; stage_number?: number }>();
+  const body = await c.req.json<{ name?: string; stage_number?: number; department_id?: string | null }>();
 
   const stg = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
   if (!stg) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
@@ -1234,6 +1352,7 @@ adminRouter.put('/academic/stages/:id', async (c) => {
   const updates: Record<string, unknown> = {};
   if (body.name !== undefined && body.name.trim()) updates.name = body.name.trim();
   if (typeof body.stage_number === 'number') updates.stage_number = body.stage_number;
+  if (body.department_id !== undefined) updates.department_id = body.department_id || null;
 
   if (Object.keys(updates).length) {
     await db.update(schema.stages).set(updates).where(eq(schema.stages.id, id));
@@ -1252,7 +1371,75 @@ adminRouter.delete('/academic/stages/:id', async (c) => {
   const childSubjects = await db.select().from(schema.subjects).where(eq(schema.subjects.stage_id, id));
   if (childSubjects.length > 0) return c.json({ detail: 'لا يمكن حذف المرحلة — تحتوي على مواد دراسية. احذفها أولاً.' }, 400);
 
+  await db.delete(schema.studySections).where(eq(schema.studySections.stage_id, id));
   await db.delete(schema.stages).where(eq(schema.stages.id, id));
+  return c.json({ ok: true });
+});
+
+// ── 5b. Study Sections CRUD (الشعب والمجموعات الدراسية) ──
+adminRouter.get('/academic/study-sections', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const stageId = c.req.query('stage_id');
+  let list = await db.select().from(schema.studySections);
+  if (stageId) list = list.filter((s) => s.stage_id === stageId);
+  return c.json(list);
+});
+
+adminRouter.post('/academic/study-sections', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const body = await c.req.json<{ name: string; stage_id: string }>();
+  if (!body.name?.trim() || !body.stage_id) return c.json({ detail: 'اسم الشعبة والمرحلة مطلوبان' }, 400);
+
+  const stg = await db.select().from(schema.stages).where(eq(schema.stages.id, body.stage_id)).get();
+  if (!stg) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
+
+  const existing = await db.select().from(schema.studySections).where(
+    and(eq(schema.studySections.stage_id, body.stage_id), eq(schema.studySections.name, body.name.trim()))
+  ).get();
+  if (existing) {
+    return c.json({ detail: 'هذه الشعبة مضافة مسبقاً لهذه المرحلة', existing_id: existing.id, ...existing }, 400);
+  }
+
+  const id = schema.genId();
+  await db.insert(schema.studySections).values({
+    id,
+    stage_id: body.stage_id,
+    name: body.name.trim(),
+  });
+
+  recordAuditEvent({
+    event: 'ADMIN_ACADEMIC_SECTION_CREATED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: id,
+    details: { name: body.name.trim(), stage_id: body.stage_id },
+  });
+
+  const created = await db.select().from(schema.studySections).where(eq(schema.studySections.id, id)).get();
+  return c.json(created, 201);
+});
+
+adminRouter.put('/academic/study-sections/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const body = await c.req.json<{ name: string }>();
+  if (!body.name?.trim()) return c.json({ detail: 'اسم الشعبة مطلوب' }, 400);
+
+  const sec = await db.select().from(schema.studySections).where(eq(schema.studySections.id, id)).get();
+  if (!sec) return c.json({ detail: 'الشعبة غير موجودة' }, 404);
+
+  await db.update(schema.studySections).set({ name: body.name.trim() }).where(eq(schema.studySections.id, id));
+  const updated = await db.select().from(schema.studySections).where(eq(schema.studySections.id, id)).get();
+  return c.json(updated);
+});
+
+adminRouter.delete('/academic/study-sections/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const sec = await db.select().from(schema.studySections).where(eq(schema.studySections.id, id)).get();
+  if (!sec) return c.json({ detail: 'الشعبة غير موجودة' }, 404);
+
+  await db.delete(schema.studySections).where(eq(schema.studySections.id, id));
   return c.json({ ok: true });
 });
 

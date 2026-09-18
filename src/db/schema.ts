@@ -100,6 +100,22 @@ export type CollegeProgram = InferSelectModel<typeof collegePrograms>;
 export type NewCollegeProgram = InferInsertModel<typeof collegePrograms>;
 
 // ============================================================================
+// 2d. DEPARTMENTS (الأقسام الطبية والعلمية داخل الكلية)
+// ============================================================================
+export const departments = sqliteTable('departments', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  college_id: text('college_id').notNull().references(() => colleges.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  code: text('code'),
+  created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+}, (table) => ({
+  college_id_idx: index('departments_college_id_idx').on(table.college_id),
+}));
+
+export type Department = InferSelectModel<typeof departments>;
+export type NewDepartment = InferInsertModel<typeof departments>;
+
+// ============================================================================
 // 3. STAGES (المراحل الدراسية)
 // ============================================================================
 export const stages = sqliteTable('stages', {
@@ -109,14 +125,31 @@ export const stages = sqliteTable('stages', {
   university_id: text('university_id').references(() => universities.id),
   program_id: text('program_id').references(() => collegePrograms.id),
   college_id: text('college_id').references(() => colleges.id),
+  department_id: text('department_id').references(() => departments.id, { onDelete: 'cascade' }),
 }, (table) => ({
   university_id_idx: index('stages_university_id_idx').on(table.university_id),
   program_id_idx: index('stages_program_id_idx').on(table.program_id),
   college_id_idx: index('stages_college_id_idx').on(table.college_id),
+  department_id_idx: index('stages_department_id_idx').on(table.department_id),
 }));
 
 export type Stage = InferSelectModel<typeof stages>;
 export type NewStage = InferInsertModel<typeof stages>;
+
+// ============================================================================
+// 3b. STUDY SECTIONS (الشعب والمجموعات الدراسية داخل المرحلة)
+// ============================================================================
+export const studySections = sqliteTable('study_sections', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  stage_id: text('stage_id').notNull().references(() => stages.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+}, (table) => ({
+  stage_id_idx: index('study_sections_stage_id_idx').on(table.stage_id),
+}));
+
+export type StudySection = InferSelectModel<typeof studySections>;
+export type NewStudySection = InferInsertModel<typeof studySections>;
 
 // ============================================================================
 // 4. SUBJECTS (المواد والموديولات)
@@ -150,7 +183,10 @@ export const users = sqliteTable('users', {
   password_hash: text('password_hash'),
   role: text('role', { enum: roles }).notNull().default('student'),
   university_id: text('university_id').references(() => universities.id),
+  college_id: text('college_id').references(() => colleges.id),
+  department_id: text('department_id').references(() => departments.id),
   stage_id: text('stage_id').references(() => stages.id),
+  study_section_id: text('study_section_id').references(() => studySections.id),
   section_id: text('section_id').references(() => sections.id),
   phone: text('phone'),
   is_graduate: integer('is_graduate', { mode: 'boolean' }),
@@ -179,7 +215,10 @@ export const users = sqliteTable('users', {
   firebase_uid_idx: uniqueIndex('users_firebase_uid_idx').on(table.firebase_uid),
   email_verified_idx: index('users_email_verified_idx').on(table.email_verified_at),
   university_id_idx: index('users_university_id_idx').on(table.university_id),
+  college_id_idx: index('users_college_id_idx').on(table.college_id),
+  department_id_idx: index('users_department_id_idx').on(table.department_id),
   stage_id_idx: index('users_stage_id_idx').on(table.stage_id),
+  study_section_id_idx: index('users_study_section_id_idx').on(table.study_section_id),
   section_id_idx: index('users_section_id_idx').on(table.section_id),
 }));
 
@@ -758,7 +797,10 @@ export type NewStudentReview = InferInsertModel<typeof studentReviews>;
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   university: one(universities, { fields: [users.university_id], references: [universities.id] }),
+  college: one(colleges, { fields: [users.college_id], references: [colleges.id] }),
+  department: one(departments, { fields: [users.department_id], references: [departments.id] }),
   stage: one(stages, { fields: [users.stage_id], references: [stages.id] }),
+  study_section: one(studySections, { fields: [users.study_section_id], references: [studySections.id] }),
   section: one(sections, { fields: [users.section_id], references: [sections.id] }),
   sessions: many(userSessions),
   professor_profile: one(professorProfiles, { fields: [users.id], references: [professorProfiles.user_id] }),
@@ -785,7 +827,15 @@ export const sectionsRelations = relations(sections, ({ many }) => ({
 
 export const collegesRelations = relations(colleges, ({ many }) => ({
   programs: many(collegePrograms),
+  departments: many(departments),
   stages: many(stages),
+  users: many(users),
+}));
+
+export const departmentsRelations = relations(departments, ({ one, many }) => ({
+  college: one(colleges, { fields: [departments.college_id], references: [colleges.id] }),
+  stages: many(stages),
+  users: many(users),
 }));
 
 export const collegeProgramsRelations = relations(collegePrograms, ({ one, many }) => ({
@@ -805,7 +855,14 @@ export const stagesRelations = relations(stages, ({ one, many }) => ({
   university: one(universities, { fields: [stages.university_id], references: [universities.id] }),
   program: one(collegePrograms, { fields: [stages.program_id], references: [collegePrograms.id] }),
   college: one(colleges, { fields: [stages.college_id], references: [colleges.id] }),
+  department: one(departments, { fields: [stages.department_id], references: [departments.id] }),
+  study_sections: many(studySections),
   subjects: many(subjects),
+  users: many(users),
+}));
+
+export const studySectionsRelations = relations(studySections, ({ one, many }) => ({
+  stage: one(stages, { fields: [studySections.stage_id], references: [stages.id] }),
   users: many(users),
 }));
 
