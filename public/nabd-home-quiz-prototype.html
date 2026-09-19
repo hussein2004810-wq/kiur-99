@@ -2646,13 +2646,23 @@
   <!-- ============ QUIZ VIEW ============ -->
   <div class="view" id="view-quiz">
     <div class="quiz-top">
-      <button class="icon-btn" onclick="goHome()" aria-label="رجوع" data-i18n-aria="back">
+      <button class="icon-btn" onclick="goToBankSelect()" aria-label="رجوع" data-i18n-aria="back">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
       </button>
-      <div class="quiz-count"><span data-i18n="questionOf">السؤال</span> <span class="mono" id="qIndex">0</span> / <span class="mono" id="qTotal">0</span></div>
-      <div class="quiz-timer">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-        <span class="mono" id="timer">24:10</span>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:1px; flex:1; overflow:hidden; padding:0 4px;">
+        <div id="qSubjectLabel" style="font-size:11px; font-weight:700; color:var(--primary); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.2;"></div>
+        <div class="quiz-count"><span data-i18n="questionOf">السؤال</span> <span class="mono" id="qIndex">0</span> / <span class="mono" id="qTotal">0</span></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <button onclick="toggleQuizTimer()" id="timerToggleBtn" title="إيقاف/تشغيل المؤقت" style="background:none; border:none; padding:0; cursor:pointer;">
+          <div class="quiz-timer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            <span class="mono" id="timer">24:10</span>
+          </div>
+        </button>
+        <button onclick="goToBankSelect()" title="تغيير المادة" style="width:28px; height:28px; border-radius:8px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12); color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; flex-shrink:0;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        </button>
       </div>
     </div>
 
@@ -2702,8 +2712,7 @@
     </div>
   </div>
 
-  <!-- ============ QUESTION BANK SELECTOR VIEW ============ -->
-  <div class="view" id="view-bank-select">
+  <!-- ============ QUESTION BANK SELECTOR VIEW ============ -->  <div class="view" id="view-bank-select">
     <div class="page-head">
       <div class="page-head-main">
         <button class="icon-btn page-back" onclick="backHomeFromBankSelect()" aria-label="رجوع" data-i18n-aria="back">
@@ -2711,17 +2720,48 @@
       </button>
         <div>
           <div class="page-title" data-i18n="bankTitle">بنك الأسئلة</div>
-          <div class="page-sub" data-i18n="bankSub">اختر مادتك وابدأ جلسة أسئلة.</div>
+          <div class="page-sub" id="bsSubTitle">اختر مادتك وابدأ جلسة أسئلة.</div>
         </div>
       </div>
-      
     </div>
-    <div class="glass" style="padding:18px 20px;">
-      <div class="form-field"><select id="bsSection" onchange="onBsSectionChange()"><option value="" data-i18n="selectSection">اختر القسم</option></select></div>
-      <div class="form-field"><select id="bsUniversity" onchange="onBsUniversityChange()" disabled><option value="" data-i18n="selectUniversity">اختر الجامعة</option></select></div>
-      <div class="form-field"><select id="bsStage" onchange="onBsStageChange()" disabled><option value="" data-i18n="selectStage">اختر المرحلة</option></select></div>
-      <div class="form-field"><select id="bsSubject" disabled><option value="" data-i18n="selectSubject">اختر المادة</option></select></div>
-      <button class="btn" style="width:100%; justify-content:center; padding:12px; margin-top:6px;" onclick="startBankQuizFromSelection()" data-i18n="start">ابدأ</button>
+
+    <!-- Smart Path Card: shown when user has a complete profile -->
+    <div id="bsSmartPathCard" style="display:none; margin:0 0 12px 0; padding:14px 16px; border-radius:14px; background:linear-gradient(135deg,rgba(139,92,246,0.15),rgba(59,130,246,0.12)); border:1px solid rgba(139,92,246,0.3);">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">🎓</span>
+          <span style="font-weight:700; font-size:14px; color:var(--fg);" id="bsSmartPathLabel">مسارك الدراسي</span>
+        </div>
+        <button onclick="bsToggleManual()" style="font-size:11px; padding:4px 10px; border-radius:20px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:var(--muted); cursor:pointer;" id="bsToggleBtn">تغيير</button>
+      </div>
+      <!-- Last subject shortcut -->
+      <div id="bsLastSubjectRow" style="display:none; margin-bottom:10px; padding:10px 12px; border-radius:10px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25);">
+        <div style="font-size:11px; color:#34d399; margin-bottom:4px;">⚡ استمر من حيث توقفت</div>
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <span style="font-size:13px; font-weight:600; color:var(--fg);" id="bsLastSubjectName"></span>
+          <button onclick="bsContinueLast()" style="font-size:12px; padding:5px 12px; border-radius:8px; background:rgba(16,185,129,0.2); border:1px solid rgba(16,185,129,0.4); color:#34d399; cursor:pointer; font-weight:600;">ابدأ الآن →</button>
+        </div>
+      </div>
+      <!-- Subject grid for current stage -->
+      <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">📚 مواد مرحلتك — اختر مادة للبدء فوراً:</div>
+      <div id="bsSmartSubjectsGrid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
+      <!-- Mistakes session shortcut -->
+      <div id="bsMistakesRow" style="display:none; margin-top:10px;">
+        <button onclick="bsStartMistakesSession()" style="width:100%; padding:10px; border-radius:10px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); color:#f87171; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px; justify-content:center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5"/><circle cx="12" cy="16.5" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/></svg>
+          مراجعة الأسئلة التي أخطأت فيها
+        </button>
+      </div>
+    </div>
+
+    <!-- Manual override: collapsed by default when profile complete -->
+    <div id="bsManualPanel" class="glass" style="padding:18px 20px; display:block;">
+      <div id="bsManualTitle" style="font-size:12px; color:var(--muted); margin-bottom:10px; display:none;">🔧 اختيار يدوي:</div>
+      <div class="form-field"><select id="bsSection" onchange="onBsSectionChange()"><option value="">اختر القسم</option></select></div>
+      <div class="form-field"><select id="bsUniversity" onchange="onBsUniversityChange()" disabled><option value="">اختر الجامعة</option></select></div>
+      <div class="form-field"><select id="bsStage" onchange="onBsStageChange()" disabled><option value="">اختر المرحلة</option></select></div>
+      <div class="form-field"><select id="bsSubject" disabled><option value="">اختر المادة</option></select></div>
+      <button class="btn" style="width:100%; justify-content:center; padding:12px; margin-top:6px;" onclick="startBankQuizFromSelection()">ابدأ</button>
     </div>
   </div>
 
@@ -4345,15 +4385,28 @@
     if (!authToken || !contentId) return;
     apiFetch('/auth/me/recent-view', {method: 'POST', body: JSON.stringify({content_type: contentType, content_id: contentId})}).catch(() => {});
   }
+  let currentSubjectLabel = '';
   async function goToQuiz(subjectId, subjectLabel){
     stopPlayerVideo();
     showView('view-quiz');
+    currentSubjectLabel = subjectLabel || '';
+    // Save to sessionStorage for "continue where left off"
+    if (subjectId) {
+      try { sessionStorage.setItem('kiur_last_subject', JSON.stringify({id: subjectId, name: currentSubjectLabel})); } catch(e) {}
+      bsLastSubjectId = subjectId; bsLastSubjectName = currentSubjectLabel;
+    }
     document.getElementById('qText').textContent = 'جارٍ التحميل...';
     document.getElementById('qOptions').innerHTML = '';
     qi = 0;
+    // Update the in-quiz subject label
+    const lblEl = document.getElementById('qSubjectLabel');
+    if (lblEl) lblEl.textContent = currentSubjectLabel;
     await loadApiQuestions(subjectId);
     renderQuestion();
-    startTimer();
+    // Timer: reset to 24:10 and start (default on)
+    timeLeft = 24*60+10;
+    document.getElementById('timer').textContent = '24:10';
+    if (!timerPaused) { stopTimer(); startTimer(); }
   }
   function goHome(){
     showView('view-home');
@@ -4633,7 +4686,7 @@
   }
 
   // ---------- Timer ----------
-  let timeLeft = 24*60+10, timerInt = null;
+  let timeLeft = 24*60+10, timerInt = null, timerPaused = false;
   function startTimer(){
     if (timerInt) return;
     timerInt = setInterval(() => {
@@ -4645,6 +4698,19 @@
     }, 1000);
   }
   function stopTimer(){ clearInterval(timerInt); timerInt = null; }
+  function toggleQuizTimer(){
+    timerPaused = !timerPaused;
+    const btn = document.getElementById('timerToggleBtn');
+    if (timerPaused) {
+      stopTimer();
+      if (btn) btn.style.opacity = '0.35';
+      document.getElementById('timer').style.color = 'var(--muted)';
+    } else {
+      startTimer();
+      if (btn) btn.style.opacity = '0.7';
+      document.getElementById('timer').style.color = '';
+    }
+  }
 
   // ---------- Questions ----------
   // Questions come only from the server's question bank — the app never
@@ -4689,51 +4755,205 @@
 
   // ---------- Question bank subject picker ----------
   let bsCatalogTree = null;
+  let bsLastSubjectId = null;
+  let bsLastSubjectName = null;
+  let bsManualVisible = false;
 
+  // ── Smart Bank: auto-fill from profile, show subjects grid ────────────────
   async function goToBankSelect(){
     showView('view-bank-select');
     if (!bsCatalogTree) bsCatalogTree = await loadCatalogTreeForProfile();
-    document.getElementById('bsSection').innerHTML = `<option value="">${t('selectSection')}</option>` +
-      bsCatalogTree.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
-    ['bsUniversity', 'bsStage', 'bsSubject'].forEach(id => {
-      document.getElementById(id).innerHTML = `<option value="">${{bsUniversity:t('selectUniversity'), bsStage:t('selectStage'), bsSubject:t('selectSubject')}[id]}</option>`;
-      document.getElementById(id).disabled = true;
-    });
+
+    // Try to restore last subject from sessionStorage
+    try {
+      const saved = sessionStorage.getItem('kiur_last_subject');
+      if (saved) {
+        const {id, name} = JSON.parse(saved);
+        bsLastSubjectId = id; bsLastSubjectName = name;
+      }
+    } catch(e) {}
+
+    // Check if user has a complete academic profile
+    const hasProfile = currentUser && currentUser.stage_id && currentUser.university_id;
+
+    if (hasProfile) {
+      await bsRenderSmartPanel();
+    } else {
+      // No profile: show manual panel only
+      document.getElementById('bsSmartPathCard').style.display = 'none';
+      document.getElementById('bsManualPanel').style.display = 'block';
+      document.getElementById('bsManualTitle').style.display = 'none';
+      bsPopulateManualDropdowns();
+    }
   }
+
+  async function bsRenderSmartPanel(){
+    const card = document.getElementById('bsSmartPathCard');
+    const manualPanel = document.getElementById('bsManualPanel');
+    card.style.display = 'block';
+    document.getElementById('bsSubTitle').textContent = '';
+
+    // Build path label
+    let pathLabel = '';
+    let smartSubjects = [];
+    try {
+      for (const section of bsCatalogTree || []) {
+        for (const uni of section.universities || []) {
+          if (uni.id !== currentUser.university_id) continue;
+          for (const stage of uni.stages || []) {
+            if (stage.id !== currentUser.stage_id) continue;
+            pathLabel = `${section.name} · ${uni.name} · ${stage.name}`;
+            smartSubjects = stage.subjects || [];
+            break;
+          }
+        }
+      }
+    } catch(e) {}
+
+    document.getElementById('bsSmartPathLabel').textContent = pathLabel || 'مسارك الدراسي';
+
+    // Last subject row
+    const lastRow = document.getElementById('bsLastSubjectRow');
+    if (bsLastSubjectId && bsLastSubjectName && smartSubjects.some(s => s.id === bsLastSubjectId)) {
+      lastRow.style.display = 'block';
+      document.getElementById('bsLastSubjectName').textContent = bsLastSubjectName;
+    } else {
+      lastRow.style.display = 'none';
+    }
+
+    // Mistakes session
+    try {
+      const mistakes = await apiFetch('/api/me/mistakes?limit=1');
+      document.getElementById('bsMistakesRow').style.display = mistakes.length > 0 ? 'block' : 'none';
+    } catch(e) { document.getElementById('bsMistakesRow').style.display = 'none'; }
+
+    // Subjects grid
+    const grid = document.getElementById('bsSmartSubjectsGrid');
+    if (smartSubjects.length === 0) {
+      grid.innerHTML = '<div style="color:var(--muted);font-size:13px;grid-column:1/-1;text-align:center;padding:12px 0;">لا توجد مواد في مرحلتك حالياً</div>';
+    } else {
+      grid.innerHTML = smartSubjects.map(sub => `
+        <button onclick="bsQuickStart('${sub.id}', '${esc(sub.name)}')"
+          style="padding:12px 10px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:var(--fg); font-size:13px; font-weight:600; cursor:pointer; text-align:center; transition:all 0.15s; line-height:1.4; word-break:break-word;"
+          onmouseover="this.style.background='rgba(139,92,246,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.06)'">
+          ${esc(sub.name)}
+        </button>`).join('');
+    }
+
+    // Hide manual panel by default when profile is complete
+    if (!bsManualVisible) {
+      manualPanel.style.display = 'none';
+    } else {
+      manualPanel.style.display = 'block';
+      document.getElementById('bsManualTitle').style.display = 'block';
+    }
+  }
+
+  function bsToggleManual(){
+    bsManualVisible = !bsManualVisible;
+    const manualPanel = document.getElementById('bsManualPanel');
+    const toggleBtn = document.getElementById('bsToggleBtn');
+    if (bsManualVisible) {
+      manualPanel.style.display = 'block';
+      document.getElementById('bsManualTitle').style.display = 'block';
+      toggleBtn.textContent = 'إخفاء';
+      bsPopulateManualDropdowns();
+    } else {
+      manualPanel.style.display = 'none';
+      document.getElementById('bsManualTitle').style.display = 'none';
+      toggleBtn.textContent = 'تغيير';
+    }
+  }
+
+  function bsPopulateManualDropdowns(){
+    document.getElementById('bsSection').innerHTML = '<option value="">اختر القسم</option>' +
+      (bsCatalogTree || []).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    // Pre-select user's values if available
+    if (currentUser?.section_id || currentUser?.college_id) {
+      const secId = currentUser.college_id || currentUser.section_id;
+      const secSel = document.getElementById('bsSection');
+      secSel.value = secId;
+      onBsSectionChange();
+      if (currentUser?.university_id) {
+        document.getElementById('bsUniversity').value = currentUser.university_id;
+        onBsUniversityChange();
+        if (currentUser?.stage_id) {
+          document.getElementById('bsStage').value = currentUser.stage_id;
+          onBsStageChange();
+        }
+      }
+    } else {
+      ['bsUniversity', 'bsStage', 'bsSubject'].forEach(id => {
+        document.getElementById(id).innerHTML = '<option value="">' + {bsUniversity:'اختر الجامعة', bsStage:'اختر المرحلة', bsSubject:'اختر المادة'}[id] + '</option>';
+        document.getElementById(id).disabled = true;
+      });
+    }
+  }
+
+  function bsQuickStart(subjectId, subjectName){
+    sessionStorage.setItem('kiur_last_subject', JSON.stringify({id: subjectId, name: subjectName}));
+    bsLastSubjectId = subjectId; bsLastSubjectName = subjectName;
+    goToQuiz(subjectId, subjectName);
+  }
+
+  function bsContinueLast(){
+    if (bsLastSubjectId && bsLastSubjectName) {
+      goToQuiz(bsLastSubjectId, bsLastSubjectName);
+    }
+  }
+
+  async function bsStartMistakesSession(){
+    showView('view-quiz');
+    document.getElementById('qText').textContent = 'جارٍ التحميل...';
+    document.getElementById('qOptions').innerHTML = '';
+    qi = 0;
+    try {
+      const mistakes = await apiFetch('/api/me/mistakes?limit=50');
+      apiQuestions = mistakes.map(m => m.question || m).filter(Boolean);
+      if (!apiQuestions.length) { showToast('لا توجد أخطاء سابقة — أحسنت!'); goToBankSelect(); return; }
+      currentSubjectLabel = 'مراجعة الأخطاء 🔴';
+      document.getElementById('bsCurrentSubjectLabel') && (document.getElementById('bsCurrentSubjectLabel').textContent = currentSubjectLabel);
+      renderQuestion();
+      startTimer();
+    } catch(e) { showToast('تعذّر تحميل الأخطاء'); goToBankSelect(); }
+  }
+
   function backHomeFromBankSelect(){ goHome(); }
 
   function onBsSectionChange(){
+    if (!bsCatalogTree) return;
     const section = bsCatalogTree.find(s => s.id === document.getElementById('bsSection').value);
     const uniSel = document.getElementById('bsUniversity');
     uniSel.disabled = !section;
-    uniSel.innerHTML = `<option value="">${t('selectUniversity')}</option>` +
-      (section ? section.universities.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('') : '');
+    uniSel.innerHTML = '<option value="">اختر الجامعة</option>' +
+      (section ? (section.universities || []).map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('') : '');
     onBsUniversityChange();
   }
   function onBsUniversityChange(){
+    if (!bsCatalogTree) return;
     const section = bsCatalogTree.find(s => s.id === document.getElementById('bsSection').value);
-    const uni = section?.universities.find(u => u.id === document.getElementById('bsUniversity').value);
+    const uni = section?.universities?.find(u => u.id === document.getElementById('bsUniversity').value);
     const stageSel = document.getElementById('bsStage');
     stageSel.disabled = !uni;
-    stageSel.innerHTML = `<option value="">${t('selectStage')}</option>` +
-      (uni ? uni.stages.map(st => `<option value="${st.id}">${esc(st.name)}</option>`).join('') : '');
+    stageSel.innerHTML = '<option value="">اختر المرحلة</option>' +
+      (uni ? (uni.stages || []).map(st => `<option value="${st.id}">${esc(st.name)}</option>`).join('') : '');
     onBsStageChange();
   }
   function onBsStageChange(){
+    if (!bsCatalogTree) return;
     const section = bsCatalogTree.find(s => s.id === document.getElementById('bsSection').value);
-    const uni = section?.universities.find(u => u.id === document.getElementById('bsUniversity').value);
-    const stage = uni?.stages.find(st => st.id === document.getElementById('bsStage').value);
+    const uni = section?.universities?.find(u => u.id === document.getElementById('bsUniversity').value);
+    const stage = uni?.stages?.find(st => st.id === document.getElementById('bsStage').value);
     const subjSel = document.getElementById('bsSubject');
     subjSel.disabled = !stage;
-    subjSel.innerHTML = `<option value="">${t('selectSubject')}</option>` +
-      (stage ? stage.subjects.map(sub => `<option value="${sub.id}">${esc(sub.name)}</option>`).join('') : '');
+    subjSel.innerHTML = '<option value="">اختر المادة</option>' +
+      (stage ? (stage.subjects || []).map(sub => `<option value="${sub.id}">${esc(sub.name)}</option>`).join('') : '');
   }
   function startBankQuizFromSelection(){
     const subjSel = document.getElementById('bsSubject');
-    if (!subjSel.value){ showToast(t('selectSubjectFirst')); return; }
-    goToQuiz(subjSel.value, subjSel.options[subjSel.selectedIndex].textContent);
+    if (!subjSel.value){ showToast('اختر مادة أولاً'); return; }
+    bsQuickStart(subjSel.value, subjSel.options[subjSel.selectedIndex].textContent);
   }
-
   // The correct answer is never sent to the client up front — we post the
   // student's pick and the server grades it.
   function renderQuestion(){
