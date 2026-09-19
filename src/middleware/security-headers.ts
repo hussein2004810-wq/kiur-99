@@ -17,7 +17,9 @@ export const CSP_POLICY = [
  * Injects required security hardening headers into the response headers.
  */
 export function applySecurityHeaders(headers: Headers, isDebug = false): void {
-  headers.set('Content-Security-Policy', CSP_POLICY);
+  if (!headers.has('Content-Security-Policy')) {
+    headers.set('Content-Security-Policy', CSP_POLICY);
+  }
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('X-Frame-Options', 'DENY');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');

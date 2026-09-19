@@ -133,6 +133,20 @@ export function detectFileType(bytes: Uint8Array): string | null {
   if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
     return 'pdf';
   }
+  // MP4: ....ftyp (66 74 79 70 at offset 4)
+  if (
+    bytes.length >= 8 &&
+    bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70
+  ) {
+    return 'mp4';
+  }
+  // WebM: 1A 45 DF A3
+  if (
+    bytes.length >= 4 &&
+    bytes[0] === 0x1A && bytes[1] === 0x45 && bytes[2] === 0xDF && bytes[3] === 0xA3
+  ) {
+    return 'webm';
+  }
   return null;
 }
 
@@ -143,17 +157,16 @@ export function validateFileSignature(
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
   const detected = detectFileType(bytes);
   if (!detected) {
-    return { valid: true, detectedExt: null };
+    // Fail-closed: Reject any file where magic bytes cannot be identified
+    return { valid: false, detectedExt: null };
   }
-  const isImageOrPdf = allowedExts.some((e) => ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'].includes(e.toLowerCase()));
-  if (isImageOrPdf) {
-    const isAllowed = allowedExts.some((e) => {
-      if (detected === 'jpeg' && (e === 'jpg' || e === 'jpeg')) return true;
-      return e.toLowerCase() === detected;
-    });
-    return { valid: isAllowed, detectedExt: detected };
-  }
-  return { valid: true, detectedExt: detected };
+  const normalizedAllowed = allowedExts.map((e) => e.toLowerCase());
+  const isAllowed = normalizedAllowed.some((e) => {
+    if (detected === 'jpeg' && (e === 'jpg' || e === 'jpeg')) return true;
+    return e === detected;
+  });
+
+  return { valid: isAllowed, detectedExt: detected };
 }
 
 export const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];

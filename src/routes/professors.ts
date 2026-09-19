@@ -8,7 +8,7 @@ import { eq, desc, inArray, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
-import { createStorageService, safeUploadName, mediaUrl, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
+import { createStorageService, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
 
 const MAX_VIDEO_BYTES = 150 * 1024 * 1024; // 150 MB
 const DOC_EXTS = [...PDF_EXTS, ...IMAGE_EXTS];
@@ -115,11 +115,31 @@ professorsRouter.post('/me/photo', async (c) => {
   const contents = await file.arrayBuffer();
   if (contents.byteLength > MAX_UPLOAD_BYTES) return c.json({ detail: 'الملف أكبر من الحد المسموح (20 ميغابايت)' }, 400);
 
+  const sig = validateFileSignature(contents, IMAGE_EXTS);
+  if (!sig.valid) {
+    return c.json({ detail: 'توقيع الملف أو نوعه الداخلي غير صالح' }, 400);
+  }
+
+  const detectedExt = sig.detectedExt === 'jpg' ? 'jpeg' : (sig.detectedExt || 'jpeg');
+  const mimeType = `image/${detectedExt}`;
+
   const storage = createStorageService(c.env.R2_BUCKET);
   const storedName = safeUploadName(file.name, IMAGE_EXTS, 'photo');
-  await storage.save(storedName, contents, file.type || 'image/jpeg');
+  await storage.save(storedName, contents, mimeType);
 
   const photoUrl = mediaUrl(storedName);
+  try {
+    await db.insert(schema.mediaFiles).values({
+      id: schema.genId(),
+      filename: storedName,
+      url: photoUrl,
+      content_type: mimeType,
+      size_bytes: contents.byteLength,
+      uploaded_by: user.id,
+      is_deleted: false,
+    });
+  } catch (_) {}
+
   await db.update(schema.professorProfiles).set({ photo_url: photoUrl }).where(eq(schema.professorProfiles.id, profile.id));
 
   return c.json({ photo_url: photoUrl });
@@ -268,11 +288,31 @@ professorsRouter.post('/me/booklets/:booklet_id/file', async (c) => {
   const contents = await file.arrayBuffer();
   if (contents.byteLength > MAX_UPLOAD_BYTES) return c.json({ detail: 'الملف أكبر من الحد المسموح (20 ميغابايت)' }, 400);
 
+  const sig = validateFileSignature(contents, DOC_EXTS);
+  if (!sig.valid) {
+    return c.json({ detail: 'توقيع الملف أو نوعه الداخلي غير صالح' }, 400);
+  }
+
+  const detectedExt = sig.detectedExt === 'jpg' ? 'jpeg' : (sig.detectedExt || 'pdf');
+  const mimeType = detectedExt === 'pdf' ? 'application/pdf' : `image/${detectedExt}`;
+
   const storage = createStorageService(c.env.R2_BUCKET);
   const storedName = safeUploadName(file.name, DOC_EXTS, 'booklet');
-  await storage.save(storedName, contents, file.type || 'application/pdf');
+  await storage.save(storedName, contents, mimeType);
 
   const fileUrl = mediaUrl(storedName);
+  try {
+    await db.insert(schema.mediaFiles).values({
+      id: schema.genId(),
+      filename: storedName,
+      url: fileUrl,
+      content_type: mimeType,
+      size_bytes: contents.byteLength,
+      uploaded_by: user.id,
+      is_deleted: false,
+    });
+  } catch (_) {}
+
   await db.update(schema.booklets).set({ file_url: fileUrl }).where(eq(schema.booklets.id, bookletId));
   return c.json(await db.select().from(schema.booklets).where(eq(schema.booklets.id, bookletId)).get());
 });
@@ -464,11 +504,30 @@ professorsRouter.post('/me/lectures/:lecture_id/file', async (c) => {
   const contents = await file.arrayBuffer();
   if (contents.byteLength > MAX_VIDEO_BYTES) return c.json({ detail: 'الملف أكبر من الحد المسموح (150 ميغابايت)' }, 400);
 
+  const sig = validateFileSignature(contents, VIDEO_EXTS);
+  if (!sig.valid) {
+    return c.json({ detail: 'توقيع الملف أو نوعه الداخلي غير صالح' }, 400);
+  }
+
+  const mimeType = sig.detectedExt === 'webm' ? 'video/webm' : 'video/mp4';
+
   const storage = createStorageService(c.env.R2_BUCKET);
   const storedName = safeUploadName(file.name, VIDEO_EXTS, 'lecture');
-  await storage.save(storedName, contents, file.type || 'video/mp4');
+  await storage.save(storedName, contents, mimeType);
 
   const videoUrl = mediaUrl(storedName);
+  try {
+    await db.insert(schema.mediaFiles).values({
+      id: schema.genId(),
+      filename: storedName,
+      url: videoUrl,
+      content_type: mimeType,
+      size_bytes: contents.byteLength,
+      uploaded_by: user.id,
+      is_deleted: false,
+    });
+  } catch (_) {}
+
   await db.update(schema.lectures).set({ video_url: videoUrl }).where(eq(schema.lectures.id, lectureId));
   return c.json({ id: lectureId, title: lecture.title, duration_seconds: lecture.duration_seconds, video_url: videoUrl });
 });

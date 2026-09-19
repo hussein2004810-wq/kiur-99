@@ -518,6 +518,62 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(enrolledData.lectures[0].video_url).toBeTruthy();
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // P0-8: Active Content Execution Prevention & Strict Magic Bytes Validation
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('P0-8: Active Content Upload & Magic Bytes Validation Hardening', () => {
+    it('rejects HTML or script payload disguised as image in /auth/me/photo with 400', async () => {
+      const student = ctx.fixtures.users.student;
+      const token = ctx.createAuthToken(student.id, 'student', student.sessionId);
+
+      const maliciousHtml = '<!DOCTYPE html><html><body><script>alert(1)</script></body></html>';
+      const fakeFile = new File([maliciousHtml], 'malicious.png', { type: 'image/png' });
+      const fd = new FormData();
+      fd.append('file', fakeFile);
+
+      const res = await apiRequest(app, 'POST', '/auth/me/photo', {
+        token,
+        body: fd,
+      }, ctx);
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.detail).toContain('توقيع الملف أو نوعه الداخلي غير صالح');
+    });
+
+    it('accepts genuine PNG and serves it from /media-files with strict nosniff and CSP sandbox', async () => {
+      const student = ctx.fixtures.users.student;
+      const token = ctx.createAuthToken(student.id, 'student', student.sessionId);
+
+      // Valid minimal PNG signature (8 bytes: 89 50 4E 47 0D 0A 1A 0A + dummy IHDR)
+      const validPngBytes = new Uint8Array([
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89
+      ]);
+      const validFile = new File([validPngBytes], 'profile.png', { type: 'image/png' });
+      const fd = new FormData();
+      fd.append('file', validFile);
+
+      const uploadRes = await apiRequest(app, 'POST', '/auth/me/photo', {
+        token,
+        body: fd,
+      }, ctx);
+
+      expect(uploadRes.status).toBe(200);
+      const userData = await uploadRes.json();
+      expect(userData.photo_url).toBeTruthy();
+
+      // Fetch the uploaded photo through mediaRouter
+      const mediaRes = await apiRequest(app, 'GET', userData.photo_url, {}, ctx);
+      expect(mediaRes.status).toBe(200);
+      expect(mediaRes.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(mediaRes.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox");
+    });
+  });
 });
+
 
 

@@ -30,7 +30,7 @@ import {
   SESSION_COOKIE_NAME,
 } from '../services/jwt';
 import { emailConfigured, sendPasswordReset } from '../services/mailer';
-import { createStorageService, safeUploadName, mediaUrl, IMAGE_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
+import { createStorageService, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
 import { peerIds, rankedPairs, rankOf, streakDays, accuracyPct } from '../services/ranking';
 import {
   loginRateLimiter,
@@ -1104,11 +1104,31 @@ authRouter.post('/me/photo', requireAuth, async (c) => {
   const contents = await file.arrayBuffer();
   if (contents.byteLength > MAX_UPLOAD_BYTES) return c.json({ detail: 'الملف أكبر من الحد المسموح (20 ميغابايت)' }, 400);
 
+  const sig = validateFileSignature(contents, IMAGE_EXTS);
+  if (!sig.valid) {
+    return c.json({ detail: 'توقيع الملف أو نوعه الداخلي غير صالح' }, 400);
+  }
+
+  const detectedExt = sig.detectedExt === 'jpg' ? 'jpeg' : (sig.detectedExt || 'jpeg');
+  const mimeType = `image/${detectedExt}`;
+
   const storage = createStorageService(c.env.R2_BUCKET);
   const storedName = safeUploadName(file.name, IMAGE_EXTS, 'photo');
-  await storage.save(storedName, contents, file.type || 'image/jpeg');
+  await storage.save(storedName, contents, mimeType);
 
   const photoUrl = mediaUrl(storedName);
+  try {
+    await db.insert(schema.mediaFiles).values({
+      id: schema.genId(),
+      filename: storedName,
+      url: photoUrl,
+      content_type: mimeType,
+      size_bytes: contents.byteLength,
+      uploaded_by: userId,
+      is_deleted: false,
+    });
+  } catch (_) {}
+
   await db.update(schema.users).set({ photo_url: photoUrl }).where(eq(schema.users.id, userId));
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
   return c.json(userOut(user!));
