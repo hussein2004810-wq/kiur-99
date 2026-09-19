@@ -72,7 +72,7 @@ glimpsesRouter.get('/', requireAuth, async (c) => {
       continue;
     }
 
-    // Check targets matching user's academic stage or university
+    // Check targets matching user's academic stage, college, department or university
     const targets = await db
       .select()
       .from(schema.clinicalGlimpseTargets)
@@ -80,11 +80,13 @@ glimpsesRouter.get('/', requireAuth, async (c) => {
 
     const matched = targets.some((t) => {
       const matchUni = !t.university_id || t.university_id === user.university_id;
+      const matchCollege = !t.college_id || t.college_id === user.college_id;
+      const matchDept = !t.department_id || t.department_id === user.department_id;
       const matchStage =
         (!t.stage_id && !t.phase_id) ||
         t.stage_id === user.stage_id ||
         t.phase_id === user.stage_id;
-      return matchUni && matchStage;
+      return matchUni && matchCollege && matchDept && matchStage;
     });
 
     if (matched) {
@@ -456,6 +458,12 @@ adminGlimpsesRouter.post('/:id/submit-review', async (c) => {
     return c.json(err.body, err.status);
   }
 
+  // Ownership check: only creator professor or admin can submit review
+  if (user.role !== 'admin' && glimpse.created_by !== user.id) {
+    const err = responseError('FORBIDDEN', 'لا تملك صلاحية تسليم هذه اللمحة للمراجعة', 403);
+    return c.json(err.body, err.status);
+  }
+
   await db
     .update(schema.clinicalGlimpses)
     .set({
@@ -465,7 +473,11 @@ adminGlimpsesRouter.post('/:id/submit-review', async (c) => {
       updated_by: user.id,
       updated_at: sql`(CURRENT_TIMESTAMP)`,
     })
-    .where(eq(schema.clinicalGlimpses.id, id));
+    .where(and(
+      eq(schema.clinicalGlimpses.id, id),
+      eq(schema.clinicalGlimpses.status, 'draft'),
+      user.role === 'admin' ? sql`1=1` : eq(schema.clinicalGlimpses.created_by, user.id)
+    ));
 
   await logGlimpseAction(db, id, 'submit_review', user.id);
 
@@ -493,6 +505,12 @@ adminGlimpsesRouter.post('/:id/return-draft', async (c) => {
     return c.json(err.body, err.status);
   }
 
+  // Ownership check: only creator professor or admin can return to draft
+  if (user.role !== 'admin' && glimpse.created_by !== user.id) {
+    const err = responseError('FORBIDDEN', 'لا تملك صلاحية إرجاع هذه اللمحة إلى مسودة', 403);
+    return c.json(err.body, err.status);
+  }
+
   await db
     .update(schema.clinicalGlimpses)
     .set({
@@ -502,7 +520,10 @@ adminGlimpsesRouter.post('/:id/return-draft', async (c) => {
       updated_by: user.id,
       updated_at: sql`(CURRENT_TIMESTAMP)`,
     })
-    .where(eq(schema.clinicalGlimpses.id, id));
+    .where(and(
+      eq(schema.clinicalGlimpses.id, id),
+      user.role === 'admin' ? sql`1=1` : eq(schema.clinicalGlimpses.created_by, user.id)
+    ));
 
   await logGlimpseAction(db, id, 'return_draft', user.id);
 
@@ -614,6 +635,12 @@ adminGlimpsesRouter.post('/:id/archive', async (c) => {
     return c.json(err.body, err.status);
   }
 
+  // Ownership check: only creator professor or admin can archive
+  if (user.role !== 'admin' && glimpse.created_by !== user.id) {
+    const err = responseError('FORBIDDEN', 'لا تملك صلاحية أرشفة هذه اللمحة', 403);
+    return c.json(err.body, err.status);
+  }
+
   await db
     .update(schema.clinicalGlimpses)
     .set({
@@ -623,7 +650,10 @@ adminGlimpsesRouter.post('/:id/archive', async (c) => {
       updated_by: user.id,
       updated_at: sql`(CURRENT_TIMESTAMP)`,
     })
-    .where(eq(schema.clinicalGlimpses.id, id));
+    .where(and(
+      eq(schema.clinicalGlimpses.id, id),
+      user.role === 'admin' ? sql`1=1` : eq(schema.clinicalGlimpses.created_by, user.id)
+    ));
 
   await logGlimpseAction(db, id, 'archive', user.id);
 

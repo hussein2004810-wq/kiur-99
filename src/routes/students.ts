@@ -12,26 +12,42 @@ import { peerIds, rankedPairs, rankOf, streakDays, accuracyPct } from '../servic
 export const studentsRouter = new Hono<AppEnv>();
 studentsRouter.use('*', requireAuth);
 
-// GET /api/students — search
+// GET /api/students — search with pagination and privacy protection
 studentsRouter.get('/', async (c) => {
   const db = drizzle(c.env.DB, { schema });
-  const q = c.req.query('q') ?? '';
+  const currentUser = c.get('user')!;
+  const q = (c.req.query('q') ?? '').trim();
+  const limit = Math.min(Math.max(1, parseInt(c.req.query('limit') ?? '20')), 50);
+  const offset = Math.max(0, parseInt(c.req.query('offset') ?? '0'));
 
-  let students;
+  let all = await db
+    .select({
+      id: schema.users.id,
+      full_name: schema.users.full_name,
+      email: schema.users.email,
+      photo_url: schema.users.photo_url,
+      university_id: schema.users.university_id,
+      stage_id: schema.users.stage_id,
+    })
+    .from(schema.users)
+    .where(eq(schema.users.role, 'student'));
+
+  const isPrivileged = currentUser.role === 'admin' || currentUser.role === 'professor';
+
   if (q) {
-    const all = await db.select().from(schema.users).where(eq(schema.users.role, 'student'));
-    students = all.filter((s) =>
-      s.full_name.toLowerCase().includes(q.toLowerCase()) ||
-      s.email.toLowerCase().includes(q.toLowerCase())
+    const qLower = q.toLowerCase();
+    all = all.filter((s) =>
+      s.full_name.toLowerCase().includes(qLower) ||
+      (isPrivileged && s.email.toLowerCase().includes(qLower))
     );
-  } else {
-    students = await db.select().from(schema.users).where(eq(schema.users.role, 'student'));
   }
 
-  return c.json(students.map((s) => ({
+  const paged = all.slice(offset, offset + limit);
+
+  return c.json(paged.map((s) => ({
     id: s.id,
     full_name: s.full_name,
-    email: s.email,
+    email: isPrivileged ? s.email : undefined,
     photo_url: s.photo_url,
     university_id: s.university_id,
     stage_id: s.stage_id,

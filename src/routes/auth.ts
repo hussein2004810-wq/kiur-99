@@ -6,7 +6,7 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, and, ne, inArray, desc, isNotNull, sql } from 'drizzle-orm';
+import { eq, and, ne, inArray, desc, isNotNull, isNull, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth, startNewSession } from '../middleware/auth';
@@ -703,6 +703,14 @@ authRouter.post('/resend-verification', resendVerificationRateLimiter, async (c)
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
 
   if (user && !user.email_verified_at) {
+    // Invalidate prior unverified tokens
+    await db
+      .delete(schema.emailVerifications)
+      .where(and(
+        eq(schema.emailVerifications.user_id, user.id),
+        isNull(schema.emailVerifications.verified_at)
+      ));
+
     const rawVerificationToken = generateResetToken();
     const verificationHash = await hashResetToken(rawVerificationToken);
     const verifExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_HOURS * 3600000).toISOString();

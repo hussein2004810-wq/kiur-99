@@ -46,7 +46,9 @@ export type AuditEventType =
   | 'ADMIN_ACADEMIC_CSV_IMPORTED'
   | 'SECURITY_RULE_DENIAL'
   | 'SECURITY_CSRF_DENIAL'
-  | 'SECURITY_RATE_LIMITED';
+  | 'SECURITY_RATE_LIMITED'
+  | 'RESELLER_CODES_GENERATED'
+  | 'RESELLER_CODE_SOLD';
 
 export interface AuditLogEntry {
   timestamp: string;
