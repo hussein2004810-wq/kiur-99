@@ -39,33 +39,24 @@ describe('Legacy Feature Port & Operational Gap Suite', () => {
       expect(data.detail).toContain('جلسة تدفق Firebase');
     });
 
-    it('serves interactive Google login portal on GET /auth/google/login without 500 error', async () => {
+    it('returns 503 fail-closed on GET /auth/google/login when Google OAuth is not configured', async () => {
       const res = await apiRequest(app, 'GET', '/auth/google/login?next=admin', {}, ctx);
-      expect(res.status).toBe(200);
-      const text = await res.text();
-      expect(text).toContain('تسجيل الدخول بحساب Google');
-      expect(text).toContain('المتابعة بحساب Google');
+      expect(res.status).toBe(503);
+      const data = await res.json();
+      expect(data.detail).toContain('غير مهيأة');
     });
 
-    it('authenticates Google user on POST /auth/google/login and promotes bootstrap admin', async () => {
+    it('rejects unauthenticated email login on POST /auth/google/login with 405 Method Not Allowed', async () => {
       const res = await apiRequest(app, 'POST', '/auth/google/login', {
         body: {
-          email: 'hussein2004810@gmail.com',
+          email: 'attacker@gmail.com',
           next: 'admin',
         },
       }, ctx);
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(405);
       const data = await res.json();
-      expect(data.ok).toBe(true);
-      expect(data.access_token).toBeDefined();
-      expect(data.user.email).toBe('hussein2004810@gmail.com');
-      expect(data.user.role).toBe('admin');
-
-      // Verify session cookie was set
-      const setCookie = res.headers.get('set-cookie');
-      expect(setCookie).toBeDefined();
-      expect(setCookie).toContain('nabd_session=');
+      expect(data.detail).toContain('غير مدعومة');
     });
 
     it('reports Google OAuth configuration status on GET /auth/google/status', async () => {
@@ -76,29 +67,11 @@ describe('Legacy Feature Port & Operational Gap Suite', () => {
       expect(typeof data.enabled).toBe('boolean');
     });
 
-    it('registers a new student via Google sign-in with profile_complete false', async () => {
-      const res = await apiRequest(app, 'POST', '/auth/google/login', {
-        body: {
-          email: 'newstudent_google@example.com',
-          next: 'student',
-        },
-      }, ctx);
-
-      expect(res.status).toBe(200);
-      const data = await res.json();
-      expect(data.ok).toBe(true);
-      expect(data.access_token).toBeDefined();
-      expect(data.user.email).toBe('newstudent_google@example.com');
-      expect(data.user.role).toBe('student');
-      expect(data.user.profile_complete).toBe(false);
-    });
-
-    it('verifies Google ID token on POST /auth/google/verify and signs student in', async () => {
-      // Mock base64url encoded Google ID token payload
+    it('rejects forged fake_signature token on POST /auth/google/verify with 401 Unauthorized', async () => {
       const mockPayload = {
-        email: 'gis_student@gmail.com',
-        name: 'علي حسين',
-        sub: 'google_gis_123456',
+        email: 'attacker_forged@gmail.com',
+        name: 'مهاجم وهمي',
+        sub: 'google_forged_123456',
         picture: 'https://lh3.googleusercontent.com/a/test_pic.jpg',
         email_verified: true,
       };
@@ -107,22 +80,11 @@ describe('Legacy Feature Port & Operational Gap Suite', () => {
       const mockJwt = `${headerB64}.${payloadB64}.fake_signature`;
 
       const res = await apiRequest(app, 'POST', '/auth/google/verify', {
-        body: { credential: mockJwt, next: 'student' },
+        body: { credential: mockJwt, next: 'admin' },
       }, ctx);
 
-      expect(res.status).toBe(200);
-      const data = await res.json();
-      expect(data.ok).toBe(true);
-      expect(data.access_token).toBeDefined();
-      expect(data.user.email).toBe('gis_student@gmail.com');
-      expect(data.user.full_name).toBe('علي حسين');
-      expect(data.user.photo_url).toBe('https://lh3.googleusercontent.com/a/test_pic.jpg');
-      expect(data.user.role).toBe('student');
-
-      // Verify session cookie
-      const setCookie = res.headers.get('set-cookie');
-      expect(setCookie).toBeDefined();
-      expect(setCookie).toContain('nabd_session=');
+      // Must be rejected with 401/503 (cannot verify signature against Google)
+      expect([401, 503]).toContain(res.status);
     });
 
     it('rejects POST /auth/google/verify when credential is missing', async () => {
@@ -134,7 +96,7 @@ describe('Legacy Feature Port & Operational Gap Suite', () => {
       expect(data.detail).toContain('مفقود');
     });
 
-    it('authenticates Google account via direct email payload in POST /auth/google/verify', async () => {
+    it('rejects direct email payload in POST /auth/google/verify without credential', async () => {
       const res = await apiRequest(app, 'POST', '/auth/google/verify', {
         body: {
           email: 'direct_student@gmail.com',
@@ -142,12 +104,9 @@ describe('Legacy Feature Port & Operational Gap Suite', () => {
           next: 'student',
         },
       }, ctx);
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(400);
       const data = await res.json();
-      expect(data.ok).toBe(true);
-      expect(data.access_token).toBeDefined();
-      expect(data.user.email).toBe('direct_student@gmail.com');
-      expect(data.user.full_name).toBe('طالب مباشر');
+      expect(data.detail).toContain('مفقود');
     });
   });
 
