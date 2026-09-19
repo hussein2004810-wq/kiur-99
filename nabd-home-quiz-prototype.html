@@ -12,8 +12,8 @@
   :root{
     --bg-1:#EAF0FF; --bg-2:#F7ECFF; --bg-3:#FFF8F0;
     --ink:#16213A; --ink-soft:#4A5578; --ink-faint:#7E88AC;
-    --glass-bg:rgba(255,255,255,.55); --glass-bg-strong:rgba(255,255,255,.72);
-    --glass-border:rgba(255,255,255,.85); --glass-shadow:rgba(76,95,224,.14);
+    --glass-bg:rgba(255,255,255,.80); --glass-bg-strong:rgba(255,255,255,.95);
+    --glass-border:rgba(76,95,224,.20); --glass-shadow:rgba(76,95,224,.14);
     --accent:#4C5FE0; --accent-2:#7B6EF6; --warm:#FF8A5B;
     --success:#1FAE72; --success-soft:rgba(31,174,114,.14);
     --danger:#E5484D; --danger-soft:rgba(229,72,77,.12);
@@ -23,8 +23,29 @@
     --shadow-lift:0 22px 44px -18px var(--glass-shadow);
     --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px; --space-6:32px;
     color-scheme: light;
-  }
-  html.dark{
+  
+    /* ── Bank-select adaptive tokens (light mode) ── */
+    --bs-card-bg: linear-gradient(135deg,rgba(76,95,224,0.10),rgba(123,110,246,0.08));
+    --bs-card-border: rgba(76,95,224,0.35);
+    --bs-toggle-bg: rgba(76,95,224,0.10);
+    --bs-toggle-border: rgba(76,95,224,0.30);
+    --bs-toggle-color: #4C5FE0;
+    --bs-last-bg: rgba(31,174,114,0.12);
+    --bs-last-border: rgba(31,174,114,0.40);
+    --bs-last-label: #1FAE72;
+    --bs-last-btn-bg: rgba(31,174,114,0.18);
+    --bs-last-btn-border: rgba(31,174,114,0.50);
+    --bs-last-btn-color: #16854F;
+    --bs-subj-bg: rgba(76,95,224,0.08);
+    --bs-subj-border: rgba(76,95,224,0.20);
+    --bs-subj-color: #16213A;
+    --bs-subj-bg-hover: rgba(76,95,224,0.18);
+    --bs-mistakes-bg: rgba(229,72,77,0.10);
+    --bs-mistakes-border: rgba(229,72,77,0.30);
+    --bs-mistakes-color: #B91C1C;
+    --bs-muted-label: #4A5578;
+    --bs-path-label: #16213A;
+  }html.dark{
     --bg-1:#0A0F1E; --bg-2:#121A33; --bg-3:#1A1030;
     --ink:#EDF1FF; --ink-soft:#AEB6DC; --ink-faint:#77809E;
     --glass-bg:rgba(20,25,48,.55); --glass-bg-strong:rgba(24,30,56,.72);
@@ -34,8 +55,29 @@
     --danger:#FF6B70; --danger-soft:rgba(255,107,112,.14);
     --track:rgba(255,255,255,.08); --track-strong:rgba(139,154,255,.35);
     color-scheme: dark;
-  }
-  *{box-sizing:border-box; margin:0; padding:0;}
+  
+    /* ── Bank-select adaptive tokens (dark mode) ── */
+    --bs-card-bg: linear-gradient(135deg,rgba(139,92,246,0.15),rgba(59,130,246,0.12));
+    --bs-card-border: rgba(139,92,246,0.30);
+    --bs-toggle-bg: rgba(255,255,255,0.08);
+    --bs-toggle-border: rgba(255,255,255,0.15);
+    --bs-toggle-color: #AEB6DC;
+    --bs-last-bg: rgba(16,185,129,0.10);
+    --bs-last-border: rgba(16,185,129,0.25);
+    --bs-last-label: #34d399;
+    --bs-last-btn-bg: rgba(16,185,129,0.20);
+    --bs-last-btn-border: rgba(16,185,129,0.40);
+    --bs-last-btn-color: #34d399;
+    --bs-subj-bg: rgba(255,255,255,0.06);
+    --bs-subj-border: rgba(255,255,255,0.10);
+    --bs-subj-color: #EDF1FF;
+    --bs-subj-bg-hover: rgba(139,92,246,0.20);
+    --bs-mistakes-bg: rgba(239,68,68,0.10);
+    --bs-mistakes-border: rgba(239,68,68,0.25);
+    --bs-mistakes-color: #f87171;
+    --bs-muted-label: #AEB6DC;
+    --bs-path-label: #EDF1FF;
+  }*{box-sizing:border-box; margin:0; padding:0;}
   body{
     font-family:'Noto Sans Arabic','IBM Plex Mono',sans-serif;
     color:var(--ink);
@@ -2376,6 +2418,121 @@
     .lightbox-img{max-width:900px;}
     .player-card{max-width:900px; margin-inline:auto;}
   }
+
+  /* ═══════════════════════════════════════════════════
+     BANK SELECT — Adaptive Light/Dark CSS
+  ═══════════════════════════════════════════════════ */
+  .bs-smart-card {
+    margin: 0 0 12px 0;
+    padding: 16px 18px;
+    border-radius: 14px;
+    background: var(--bs-card-bg);
+    border: 1.5px solid var(--bs-card-border);
+    box-shadow: 0 2px 12px rgba(76,95,224,0.08);
+  }
+  .bs-toggle-btn {
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: var(--bs-toggle-bg);
+    border: 1.5px solid var(--bs-toggle-border);
+    color: var(--bs-toggle-color);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.15s;
+  }
+  .bs-toggle-btn:hover {
+    background: var(--bs-toggle-border);
+  }
+  .bs-last-row {
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--bs-last-bg);
+    border: 1.5px solid var(--bs-last-border);
+  }
+  .bs-last-label {
+    font-size: 11px;
+    color: var(--bs-last-label);
+    font-weight: 600;
+    margin-bottom: 5px;
+  }
+  .bs-last-btn {
+    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    background: var(--bs-last-btn-bg);
+    border: 1.5px solid var(--bs-last-btn-border);
+    color: var(--bs-last-btn-color);
+    cursor: pointer;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .bs-last-btn:hover {
+    filter: brightness(0.9);
+  }
+  .bs-muted-label {
+    font-size: 12px;
+    color: var(--bs-muted-label);
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
+  .bs-subject-btn {
+    padding: 13px 10px;
+    border-radius: 12px;
+    background: var(--bs-subj-bg);
+    border: 1.5px solid var(--bs-subj-border);
+    color: var(--bs-subj-color);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  .bs-subject-btn:hover {
+    background: var(--bs-subj-bg-hover);
+    border-color: var(--bs-card-border);
+    transform: translateY(-1px);
+  }
+  .bs-mistakes-btn {
+    width: 100%;
+    padding: 11px;
+    border-radius: 10px;
+    background: var(--bs-mistakes-bg);
+    border: 1.5px solid var(--bs-mistakes-border);
+    color: var(--bs-mistakes-color);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  .bs-mistakes-btn:hover {
+    filter: brightness(0.92);
+  }
+  .bs-path-label {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--bs-path-label);
+  }
+  .bs-subject-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--bs-path-label);
+  }
+  /* Manual override panel header */
+  .bs-manual-title {
+    font-size: 12px;
+    color: var(--bs-muted-label);
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
 </style>
 </head>
 <body>
@@ -2660,7 +2817,7 @@
             <span class="mono" id="timer">24:10</span>
           </div>
         </button>
-        <button onclick="goToBankSelect()" title="تغيير المادة" style="width:28px; height:28px; border-radius:8px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12); color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; flex-shrink:0;">
+        <button onclick="goToBankSelect()" title="تغيير المادة" class="icon-btn" style="width:28px; height:28px; border-radius:8px; flex-shrink:0;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
         </button>
       </div>
@@ -2726,28 +2883,28 @@
     </div>
 
     <!-- Smart Path Card: shown when user has a complete profile -->
-    <div id="bsSmartPathCard" style="display:none; margin:0 0 12px 0; padding:14px 16px; border-radius:14px; background:linear-gradient(135deg,rgba(139,92,246,0.15),rgba(59,130,246,0.12)); border:1px solid rgba(139,92,246,0.3);">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+    <div id="bsSmartPathCard" class="bs-smart-card" style="display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <div style="display:flex; align-items:center; gap:8px;">
           <span style="font-size:18px;">🎓</span>
-          <span style="font-weight:700; font-size:14px; color:var(--fg);" id="bsSmartPathLabel">مسارك الدراسي</span>
+          <span class="bs-path-label" id="bsSmartPathLabel">مسارك الدراسي</span>
         </div>
-        <button onclick="bsToggleManual()" style="font-size:11px; padding:4px 10px; border-radius:20px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:var(--muted); cursor:pointer;" id="bsToggleBtn">تغيير</button>
+        <button onclick="bsToggleManual()" class="bs-toggle-btn" id="bsToggleBtn">تغيير</button>
       </div>
       <!-- Last subject shortcut -->
-      <div id="bsLastSubjectRow" style="display:none; margin-bottom:10px; padding:10px 12px; border-radius:10px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25);">
-        <div style="font-size:11px; color:#34d399; margin-bottom:4px;">⚡ استمر من حيث توقفت</div>
+      <div id="bsLastSubjectRow" class="bs-last-row" style="display:none;">
+        <div class="bs-last-label">⚡ استمر من حيث توقفت</div>
         <div style="display:flex; align-items:center; justify-content:space-between;">
-          <span style="font-size:13px; font-weight:600; color:var(--fg);" id="bsLastSubjectName"></span>
-          <button onclick="bsContinueLast()" style="font-size:12px; padding:5px 12px; border-radius:8px; background:rgba(16,185,129,0.2); border:1px solid rgba(16,185,129,0.4); color:#34d399; cursor:pointer; font-weight:600;">ابدأ الآن →</button>
+          <span class="bs-subject-name" id="bsLastSubjectName"></span>
+          <button onclick="bsContinueLast()" class="bs-last-btn">ابدأ الآن →</button>
         </div>
       </div>
       <!-- Subject grid for current stage -->
-      <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">📚 مواد مرحلتك — اختر مادة للبدء فوراً:</div>
+      <div class="bs-muted-label">📚 مواد مرحلتك — اختر مادة للبدء فوراً:</div>
       <div id="bsSmartSubjectsGrid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
       <!-- Mistakes session shortcut -->
-      <div id="bsMistakesRow" style="display:none; margin-top:10px;">
-        <button onclick="bsStartMistakesSession()" style="width:100%; padding:10px; border-radius:10px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); color:#f87171; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px; justify-content:center;">
+      <div id="bsMistakesRow" style="display:none; margin-top:12px;">
+        <button onclick="bsStartMistakesSession()" class="bs-mistakes-btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5"/><circle cx="12" cy="16.5" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/></svg>
           مراجعة الأسئلة التي أخطأت فيها
         </button>
@@ -2756,7 +2913,7 @@
 
     <!-- Manual override: collapsed by default when profile complete -->
     <div id="bsManualPanel" class="glass" style="padding:18px 20px; display:block;">
-      <div id="bsManualTitle" style="font-size:12px; color:var(--muted); margin-bottom:10px; display:none;">🔧 اختيار يدوي:</div>
+      <div id="bsManualTitle" class="bs-manual-title" style="display:none;">🔧 اختيار يدوي:</div>
       <div class="form-field"><select id="bsSection" onchange="onBsSectionChange()"><option value="">اختر القسم</option></select></div>
       <div class="form-field"><select id="bsUniversity" onchange="onBsUniversityChange()" disabled><option value="">اختر الجامعة</option></select></div>
       <div class="form-field"><select id="bsStage" onchange="onBsStageChange()" disabled><option value="">اختر المرحلة</option></select></div>
@@ -4704,7 +4861,7 @@
     if (timerPaused) {
       stopTimer();
       if (btn) btn.style.opacity = '0.35';
-      document.getElementById('timer').style.color = 'var(--muted)';
+      document.getElementById('timer').style.color = 'var(--ink-soft)';
     } else {
       startTimer();
       if (btn) btn.style.opacity = '0.7';
@@ -4830,12 +4987,11 @@
     // Subjects grid
     const grid = document.getElementById('bsSmartSubjectsGrid');
     if (smartSubjects.length === 0) {
-      grid.innerHTML = '<div style="color:var(--muted);font-size:13px;grid-column:1/-1;text-align:center;padding:12px 0;">لا توجد مواد في مرحلتك حالياً</div>';
+      grid.innerHTML = '<div style="color:var(--ink-soft);font-size:13px;grid-column:1/-1;text-align:center;padding:12px 0;">لا توجد مواد في مرحلتك حالياً</div>';
     } else {
       grid.innerHTML = smartSubjects.map(sub => `
         <button onclick="bsQuickStart('${sub.id}', '${esc(sub.name)}')"
-          style="padding:12px 10px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:var(--fg); font-size:13px; font-weight:600; cursor:pointer; text-align:center; transition:all 0.15s; line-height:1.4; word-break:break-word;"
-          onmouseover="this.style.background='rgba(139,92,246,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.06)'">
+          class="bs-subject-btn">
           ${esc(sub.name)}
         </button>`).join('');
     }
