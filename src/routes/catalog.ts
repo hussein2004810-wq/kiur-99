@@ -43,7 +43,7 @@ catalogRouter.get('/tree', async (c) => {
             university_id: stage.university_id,
             sections: studySections
               .filter((sec) => sec.stage_id === stage.id)
-              .map((sec) => ({ id: sec.id, name: sec.name, code: sec.code, capacity: sec.capacity })),
+              .map((sec) => ({ id: sec.id, name: sec.name })),
             subjects: subjects
               .filter((sub) => sub.stage_id === stage.id)
               .map((sub) => ({ id: sub.id, name: sub.name, stage_id: sub.stage_id })),
@@ -89,8 +89,6 @@ catalogRouter.get('/tree', async (c) => {
                 .map((sec) => ({
                   id: sec.id,
                   name: sec.name,
-                  code: sec.code,
-                  capacity: sec.capacity,
                 }));
 
               return {

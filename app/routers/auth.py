@@ -336,8 +336,6 @@ def update_my_profile(
     open to any email, this is the platform's only source of that data."""
     if not body.full_name.strip():
         raise HTTPException(400, "الاسم الكامل مطلوب")
-    if not body.phone.strip():
-        raise HTTPException(400, "رقم الهاتف مطلوب")
 
     university = db.get(models.University, body.university_id)
     if not university or university.section_id != body.section_id:
@@ -353,7 +351,7 @@ def update_my_profile(
         stage_id = body.stage_id
 
     user.full_name = body.full_name.strip()
-    user.phone = body.phone.strip()
+    user.phone = (body.phone or "").strip() or None
     user.section_id = body.section_id
     user.university_id = body.university_id
     user.is_graduate = body.is_graduate

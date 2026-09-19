@@ -40,7 +40,7 @@ class UserOut(BaseModel):
         admins/resellers are created directly by an admin and never need it."""
         if self.role != "student":
             return True
-        if not self.phone or not self.university_id or not self.section_id:
+        if not self.university_id or not self.section_id:
             return False
         if self.is_graduate is None:
             return False
@@ -51,7 +51,7 @@ class UserOut(BaseModel):
 
 class ProfileUpdateIn(BaseModel):
     full_name: str
-    phone: str
+    phone: Optional[str] = None
     section_id: str
     university_id: str
     is_graduate: bool

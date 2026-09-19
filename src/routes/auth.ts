@@ -1268,7 +1268,7 @@ authRouter.put('/me/profile', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const userId = c.get('user')!.id;
   const body = await c.req.json<{
-    full_name: string; phone: string;
+    full_name: string; phone?: string;
     section_id?: string; university_id: string;
     college_id?: string; department_id?: string;
     stage_id?: string; study_section_id?: string;
@@ -1276,7 +1276,6 @@ authRouter.put('/me/profile', requireAuth, async (c) => {
   }>();
 
   if (!body.full_name?.trim()) return c.json({ detail: 'الاسم الكامل مطلوب' }, 400);
-  if (!body.phone?.trim()) return c.json({ detail: 'رقم الهاتف مطلوب' }, 400);
 
   const uni = await db.select().from(schema.universities).where(eq(schema.universities.id, body.university_id)).get();
   if (!uni) return c.json({ detail: 'الجامعة المختارة غير موجودة' }, 400);
@@ -1298,7 +1297,7 @@ authRouter.put('/me/profile', requireAuth, async (c) => {
 
   await db.update(schema.users).set({
     full_name: body.full_name.trim(),
-    phone: body.phone.trim(),
+    phone: body.phone !== undefined ? (body.phone?.trim() || null) : undefined,
     section_id: effectiveSectionId,
     university_id: body.university_id,
     college_id: body.college_id || null,

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestContext, TestContext } from '../harness/test-context';
 import { apiRequest } from '../harness/app';
+import * as schema from '../../src/db/schema';
 import mainApp from '../../src/index';
 
 describe('Tier 1: Feature - Iraqi Medical Group Academic Hierarchy & Admin Tools', () => {
@@ -543,5 +544,151 @@ describe('Tier 1: Feature - Iraqi Medical Group Academic Hierarchy & Admin Tools
     }, ctx);
     const list = await checkRes.json();
     expect(list.some((s: any) => s.id === stage.id)).toBe(false);
+  });
+
+  it('should allow student to complete and update profile without requiring phone number via PUT /auth/me/profile', async () => {
+    const studentToken = ctx.fixtures.users.student.token;
+
+    // Update profile without providing phone
+    const res = await apiRequest(app, 'PUT', '/auth/me/profile', {
+      headers: { Authorization: `Bearer ${studentToken}` },
+      body: {
+        full_name: 'علي طالب الطب',
+        university_id: ctx.fixtures.universityId,
+        stage_id: ctx.fixtures.stageId,
+        section_id: ctx.fixtures.sectionId,
+        is_graduate: false,
+      },
+    }, ctx);
+
+    expect(res.status).toBe(200);
+    const profile = await res.json();
+    expect(profile.full_name).toBe('علي طالب الطب');
+    expect(profile.profile_complete).toBe(true);
+    expect(profile.university_id).toBe(ctx.fixtures.universityId);
+    expect(profile.stage_id).toBe(ctx.fixtures.stageId);
+  });
+
+  it('should support academic trash bin: soft-delete subject, list in /trash with questions count, restore, and purge', async () => {
+    // 1. Create a stage and subject
+    const stageRes = await apiRequest(app, 'POST', '/api/admin/academic/stages', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'مرحلة سلة المحذوفات',
+        university_id: 'uni_bgd',
+        stage_number: 2,
+      },
+    }, ctx);
+    expect(stageRes.status).toBe(201);
+    const stage = await stageRes.json();
+
+    const subRes = await apiRequest(app, 'POST', '/api/admin/academic/subjects', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'مادة سلة المهملات التجريبية',
+        stage_id: stage.id,
+      },
+    }, ctx);
+    expect(subRes.status).toBe(201);
+    const subject = await subRes.json();
+
+    // 2. Soft-delete subject -> moved to trash
+    const delRes = await apiRequest(app, 'DELETE', `/api/admin/academic/subjects/${subject.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(delRes.status).toBe(200);
+    const delData = await delRes.json();
+    expect(delData.moved_to_trash).toBe(true);
+
+    // 3. GET /api/admin/trash must return enriched subject info
+    const trashRes = await apiRequest(app, 'GET', '/api/admin/trash', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(trashRes.status).toBe(200);
+    const trashData = await trashRes.json();
+    const trashedSub = trashData.subjects.find((s: any) => s.id === subject.id);
+    expect(trashedSub).toBeDefined();
+    expect(trashedSub.name).toBe('مادة سلة المهملات التجريبية');
+    expect(trashedSub.stage_name).toBe('مرحلة سلة المحذوفات');
+    expect(typeof trashedSub.questions_count).toBe('number');
+
+    // 4. Restore subject
+    const restoreRes = await apiRequest(app, 'POST', `/api/admin/trash/subject/${subject.id}/restore`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(restoreRes.status).toBe(200);
+
+    // 5. Verify it's no longer in trash
+    const trashAfterRes = await apiRequest(app, 'GET', '/api/admin/trash', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    const trashAfter = await trashAfterRes.json();
+    expect(trashAfter.subjects.some((s: any) => s.id === subject.id)).toBe(false);
+
+    // 6. Delete again and permanently purge
+    await apiRequest(app, 'DELETE', `/api/admin/academic/subjects/${subject.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+
+    const purgeRes = await apiRequest(app, 'DELETE', `/api/admin/trash/subject/${subject.id}/purge`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(purgeRes.status).toBe(200);
+    const purgeData = await purgeRes.json();
+    expect(purgeData.ok).toBe(true);
+    expect(purgeData.purged_type).toBe('subject');
+  });
+
+  it('should block restoring a subject if its parent stage was deleted', async () => {
+    // 1. Create stage and subject
+    const stageRes = await apiRequest(app, 'POST', '/api/admin/academic/stages', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'مرحلة للحذف المؤقت',
+        university_id: 'uni_bgd',
+        stage_number: 3,
+      },
+    }, ctx);
+    const stage = await stageRes.json();
+
+    const subRes = await apiRequest(app, 'POST', '/api/admin/academic/subjects', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'مادة يتيمة للحذف',
+        stage_id: stage.id,
+      },
+    }, ctx);
+    const subject = await subRes.json();
+
+    // 2. Soft-delete subject
+    await apiRequest(app, 'DELETE', `/api/admin/academic/subjects/${subject.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+
+    // 3. Delete the parent stage (which permanently purges all its child data)
+    await apiRequest(app, 'DELETE', `/api/admin/academic/stages/${stage.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+
+    // 4. Since the stage and all its subjects are wiped, restore returns 404
+    const restoreRes = await apiRequest(app, 'POST', `/api/admin/trash/subject/${subject.id}/restore`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(restoreRes.status).toBe(404);
+
+    // 5. Test orphaned subject whose stage does not exist in the database
+    const orphanId = 'sub_orphan_test';
+    await ctx.db.prepare('PRAGMA foreign_keys = OFF').run();
+    await ctx.db.prepare(
+      'INSERT INTO subjects (id, name, stage_id, term, is_deleted, deleted_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(orphanId, 'مادة بدون مرحلة', 'non_existent_stage_id', 'annual', 1, new Date().toISOString()).run();
+    await ctx.db.prepare('PRAGMA foreign_keys = ON').run();
+
+    const restoreOrphanRes = await apiRequest(app, 'POST', `/api/admin/trash/subject/${orphanId}/restore`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(restoreOrphanRes.status).toBe(400);
+    const err = await restoreOrphanRes.json();
+    expect(err.detail).toContain('لا يمكن استرجاع المادة لأن مرحلتها الدراسية غير موجودة');
   });
 });

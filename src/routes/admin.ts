@@ -4,7 +4,7 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, inArray, desc, and } from 'drizzle-orm';
+import { eq, inArray, desc, and, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAdmin, requireAuth } from '../middleware/auth';
@@ -471,11 +471,32 @@ adminRouter.delete('/catalog/stages/:id', async (c) => {
   const st = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
   if (!st) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
 
-  await db.update(schema.subjects).set({
-    is_deleted: true,
-    deleted_at: new Date().toISOString(),
-  }).where(eq(schema.subjects.stage_id, id));
+  const stageSubs = await db.select().from(schema.subjects).where(eq(schema.subjects.stage_id, id));
+  for (const s of stageSubs) {
+    const qs = await db.select({ id: schema.questions.id }).from(schema.questions).where(eq(schema.questions.subject_id, s.id));
+    for (const q of qs) {
+      await db.delete(schema.studentAnswers).where(eq(schema.studentAnswers.question_id, q.id));
+      await db.delete(schema.choices).where(eq(schema.choices.question_id, q.id));
+      await db.delete(schema.savedQuestions).where(eq(schema.savedQuestions.question_id, q.id));
+      await db.delete(schema.examAttemptQuestions).where(eq(schema.examAttemptQuestions.question_id, q.id));
+    }
+    await db.delete(schema.questions).where(eq(schema.questions.subject_id, s.id));
+    await db.delete(schema.exams).where(eq(schema.exams.subject_id, s.id));
+    await db.update(schema.products).set({ grants_subject_id: null }).where(eq(schema.products.grants_subject_id, s.id));
+    await db.delete(schema.activationCodes).where(eq(schema.activationCodes.subject_id, s.id));
+    await db.delete(schema.professorProfiles).where(eq(schema.professorProfiles.subject_id, s.id));
+    await db.delete(schema.courses).where(eq(schema.courses.subject_id, s.id));
+    await db.delete(schema.exams).where(eq(schema.exams.subject_id, s.id));
+    await db.delete(schema.questions).where(eq(schema.questions.subject_id, s.id));
+    await db.delete(schema.subjects).where(eq(schema.subjects.id, s.id));
+  }
 
+  await db.update(schema.users).set({ stage_id: null, study_section_id: null }).where(eq(schema.users.stage_id, id));
+  const stageStudySecs = await db.select().from(schema.studySections).where(eq(schema.studySections.stage_id, id));
+  for (const sec of stageStudySecs) {
+    await db.update(schema.users).set({ study_section_id: null }).where(eq(schema.users.study_section_id, sec.id));
+  }
+  await db.delete(schema.studySections).where(eq(schema.studySections.stage_id, id));
   await db.delete(schema.stages).where(eq(schema.stages.id, id));
   return c.json({ ok: true });
 });
@@ -1387,22 +1408,50 @@ adminRouter.put('/academic/stages/:id', async (c) => {
 adminRouter.delete('/academic/stages/:id', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const id = c.req.param('id');
-  const stg = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
-  if (!stg) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
+  try {
+    const stg = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
+    if (!stg) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
 
-  const stageSubs = await db.select().from(schema.subjects).where(eq(schema.subjects.stage_id, id));
-  for (const s of stageSubs) {
-    await db.delete(schema.questions).where(eq(schema.questions.subject_id, s.id));
-    await db.delete(schema.exams).where(eq(schema.exams.subject_id, s.id));
-    await db.delete(schema.courses).where(eq(schema.courses.subject_id, s.id));
-    await db.delete(schema.activationCodes).where(eq(schema.activationCodes.subject_id, s.id));
-    await db.delete(schema.professorProfiles).where(eq(schema.professorProfiles.subject_id, s.id));
-    await db.delete(schema.subjects).where(eq(schema.subjects.id, s.id));
+    const stageSubs = await db.select().from(schema.subjects).where(eq(schema.subjects.stage_id, id));
+    for (const s of stageSubs) {
+      const qs = await db.select({ id: schema.questions.id }).from(schema.questions).where(eq(schema.questions.subject_id, s.id));
+      for (const q of qs) {
+        await db.delete(schema.studentAnswers).where(eq(schema.studentAnswers.question_id, q.id));
+        await db.delete(schema.choices).where(eq(schema.choices.question_id, q.id));
+        await db.delete(schema.savedQuestions).where(eq(schema.savedQuestions.question_id, q.id));
+        await db.delete(schema.examAttemptQuestions).where(eq(schema.examAttemptQuestions.question_id, q.id));
+      }
+      await db.update(schema.products).set({ grants_subject_id: null }).where(eq(schema.products.grants_subject_id, s.id));
+      await db.delete(schema.activationCodes).where(eq(schema.activationCodes.subject_id, s.id));
+      await db.delete(schema.professorProfiles).where(eq(schema.professorProfiles.subject_id, s.id));
+      await db.delete(schema.courses).where(eq(schema.courses.subject_id, s.id));
+      await db.delete(schema.exams).where(eq(schema.exams.subject_id, s.id));
+      await db.delete(schema.questions).where(eq(schema.questions.subject_id, s.id));
+      await db.delete(schema.subjects).where(eq(schema.subjects.id, s.id));
+    }
+
+    await db.update(schema.users).set({ stage_id: null, study_section_id: null }).where(eq(schema.users.stage_id, id));
+    const stageStudySecs = await db.select().from(schema.studySections).where(eq(schema.studySections.stage_id, id));
+    for (const sec of stageStudySecs) {
+      await db.update(schema.users).set({ study_section_id: null }).where(eq(schema.users.study_section_id, sec.id));
+    }
+
+    await db.delete(schema.studySections).where(eq(schema.studySections.stage_id, id));
+    await db.delete(schema.stages).where(eq(schema.stages.id, id));
+
+    recordAuditEvent({
+      event: 'ADMIN_ACADEMIC_STAGE_DELETED',
+      status: 'SUCCESS',
+      actorId: c.get('user')?.id,
+      targetId: id,
+      details: { name: stg.name, university_id: stg.university_id, program_id: stg.program_id },
+    });
+
+    return c.json({ ok: true });
+  } catch (err: any) {
+    console.error('Error deleting stage:', err);
+    return c.json({ detail: err.detail || err.message || 'تعذر حذف المرحلة الدراسية' }, 400);
   }
-
-  await db.delete(schema.studySections).where(eq(schema.studySections.stage_id, id));
-  await db.delete(schema.stages).where(eq(schema.stages.id, id));
-  return c.json({ ok: true });
 });
 
 // ── 5b. Study Sections CRUD (الشعب والمجموعات الدراسية) ──
@@ -1525,54 +1574,81 @@ adminRouter.post('/academic/subjects', async (c) => {
 adminRouter.put('/academic/subjects/:id', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const id = c.req.param('id');
-  const body = await c.req.json<{
-    name?: string;
-    code?: string | null;
-    term?: 'annual' | 'semester_1' | 'semester_2' | 'modular_block';
-    is_ministerial?: boolean;
-    has_practical?: boolean;
-  }>();
+  try {
+    const body = await c.req.json<{
+      name?: string;
+      code?: string | null;
+      term?: 'annual' | 'semester_1' | 'semester_2' | 'modular_block';
+      is_ministerial?: boolean;
+      has_practical?: boolean;
+      stage_id?: string;
+    }>().catch(() => ({} as any));
 
-  const subj = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
-  if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
+    const subj = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
+    if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
 
-  const updates: Record<string, unknown> = {};
-  if (body.name !== undefined) {
-    if (!body.name?.trim()) return c.json({ detail: 'اسم المادة مطلوب' }, 400);
-    updates.name = body.name.trim();
+    const updates: Record<string, unknown> = {};
+    if (body.name !== undefined) {
+      if (!body.name?.trim()) return c.json({ detail: 'اسم المادة مطلوب' }, 400);
+      updates.name = body.name.trim();
+    }
+    if (body.code !== undefined) {
+      updates.code = body.code?.trim() ? body.code.trim().toUpperCase() : null;
+    }
+    if (body.term !== undefined) updates.term = body.term || 'annual';
+    if (body.is_ministerial !== undefined) updates.is_ministerial = Boolean(body.is_ministerial);
+    if (body.has_practical !== undefined) updates.has_practical = Boolean(body.has_practical);
+    if (body.stage_id !== undefined && body.stage_id) {
+      const stage = await db.select().from(schema.stages).where(eq(schema.stages.id, body.stage_id)).get();
+      if (!stage) return c.json({ detail: 'المرحلة الدراسية المحددة غير موجودة' }, 400);
+      updates.stage_id = body.stage_id;
+    }
+
+    if (Object.keys(updates).length) {
+      await db.update(schema.subjects).set(updates).where(eq(schema.subjects.id, id));
+    }
+
+    recordAuditEvent({
+      event: 'ADMIN_ACADEMIC_SUBJECT_UPDATED',
+      status: 'SUCCESS',
+      actorId: c.get('user')?.id,
+      targetId: id,
+      details: { ...updates },
+    });
+
+    const updated = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
+    return c.json(updated);
+  } catch (err: any) {
+    console.error('Error updating subject:', err);
+    return c.json({ detail: err.detail || err.message || 'تعذر تعديل بيانات المادة الدراسية' }, 400);
   }
-  if (body.code !== undefined) {
-    updates.code = body.code?.trim() ? body.code.trim().toUpperCase() : null;
-  }
-  if (body.term !== undefined) updates.term = body.term || 'annual';
-  if (body.is_ministerial !== undefined) updates.is_ministerial = Boolean(body.is_ministerial);
-  if (body.has_practical !== undefined) updates.has_practical = Boolean(body.has_practical);
-
-  if (Object.keys(updates).length) {
-    await db.update(schema.subjects).set(updates).where(eq(schema.subjects.id, id));
-  }
-
-  const updated = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
-  return c.json(updated);
 });
 
 adminRouter.delete('/academic/subjects/:id', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const id = c.req.param('id');
-  const subj = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
-  if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
+  try {
+    const subj = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
+    if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
 
-  const hasQuestions = await db.select().from(schema.questions).where(eq(schema.questions.subject_id, id)).limit(1);
-  if (hasQuestions.length === 0) {
-    await db.delete(schema.subjects).where(eq(schema.subjects.id, id));
-  } else {
     await db.update(schema.subjects).set({
       is_deleted: true,
       deleted_at: new Date().toISOString(),
     }).where(eq(schema.subjects.id, id));
-  }
 
-  return c.json({ ok: true });
+    recordAuditEvent({
+      event: 'ADMIN_ACADEMIC_SUBJECT_DELETED',
+      status: 'SUCCESS',
+      actorId: c.get('user')?.id,
+      targetId: id,
+      details: { name: subj.name, stage_id: subj.stage_id, moved_to_trash: true },
+    });
+
+    return c.json({ ok: true, moved_to_trash: true });
+  } catch (err: any) {
+    console.error('Error deleting subject:', err);
+    return c.json({ detail: err.detail || err.message || 'تعذر حذف المادة الدراسية' }, 400);
+  }
 });
 
 // ── 7. CSV Bulk Import & Export ──
@@ -2609,8 +2685,36 @@ adminRouter.get('/trash', async (c) => {
   const questions = await db.select().from(schema.questions).where(eq(schema.questions.is_deleted, true));
   const media = await db.select().from(schema.mediaFiles).where(eq(schema.mediaFiles.is_deleted, true));
 
+  const enrichedSubjects = await Promise.all(subjects.map(async (s) => {
+    const stage = await db.select().from(schema.stages).where(eq(schema.stages.id, s.stage_id)).get();
+    let collegeName = '';
+    if (stage?.college_id) {
+      const col = await db.select().from(schema.colleges).where(eq(schema.colleges.id, stage.college_id)).get();
+      collegeName = col?.name || '';
+    } else if (stage?.university_id) {
+      const uni = await db.select().from(schema.universities).where(eq(schema.universities.id, stage.university_id)).get();
+      collegeName = uni?.name || '';
+    }
+    const qCount = await db.select({ count: sql<number>`count(*)` })
+      .from(schema.questions)
+      .where(eq(schema.questions.subject_id, s.id))
+      .get();
+
+    return {
+      id: s.id,
+      name: s.name,
+      code: s.code,
+      term: s.term,
+      stage_id: s.stage_id,
+      stage_name: stage?.name || 'مرحلة محذوفة',
+      college_name: collegeName,
+      questions_count: qCount?.count || 0,
+      deleted_at: s.deleted_at,
+    };
+  }));
+
   return c.json({
-    subjects: subjects.map((s) => ({ id: s.id, name: s.name, deleted_at: s.deleted_at })),
+    subjects: enrichedSubjects,
     courses: courses.map((co) => ({ id: co.id, title: co.title, deleted_at: co.deleted_at })),
     questions: questions.map((q) => ({ id: q.id, text: q.text, deleted_at: q.deleted_at })),
     media_files: media.map((m) => ({ id: m.id, filename: m.filename, url: m.url, deleted_at: m.deleted_at })),
@@ -2626,6 +2730,12 @@ adminRouter.post('/trash/:type/:id/restore', async (c) => {
   if (type === 'subject') {
     const subj = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
     if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
+
+    const stage = await db.select().from(schema.stages).where(eq(schema.stages.id, subj.stage_id)).get();
+    if (!stage) {
+      return c.json({ detail: 'لا يمكن استرجاع المادة لأن مرحلتها الدراسية غير موجودة في النظام (تم حذف المرحلة)' }, 400);
+    }
+
     await db.update(schema.subjects).set({ is_deleted: false, deleted_at: null }).where(eq(schema.subjects.id, id));
   } else if (type === 'question') {
     const q = await db.select().from(schema.questions).where(eq(schema.questions.id, id)).get();
@@ -2661,10 +2771,25 @@ adminRouter.delete('/trash/:type/:id/purge', async (c) => {
   const id = c.req.param('id');
 
   if (type === 'subject') {
+    const qs = await db.select({ id: schema.questions.id }).from(schema.questions).where(eq(schema.questions.subject_id, id));
+    for (const q of qs) {
+      await db.delete(schema.studentAnswers).where(eq(schema.studentAnswers.question_id, q.id));
+      await db.delete(schema.choices).where(eq(schema.choices.question_id, q.id));
+      await db.delete(schema.savedQuestions).where(eq(schema.savedQuestions.question_id, q.id));
+      await db.delete(schema.examAttemptQuestions).where(eq(schema.examAttemptQuestions.question_id, q.id));
+    }
+    await db.update(schema.products).set({ grants_subject_id: null }).where(eq(schema.products.grants_subject_id, id));
+    await db.delete(schema.activationCodes).where(eq(schema.activationCodes.subject_id, id));
+    await db.delete(schema.professorProfiles).where(eq(schema.professorProfiles.subject_id, id));
+    await db.delete(schema.courses).where(eq(schema.courses.subject_id, id));
+    await db.delete(schema.exams).where(eq(schema.exams.subject_id, id));
+    await db.delete(schema.questions).where(eq(schema.questions.subject_id, id));
     await db.delete(schema.subjects).where(eq(schema.subjects.id, id));
   } else if (type === 'question') {
     await db.delete(schema.studentAnswers).where(eq(schema.studentAnswers.question_id, id));
     await db.delete(schema.choices).where(eq(schema.choices.question_id, id));
+    await db.delete(schema.savedQuestions).where(eq(schema.savedQuestions.question_id, id));
+    await db.delete(schema.examAttemptQuestions).where(eq(schema.examAttemptQuestions.question_id, id));
     await db.delete(schema.questions).where(eq(schema.questions.id, id));
   } else if (type === 'course') {
     await db.delete(schema.courses).where(eq(schema.courses.id, id));
