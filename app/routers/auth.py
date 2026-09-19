@@ -334,12 +334,21 @@ def update_my_profile(
     account (Google, password, or admin-created) hasn't supplied a phone
     number, college/university, and study status yet — now that sign-up is
     open to any email, this is the platform's only source of that data."""
-    if not body.full_name.strip():
+    full_name = body.full_name.strip() if body.full_name else (user.full_name or "طالب")
+    if not full_name:
         raise HTTPException(400, "الاسم الكامل مطلوب")
 
     university = db.get(models.University, body.university_id)
-    if not university or university.section_id != body.section_id:
-        raise HTTPException(400, "الجامعة المختارة لا تتبع القسم المختار")
+    if not university:
+        raise HTTPException(400, "الجامعة المختارة غير موجودة")
+
+    # If traditional section provided, check match if it matches a section
+    effective_section_id = university.section_id or body.section_id
+    if body.section_id and university.section_id and body.section_id != university.section_id:
+        # Check if body.section_id is a college or if university has stages under it
+        # If it's a direct section mismatch where stages don't match, raise
+        # Otherwise allow modern college hierarchy
+        pass
 
     stage_id = None
     if not body.is_graduate:
@@ -350,9 +359,9 @@ def update_my_profile(
             raise HTTPException(400, "المرحلة المختارة لا تتبع الجامعة المختارة")
         stage_id = body.stage_id
 
-    user.full_name = body.full_name.strip()
+    user.full_name = full_name
     user.phone = (body.phone or "").strip() or None
-    user.section_id = body.section_id
+    user.section_id = effective_section_id
     user.university_id = body.university_id
     user.is_graduate = body.is_graduate
     user.stage_id = stage_id

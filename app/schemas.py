@@ -52,10 +52,13 @@ class UserOut(BaseModel):
 class ProfileUpdateIn(BaseModel):
     full_name: str
     phone: Optional[str] = None
-    section_id: str
+    section_id: Optional[str] = None
     university_id: str
+    college_id: Optional[str] = None
+    department_id: Optional[str] = None
     is_graduate: bool
     stage_id: Optional[str] = None
+    study_section_id: Optional[str] = None
 
 
 class CaptionUpdateIn(BaseModel):

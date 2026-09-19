@@ -1268,43 +1268,106 @@ authRouter.put('/me/profile', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const userId = c.get('user')!.id;
   const body = await c.req.json<{
-    full_name: string; phone?: string;
+    full_name?: string; phone?: string;
     section_id?: string; university_id: string;
     college_id?: string; department_id?: string;
     stage_id?: string; study_section_id?: string;
     is_graduate?: boolean;
   }>();
 
-  if (!body.full_name?.trim()) return c.json({ detail: 'الاسم الكامل مطلوب' }, 400);
+  const existingUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
+  const fullName = (body.full_name?.trim()) || existingUser?.full_name || 'طالب';
+  if (!fullName.trim()) return c.json({ detail: 'الاسم الكامل مطلوب' }, 400);
+
+  if (!body.university_id) {
+    return c.json({ detail: 'الجامعة مطلوبة' }, 400);
+  }
 
   const uni = await db.select().from(schema.universities).where(eq(schema.universities.id, body.university_id)).get();
   if (!uni) return c.json({ detail: 'الجامعة المختارة غير موجودة' }, 400);
-  if (body.section_id && uni.section_id && uni.section_id !== body.section_id) {
-    return c.json({ detail: 'الجامعة المختارة لا تتبع القسم المختار' }, 400);
+
+  // 1. Determine college vs section
+  let effectiveCollegeId: string | null = null;
+  let effectiveSectionId: string | null = uni.section_id || null;
+
+  const targetCollegeId = body.college_id || body.section_id;
+  if (targetCollegeId) {
+    const col = await db.select().from(schema.colleges).where(eq(schema.colleges.id, targetCollegeId)).get();
+    if (col) {
+      // Validate that university offers this college (via collegePrograms or stages)
+      const prog = await db.select().from(schema.collegePrograms).where(
+        and(eq(schema.collegePrograms.university_id, uni.id), eq(schema.collegePrograms.college_id, col.id))
+      ).get();
+      const stgInCol = await db.select({ id: schema.stages.id }).from(schema.stages).where(
+        and(eq(schema.stages.university_id, uni.id), eq(schema.stages.college_id, col.id))
+      ).get();
+
+      if (!prog && !stgInCol) {
+        return c.json({ detail: 'الجامعة المختارة لا تتبع الكلية المختارة' }, 400);
+      }
+      effectiveCollegeId = col.id;
+    }
   }
 
+  // If section_id was explicitly provided and is a traditional section in sections table
+  if (body.section_id && !effectiveCollegeId) {
+    const sec = await db.select().from(schema.sections).where(eq(schema.sections.id, body.section_id)).get();
+    if (sec) {
+      if (uni.section_id && uni.section_id !== sec.id) {
+        return c.json({ detail: 'الجامعة المختارة لا تتبع القسم المختار' }, 400);
+      }
+      effectiveSectionId = sec.id;
+    }
+  }
+
+  // 2. Department validation (if chosen)
+  if (body.department_id) {
+    const dept = await db.select().from(schema.departments).where(eq(schema.departments.id, body.department_id)).get();
+    if (!dept) {
+      return c.json({ detail: 'القسم الطبي المختار غير موجود' }, 400);
+    }
+    if (effectiveCollegeId && dept.college_id && dept.college_id !== effectiveCollegeId) {
+      return c.json({ detail: 'القسم المختار لا يتبع الكلية المختارة' }, 400);
+    }
+  }
+
+  // 3. Stage validation
   let stageId: string | null = null;
   if (!body.is_graduate) {
     if (!body.stage_id) return c.json({ detail: 'المرحلة الدراسية مطلوبة للطلاب غير المتخرجين' }, 400);
     const stage = await db.select().from(schema.stages).where(eq(schema.stages.id, body.stage_id)).get();
-    if (!stage || (stage.university_id && stage.university_id !== body.university_id)) {
+    if (!stage) return c.json({ detail: 'المرحلة المختارة غير موجودة' }, 400);
+    if (stage.university_id && stage.university_id !== body.university_id) {
       return c.json({ detail: 'المرحلة المختارة لا تتبع الجامعة المختارة' }, 400);
+    }
+    if (body.department_id && stage.department_id && stage.department_id !== body.department_id) {
+      return c.json({ detail: 'المرحلة المختارة لا تتبع القسم المختار' }, 400);
+    }
+    if (effectiveCollegeId && stage.college_id && stage.college_id !== effectiveCollegeId) {
+      return c.json({ detail: 'المرحلة المختارة لا تتبع الكلية المختارة' }, 400);
     }
     stageId = body.stage_id;
   }
 
-  const effectiveSectionId = body.section_id || uni.section_id;
+  // 4. Study Section validation
+  let studySectionId: string | null = null;
+  if (!body.is_graduate && body.study_section_id) {
+    const sSec = await db.select().from(schema.studySections).where(eq(schema.studySections.id, body.study_section_id)).get();
+    if (sSec && stageId && sSec.stage_id === stageId) {
+      studySectionId = sSec.id;
+    }
+  }
 
   await db.update(schema.users).set({
-    full_name: body.full_name.trim(),
+    full_name: fullName,
     phone: body.phone !== undefined ? (body.phone?.trim() || null) : undefined,
     section_id: effectiveSectionId,
     university_id: body.university_id,
-    college_id: body.college_id || null,
+    college_id: effectiveCollegeId,
     department_id: body.department_id || null,
     is_graduate: body.is_graduate ?? false,
     stage_id: stageId,
-    study_section_id: body.study_section_id || null,
+    study_section_id: studySectionId,
   }).where(eq(schema.users.id, userId));
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();

@@ -3676,7 +3676,7 @@
           <button class="btn btn-ghost item-action" onclick="toggleAcademicPathForm()" data-i18n="edit">تعديل</button>
         </div>
         <div class="glass" id="academicPathForm" style="display:none; padding:16px 18px;">
-          <div class="form-field"><select id="acSection" onchange="onAcSectionChange()"><option value="" data-i18n="selectSection">اختر القسم</option></select></div>
+          <div class="form-field"><select id="acSection" onchange="onAcSectionChange()"><option value="" data-i18n="selectCollege">اختر التخصص / الكلية</option></select></div>
           <div class="form-field"><select id="acUniversity" onchange="onAcUniversityChange()" disabled><option value="" data-i18n="selectUniversity">اختر الجامعة</option></select></div>
           <div class="form-field" id="acDepartmentField" style="display:none;"><select id="acDepartment" onchange="onAcDepartmentChange()"><option value="">اختر القسم الطبي</option></select></div>
           <div class="form-field"><select id="acGraduate" onchange="onAcGraduateChange()">
@@ -4426,15 +4426,19 @@
   // just an honest at-a-glance display, not a duplicate editable widget.
   async function renderHomePathCard(){
     const card = document.getElementById('homePathCard');
-    if (!currentUser?.section_id || !currentUser?.university_id){ card.style.display = 'none'; return; }
+    if ((!currentUser?.section_id && !currentUser?.college_id) || !currentUser?.university_id){ card.style.display = 'none'; return; }
     try {
       const tree = await loadCatalogTreeForProfile();
-      const section = tree.find(s => s.id === currentUser.section_id);
-      const uni = section?.universities.find(u => u.id === currentUser.university_id);
-      const stage = uni?.stages.find(st => st.id === currentUser.stage_id);
+      const section = tree.find(s => s.id === (currentUser.college_id || currentUser.section_id)) || tree.find(s => s.id === currentUser.section_id);
+      const uni = section?.universities?.find(u => u.id === currentUser.university_id) ||
+                  tree.flatMap(s => s.universities || []).find(u => u.id === currentUser.university_id);
+      const dept = (uni?.departments || section?.departments || []).find(d => d.id === currentUser.department_id);
+      const stage = uni?.stages?.find(st => st.id === currentUser.stage_id) ||
+                    tree.flatMap(s => (s.universities || []).flatMap(x => x.stages || [])).find(st => st.id === currentUser.stage_id);
       const tags = [];
       if (section) tags.push(section.name);
       if (uni) tags.push(uni.name);
+      if (dept) tags.push(`قسم ${dept.name}`);
       if (currentUser.is_graduate) tags.push(t('graduated'));
       else if (stage) tags.push(stage.name);
       if (!tags.length){ card.style.display = 'none'; return; }
@@ -5735,11 +5739,15 @@
     const tags = [];
     try {
       const tree = await loadCatalogTreeForProfile();
-      const section = tree.find(s => s.id === u.section_id);
-      const uni = section?.universities.find(x => x.id === u.university_id);
-      const stage = uni?.stages.find(x => x.id === u.stage_id);
+      const section = tree.find(s => s.id === (u.college_id || u.section_id)) || tree.find(s => s.id === u.section_id);
+      const uni = section?.universities?.find(x => x.id === u.university_id) ||
+                  tree.flatMap(s => s.universities || []).find(x => x.id === u.university_id);
+      const dept = (uni?.departments || section?.departments || []).find(d => d.id === u.department_id);
+      const stage = uni?.stages?.find(x => x.id === u.stage_id) ||
+                    tree.flatMap(s => (s.universities || []).flatMap(x => x.stages || [])).find(st => st.id === u.stage_id);
       if (section) tags.push(section.name);
       if (uni) tags.push(uni.name);
+      if (dept) tags.push(`قسم ${dept.name}`);
       if (u.is_graduate) tags.push(t('graduated'));
       else if (stage) tags.push(stage.name);
     } catch (e) { /* catalogue unreachable — show whatever we already have */ }
@@ -5824,13 +5832,15 @@
     const u = currentUser;
     if (!u) return;
     const summary = document.getElementById('acPathSummary');
-    if (!u.section_id && !u.university_id){ summary.textContent = 'لم تُحدَّد بعد'; return; }
+    if (!u.section_id && !u.university_id && !u.college_id){ summary.textContent = 'لم تُحدَّد بعد'; return; }
     try {
       const tree = await loadCatalogTreeForProfile();
-      const section = tree.find(s => s.id === (u.college_id || u.section_id));
-      const uni = section?.universities?.find(x => x.id === u.university_id);
+      const section = tree.find(s => s.id === (u.college_id || u.section_id)) || tree.find(s => s.id === u.section_id);
+      const uni = section?.universities?.find(x => x.id === u.university_id) ||
+                  tree.flatMap(s => s.universities || []).find(x => x.id === u.university_id);
       const dept = (uni?.departments || section?.departments || []).find(d => d.id === u.department_id);
-      const stage = uni?.stages?.find(x => x.id === u.stage_id);
+      const stage = uni?.stages?.find(x => x.id === u.stage_id) ||
+                    tree.flatMap(s => (s.universities || []).flatMap(x => x.stages || [])).find(st => st.id === u.stage_id);
       const studySec = stage?.sections?.find(sec => sec.id === u.study_section_id);
 
       const parts = [
@@ -5848,9 +5858,9 @@
     const form = document.getElementById('academicPathForm');
     if (form.style.display === 'block'){ form.style.display = 'none'; return; }
     const tree = await loadCatalogTreeForProfile();
-    const u = currentUser;
+    const u = currentUser || {};
     const selectedSecId = u.college_id || u.section_id;
-    document.getElementById('acSection').innerHTML = `<option value="">${t('selectSection')}</option>` +
+    document.getElementById('acSection').innerHTML = `<option value="">${t('selectCollege') || 'اختر التخصص / الكلية'}</option>` +
       tree.map(s => `<option value="${s.id}" ${s.id === selectedSecId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
     onAcSectionChange(u.university_id, u.department_id, u.stage_id, u.study_section_id);
     document.getElementById('acGraduate').value = u.is_graduate === true ? '1' : (u.is_graduate === false ? '0' : '');
@@ -5880,11 +5890,11 @@
     const deptSel = document.getElementById('acDepartment');
     if (depts.length > 0) {
       deptField.style.display = 'block';
-      deptSel.innerHTML = `<option value="">اختر القسم الطبي</option>` +
+      deptSel.innerHTML = `<option value="">اختر القسم (مثال: قسم التخدير، قسم التحليلات)</option>` +
         depts.map(d => `<option value="${d.id}" ${d.id === preselectDeptId ? 'selected' : ''}>🩺 ${esc(d.name)}</option>`).join('');
     } else {
       deptField.style.display = 'none';
-      deptSel.innerHTML = `<option value="">اختر القسم الطبي</option>`;
+      deptSel.innerHTML = `<option value="">اختر القسم</option>`;
     }
 
     onAcDepartmentChange(preselectStageId, preselectStudySecId);
@@ -5931,12 +5941,15 @@
   }
 
   function onAcGraduateChange(){
-    const isGraduate = document.getElementById('acGraduate').value === '1';
-    document.getElementById('acStageField').style.display = isGraduate ? 'none' : 'block';
-    if (isGraduate) {
-      document.getElementById('acStudySectionField').style.display = 'none';
-    } else {
+    const graduateVal = document.getElementById('acGraduate').value;
+    const stageField = document.getElementById('acStageField');
+    const studySecField = document.getElementById('acStudySectionField');
+    if (graduateVal === '0') {
+      stageField.style.display = 'block';
       onAcStageChange();
+    } else {
+      stageField.style.display = 'none';
+      studySecField.style.display = 'none';
     }
   }
 
@@ -5972,17 +5985,21 @@
       return;
     }
 
+    const isCollege = Boolean(section?.is_college || section?.departments?.length);
+    const collegeId = isCollege ? section.id : (uni?.college_id || null);
+    const resolvedSectionId = isCollege ? (uni?.section_id || null) : sectionId;
+
     msg.style.color = 'var(--ink-faint)';
     msg.textContent = 'جارٍ الحفظ...';
     try {
       const updated = await apiFetch('/auth/me/profile', {
         method: 'PUT',
         body: JSON.stringify({
-          full_name: currentUser.full_name,
-          phone: currentUser.phone || '',
-          section_id: sectionId,
+          full_name: currentUser?.full_name || 'طالب',
+          phone: currentUser?.phone || '',
+          section_id: resolvedSectionId,
           university_id: universityId,
-          college_id: uni?.college_id || sectionId || null,
+          college_id: collegeId,
           department_id: departmentId || null,
           is_graduate: isGraduate,
           stage_id: isGraduate ? null : stageId,
@@ -5992,6 +6009,8 @@
       currentUser = updated;
       document.getElementById('academicPathForm').style.display = 'none';
       renderAcademicPathSummary();
+      renderAccountHeader();
+      renderHomePathCard();
       showToast(t('pathUpdated'));
     } catch (e) {
       msg.style.color = 'var(--danger)';
@@ -7129,12 +7148,15 @@
   }
 
   function onCpGraduateChange(){
-    const isGraduate = document.getElementById('cpGraduate').value === '1';
-    document.getElementById('cpStageField').style.display = isGraduate ? 'none' : 'block';
-    if (isGraduate) {
-      document.getElementById('cpStudySectionField').style.display = 'none';
-    } else {
+    const graduateVal = document.getElementById('cpGraduate').value;
+    const stageField = document.getElementById('cpStageField');
+    const studySecField = document.getElementById('cpStudySectionField');
+    if (graduateVal === '0') {
+      stageField.style.display = 'block';
       onCpStageChange();
+    } else {
+      stageField.style.display = 'none';
+      studySecField.style.display = 'none';
     }
   }
 
@@ -7171,6 +7193,10 @@
       return;
     }
 
+    const isCollege = Boolean(section?.is_college || section?.departments?.length);
+    const collegeId = isCollege ? section.id : (uni?.college_id || null);
+    const resolvedSectionId = isCollege ? (uni?.section_id || null) : sectionId;
+
     msg.style.color = 'var(--ink-faint)';
     msg.textContent = 'جارٍ الحفظ...';
     try {
@@ -7179,9 +7205,9 @@
         body: JSON.stringify({
           full_name: fullName,
           phone: currentUser?.phone || null,
-          section_id: sectionId,
+          section_id: resolvedSectionId,
           university_id: universityId,
-          college_id: uni?.college_id || sectionId || null,
+          college_id: collegeId,
           department_id: departmentId || null,
           is_graduate: isGraduate,
           stage_id: isGraduate ? null : stageId,

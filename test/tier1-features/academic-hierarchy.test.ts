@@ -691,4 +691,108 @@ describe('Tier 1: Feature - Iraqi Medical Group Academic Hierarchy & Admin Tools
     const err = await restoreOrphanRes.json();
     expect(err.detail).toContain('لا يمكن استرجاع المادة لأن مرحلتها الدراسية غير موجودة');
   });
+
+  it('should allow student to select medical college, department, and stage even when section_id carries college_id (e.g. Al-Mamoun anesthesia)', async () => {
+    const adminToken = ctx.fixtures.users.admin.token;
+    const studentToken = ctx.fixtures.users.student.token;
+
+    // 1. Create modern medical college: "الكلية التقنية والصحية"
+    const colRes = await apiRequest(app, 'POST', '/api/admin/academic/colleges', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { name: 'الكلية التقنية والصحية' },
+    }, ctx);
+    expect(colRes.status).toBe(201);
+    const college = await colRes.json();
+
+    // 2. Create university: "جامعة المامون" under default section
+    const uniRes = await apiRequest(app, 'POST', '/api/admin/academic/universities', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'جامعة المامون',
+        section_id: ctx.fixtures.sectionId,
+        type: 'private',
+      },
+    }, ctx);
+    expect(uniRes.status).toBe(201);
+    const uni = await uniRes.json();
+
+    // 3. Link college to university via college_program
+    const progRes = await apiRequest(app, 'POST', '/api/admin/academic/programs', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        university_id: uni.id,
+        college_id: college.id,
+        system_type: 'traditional',
+        total_stages: 4,
+      },
+    }, ctx);
+    expect(progRes.status).toBe(201);
+    const program = await progRes.json();
+
+    // 4. Create department: "قسم التخدير والعناية المركزة"
+    const deptRes = await apiRequest(app, 'POST', '/api/admin/academic/departments', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        college_id: college.id,
+        name: 'قسم التخدير والعناية المركزة',
+        code: 'ANS',
+      },
+    }, ctx);
+    expect(deptRes.status).toBe(201);
+    const department = await deptRes.json();
+
+    // 5. Create stage: "المرحلة الثانية"
+    const stgRes = await apiRequest(app, 'POST', '/api/admin/academic/stages', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'المرحلة الثانية',
+        university_id: uni.id,
+        college_id: college.id,
+        department_id: department.id,
+        program_id: program.id,
+        stage_number: 2,
+      },
+    }, ctx);
+    expect(stgRes.status).toBe(201);
+    const stage = await stgRes.json();
+
+    // 6. Student sets profile:
+    // Even if section_id is sent as the college.id (as frontend dropdowns do for colleges)
+    const profileRes = await apiRequest(app, 'PUT', '/auth/me/profile', {
+      headers: { Authorization: `Bearer ${studentToken}` },
+      body: {
+        full_name: 'طالب تخدير المامون',
+        section_id: college.id,
+        college_id: college.id,
+        university_id: uni.id,
+        department_id: department.id,
+        stage_id: stage.id,
+        is_graduate: false,
+      },
+    }, ctx);
+
+    expect(profileRes.status).toBe(200);
+    const profile = await profileRes.json();
+    expect(profile.full_name).toBe('طالب تخدير المامون');
+    expect(profile.university_id).toBe(uni.id);
+    expect(profile.college_id).toBe(college.id);
+    expect(profile.department_id).toBe(department.id);
+    expect(profile.stage_id).toBe(stage.id);
+    expect(profile.section_id).toBe(ctx.fixtures.sectionId); // Real section preserved in users.section_id
+
+    // 7. Test uninitialized account updating academic path without supplying full_name:
+    const updatePathRes = await apiRequest(app, 'PUT', '/auth/me/profile', {
+      headers: { Authorization: `Bearer ${studentToken}` },
+      body: {
+        university_id: uni.id,
+        college_id: college.id,
+        department_id: department.id,
+        stage_id: stage.id,
+        is_graduate: false,
+      },
+    }, ctx);
+    expect(updatePathRes.status).toBe(200);
+    const updatedUser = await updatePathRes.json();
+    expect(updatedUser.full_name).toBe('طالب تخدير المامون');
+  });
 });
