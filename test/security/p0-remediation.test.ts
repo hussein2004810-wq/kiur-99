@@ -216,4 +216,69 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(res.status).toBe(401);
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // P0-4: Cryptographic Firebase JWT Verification & No Parse-Only Fallback
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('P0-4: Cryptographic Firebase JWT Verification Enforcement', () => {
+    it('returns 503 fail-closed when Firebase is not configured on server', async () => {
+      // 1. Get flow nonce
+      const flowRes = await apiRequest(app, 'POST', '/auth/firebase/flow', {}, ctx);
+      const cookie = flowRes.headers.get('set-cookie')?.split(';')[0] || '';
+      const flowData = await flowRes.json();
+
+      // Ensure FIREBASE_AUTH_PROJECT_ID is empty
+      const noFbCtx = {
+        ...ctx,
+        bindings: {
+          ...ctx.bindings,
+          FIREBASE_AUTH_PROJECT_ID: '',
+        },
+      };
+
+      const res = await apiRequest(app, 'POST', '/auth/firebase/verify', {
+        headers: { Cookie: cookie },
+        body: { idToken: 'some.valid-looking.jwt', nonce: flowData.flow_nonce },
+      }, noFbCtx);
+
+      expect(res.status).toBe(503);
+      const data = await res.json();
+      expect(data.code).toBe('FIREBASE_NOT_CONFIGURED');
+    });
+
+    it('rejects self-signed or forged token with 401 when verified against Google JWKS (no parse-only fallback)', async () => {
+      // 1. Get flow nonce
+      const flowRes = await apiRequest(app, 'POST', '/auth/firebase/flow', {}, ctx);
+      const cookie = flowRes.headers.get('set-cookie')?.split(';')[0] || '';
+      const flowData = await flowRes.json();
+
+      const fbCtx = {
+        ...ctx,
+        bindings: {
+          ...ctx.bindings,
+          FIREBASE_AUTH_PROJECT_ID: 'kiur-medical-prod',
+        },
+      };
+
+      const fakeHeader = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+      const fakePayload = Buffer.from(JSON.stringify({
+        aud: 'kiur-medical-prod',
+        iss: 'https://securetoken.google.com/kiur-medical-prod',
+        sub: 'forged_firebase_uid',
+        email: 'forged@firebase.com',
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com' },
+      })).toString('base64url');
+      const forgedToken = `${fakeHeader}.${fakePayload}.fake_signature_bytes`;
+
+      const res = await apiRequest(app, 'POST', '/auth/firebase/verify', {
+        headers: { Cookie: cookie },
+        body: { idToken: forgedToken, nonce: flowData.flow_nonce },
+      }, fbCtx);
+
+      expect(res.status).toBe(401);
+      const data = await res.json();
+      expect(data.code).toBe('INVALID_ID_TOKEN_SIGNATURE');
+    });
+  });
 });

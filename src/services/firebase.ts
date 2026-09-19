@@ -1,3 +1,4 @@
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { AppBindings } from '../types';
 
 export interface FirebaseVerifiedUser {
@@ -20,65 +21,23 @@ export class FirebaseAuthError extends Error {
   }
 }
 
-/**
- * Decodes a base64url string.
- */
-function base64UrlDecode(str: string): string {
-  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  while (base64.length % 4) {
-    base64 += '=';
-  }
-  return atob(base64);
-}
+const FIREBASE_JWKS_URL = new URL(
+  'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com'
+);
+const firebaseJwks = createRemoteJWKSet(FIREBASE_JWKS_URL);
 
 /**
- * Parses unverified JWT payload for claims inspection.
- */
-export function parseJwtPayload(token: string): Record<string, any> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const jsonStr = base64UrlDecode(parts[1]);
-    return JSON.parse(jsonStr);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Parses unverified JWT header.
- */
-export function parseJwtHeader(token: string): Record<string, any> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const jsonStr = base64UrlDecode(parts[0]);
-    return JSON.parse(jsonStr);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Validates and verifies a Firebase Google ID token server-side (Stage A1).
- *
- * Checks:
- * 1. Firebase configuration exists.
- * 2. Token structure and header alg (must be RS256).
- * 3. Firebase Project ID / Audience matching.
- * 4. Token expiration and issued-at time.
- * 5. Sign-in provider must be 'google.com'.
- * 6. Email must be verified (`email_verified === true`).
- * 7. Account lookup against Identity Toolkit REST API (if apiKey configured) to verify active status.
+ * Validates and cryptographically verifies a Firebase Google ID token server-side.
+ * Enforces RS256 signature verification against Google's public JWKS.
+ * Parse-only fallback is completely prohibited.
  */
 export async function verifyFirebaseGoogleToken(
   env: AppBindings,
   idToken: string
 ): Promise<FirebaseVerifiedUser> {
   const projectId = env.FIREBASE_AUTH_PROJECT_ID;
-  const apiKey = env.FIREBASE_WEB_API_KEY;
 
-  if (!projectId && !apiKey) {
+  if (!projectId || projectId.trim() === '') {
     throw new FirebaseAuthError(
       'FIREBASE_NOT_CONFIGURED',
       'خدمة المصادقة عبر Google/Firebase غير مهيأة على السيرفر',
@@ -86,56 +45,28 @@ export async function verifyFirebaseGoogleToken(
     );
   }
 
-  // 1. Basic JWT parsing
-  const header = parseJwtHeader(idToken);
-  const payload = parseJwtPayload(idToken);
-
-  if (!header || !payload) {
+  if (!idToken || typeof idToken !== 'string') {
     throw new FirebaseAuthError(
       'INVALID_ID_TOKEN',
-      'رمز التحقق المقدم غير صالح أو تالف',
+      'رمز التحقق المقدم مفقود أو غير صالح',
       400
     );
   }
 
-  // RS256 algorithm enforcement
-  if (header.alg !== 'RS256') {
+  let payload: any;
+  try {
+    const verified = await jwtVerify(idToken, firebaseJwks, {
+      issuer: `https://securetoken.google.com/${projectId}`,
+      audience: projectId,
+      algorithms: ['RS256'],
+    });
+    payload = verified.payload;
+  } catch (err: any) {
     throw new FirebaseAuthError(
-      'INVALID_ALGORITHM',
-      'خوارزمية تشفير الرمز غير صالحة',
-      400
-    );
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-
-  // Expiration check (with 60s clock skew tolerance)
-  if (typeof payload.exp !== 'number' || payload.exp < now - 60) {
-    throw new FirebaseAuthError(
-      'TOKEN_EXPIRED',
-      'رمز التحقق منتهي الصلاحية',
+      'INVALID_ID_TOKEN_SIGNATURE',
+      `فشل التحقق التشفيري من رمز Firebase: ${err.message || 'التوقيع غير صالح'}`,
       401
     );
-  }
-
-  // Audience & Issuer checks if project ID is provided
-  if (projectId) {
-    if (payload.aud !== projectId) {
-      throw new FirebaseAuthError(
-        'AUDIENCE_MISMATCH',
-        'رمز التحقق غير مخصص لهذا التطبيق',
-        403
-      );
-    }
-
-    const expectedIssuer = `https://securetoken.google.com/${projectId}`;
-    if (payload.iss !== expectedIssuer) {
-      throw new FirebaseAuthError(
-        'ISSUER_MISMATCH',
-        'مصدر الرمز غير صالح',
-        403
-      );
-    }
   }
 
   // Sign-in provider must be google.com
@@ -175,59 +106,10 @@ export async function verifyFirebaseGoogleToken(
     );
   }
 
-  // 2. If API Key is configured and we're not in mock/offline mode, verify live with Google Identity Toolkit
-  if (apiKey && apiKey !== 'mock-firebase-key') {
-    try {
-      const response = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ idToken }),
-        }
-      );
-
-      if (!response.ok) {
-        const errData = (await response.json().catch(() => ({}))) as any;
-        const message = errData?.error?.message || 'LOOKUP_FAILED';
-        throw new FirebaseAuthError(
-          'FIREBASE_LOOKUP_FAILED',
-          `فشل التحقق من صحة الحساب لدى Google (${message})`,
-          401
-        );
-      }
-
-      const data = (await response.json()) as any;
-      const user = data?.users?.[0];
-      if (!user) {
-        throw new FirebaseAuthError(
-          'USER_NOT_FOUND',
-          'المستخدم غير موجود لدى Firebase',
-          404
-        );
-      }
-
-      if (user.disabled) {
-        throw new FirebaseAuthError(
-          'USER_DISABLED',
-          'حساب Google هذا معطل',
-          403
-        );
-      }
-    } catch (err: any) {
-      if (err instanceof FirebaseAuthError) throw err;
-      throw new FirebaseAuthError(
-        'FIREBASE_UNAVAILABLE',
-        'تعذر الاتصال بخدمة التحقق من Google حالياً؛ يرجى المحاولة لاحقاً',
-        503
-      );
-    }
-  }
-
   return {
     uid,
     email,
-    emailVerified: Boolean(payload.email_verified),
+    emailVerified: true,
     name: payload.name,
     photoUrl: payload.picture,
   };
