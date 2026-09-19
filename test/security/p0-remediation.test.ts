@@ -281,4 +281,51 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(data.code).toBe('INVALID_ID_TOKEN_SIGNATURE');
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // P0-5: Stored XSS Prevention & CSP Hardening
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('P0-5: Stored XSS Prevention & CSP Hardening', () => {
+    it('rejects skill input containing HTML or script tags with 400', async () => {
+      const student = ctx.fixtures.users.student;
+      const token = ctx.createAuthToken(student.id, 'student', student.sessionId);
+
+      const maliciousPayloads = [
+        '<script>alert(1)</script>',
+        '<img src=x onerror=alert(1)>',
+        'javascript:alert(1)',
+        'Cardiology<b onmouseover=alert(1)>',
+      ];
+
+      for (const payload of maliciousPayloads) {
+        const res = await apiRequest(app, 'POST', '/auth/me/skills', {
+          token,
+          body: { text: payload },
+        }, ctx);
+
+        expect(res.status).toBe(400);
+        const data = await res.json();
+        expect(data.detail).toBe('النص يحتوي على أحرف أو وسوم غير مسموح بها');
+      }
+    });
+
+    it('enforces hardened Content-Security-Policy without wildcard https: for connect-src and img-src', async () => {
+      const res = await apiRequest(app, 'GET', '/health', {}, ctx);
+      const csp = res.headers.get('content-security-policy') || '';
+      expect(csp).toBeTruthy();
+
+      // Ensure connect-src does NOT have wild 'https:'
+      const directives = csp.split(';').map(d => d.trim());
+      const connectSrc = directives.find(d => d.startsWith('connect-src '));
+      expect(connectSrc).toBeDefined();
+      // Should not contain ' https: ' or end with ' https:'
+      expect(connectSrc!.split(/\s+/)).not.toContain('https:');
+      expect(connectSrc).toContain('https://identitytoolkit.googleapis.com');
+
+      const imgSrc = directives.find(d => d.startsWith('img-src '));
+      expect(imgSrc).toBeDefined();
+      expect(imgSrc!.split(/\s+/)).not.toContain('https:');
+      expect(imgSrc).toContain('https://lh3.googleusercontent.com');
+    });
+  });
 });

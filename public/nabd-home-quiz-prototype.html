@@ -5156,7 +5156,7 @@
         if (choices[i].id === result.correct_choice_id) o.classList.add('correct');
         else if (choices[i].id === choiceId) o.classList.add('wrong');
       });
-      document.getElementById('rationaleText').innerHTML = result.rationale || '';
+      document.getElementById('rationaleText').textContent = result.rationale || '';
       document.getElementById('rationale').classList.add('show');
     } catch (e) {
       opts[idx].classList.add('wrong');
@@ -8387,7 +8387,7 @@
       document.getElementById('spRank').textContent = p.rank ? ('#' + p.rank + ' / ' + p.total_ranked) : '—';
       document.getElementById('spStreak').textContent = p.streak_days;
       document.getElementById('spSkills').innerHTML = p.skills.length
-        ? p.skills.map(t => `<span class="prof-tag">${t}</span>`).join('')
+        ? p.skills.map(t => `<span class="prof-tag">${esc(t)}</span>`).join('')
         : '<span class="item-meta">ما أضاف أي مهارة بعد</span>';
     } catch (e) {
       document.getElementById('spName').textContent = 'تعذّر تحميل الملف';

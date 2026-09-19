@@ -1126,8 +1126,15 @@ authRouter.post('/me/skills', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const userId = c.get('user')!.id;
   const body = await c.req.json<{ text: string }>();
-  const text = (body.text ?? '').trim().slice(0, 40);
-  if (!text) return c.json({ detail: 'اكتب مهارة قبل الإضافة' }, 400);
+  const rawText = String(body.text ?? '').trim();
+  if (!rawText) return c.json({ detail: 'اكتب مهارة قبل الإضافة' }, 400);
+
+  // Stored XSS defense: disallow HTML tags and script vectors
+  if (/<[^>]*>|[<>"']|javascript:/i.test(rawText)) {
+    return c.json({ detail: 'النص يحتوي على أحرف أو وسوم غير مسموح بها' }, 400);
+  }
+
+  const text = rawText.slice(0, 40);
 
   const count = (await db.select().from(schema.userSkills).where(eq(schema.userSkills.user_id, userId))).length;
   if (count >= 12) return c.json({ detail: 'الحد الأقصى 12 مهارة' }, 400);
