@@ -102,4 +102,67 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(data.detail).toContain('CSRF Detected');
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // P0-2: JWT Secret & Production Fail-Closed Configuration
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('P0-2: Production Secret & Fail-Closed Bootstrapping Validation', () => {
+    it('fails closed with 500 when JWT_SECRET is empty in production mode (DEBUG=false)', async () => {
+      const prodCtx = {
+        ...ctx,
+        bindings: {
+          ...ctx.bindings,
+          DEBUG: 'false',
+          JWT_SECRET: '',
+        },
+      };
+
+      const res = await apiRequest(app, 'GET', '/health', {}, prodCtx);
+      expect(res.status).toBe(500);
+      const data = await res.json();
+      expect(data.detail).toBeDefined();
+    });
+
+    it('fails closed when a known insecure secret placeholder is used in production', async () => {
+      const prodCtx = {
+        ...ctx,
+        bindings: {
+          ...ctx.bindings,
+          DEBUG: 'false',
+          JWT_SECRET: 'super-secret-secure-random-token-kiur-99-prod-2026',
+        },
+      };
+
+      const res = await apiRequest(app, 'GET', '/health', {}, prodCtx);
+      expect(res.status).toBe(500);
+    });
+
+    it('fails closed when JWT_SECRET is shorter than 32 characters in production', async () => {
+      const prodCtx = {
+        ...ctx,
+        bindings: {
+          ...ctx.bindings,
+          DEBUG: 'false',
+          JWT_SECRET: 'too-short-secret',
+        },
+      };
+
+      const res = await apiRequest(app, 'GET', '/health', {}, prodCtx);
+      expect(res.status).toBe(500);
+    });
+
+    it('allows valid requests when JWT_SECRET is >= 32 characters in production', async () => {
+      const prodCtx = {
+        ...ctx,
+        bindings: {
+          ...ctx.bindings,
+          DEBUG: 'false',
+          JWT_SECRET: 'valid-secure-production-secret-with-at-least-32-characters!',
+        },
+      };
+
+      const res = await apiRequest(app, 'GET', '/health', {}, prodCtx);
+      expect(res.status).toBe(200);
+    });
+  });
 });

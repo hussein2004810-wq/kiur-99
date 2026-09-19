@@ -26,7 +26,16 @@ import { mediaRouter } from './routes/media';
 
 import { glimpsesRouter, adminGlimpsesRouter } from './routes/glimpses';
 
+import { getConfig, validateConfig } from './config';
+
 const app = new Hono<AppEnv>();
+
+// 0. Configuration & Secret Integrity Enforcement (Fail-Closed in production)
+app.use('*', async (c, next) => {
+  const config = getConfig(c.env);
+  validateConfig(config);
+  await next();
+});
 
 // 1. Centralized Security Headers (CSP, HSTS, nosniff, etc.)
 app.use('*', securityHeadersMiddleware);
