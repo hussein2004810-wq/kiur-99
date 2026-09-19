@@ -470,8 +470,12 @@ adminRouter.delete('/catalog/stages/:id', async (c) => {
   const id = c.req.param('id');
   const st = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
   if (!st) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
-  const childSubjects = await db.select().from(schema.subjects).where(eq(schema.subjects.stage_id, id));
-  if (childSubjects.length) return c.json({ detail: 'لا يمكن حذف المرحلة — تحتوي على مواد. احذفيها أولاً' }, 400);
+
+  await db.update(schema.subjects).set({
+    is_deleted: true,
+    deleted_at: new Date().toISOString(),
+  }).where(eq(schema.subjects.stage_id, id));
+
   await db.delete(schema.stages).where(eq(schema.stages.id, id));
   return c.json({ ok: true });
 });
@@ -1043,8 +1047,13 @@ adminRouter.put('/academic/colleges/:id', async (c) => {
   if (!col) return c.json({ detail: 'الكلية غير موجودة' }, 404);
 
   const updates: Record<string, unknown> = {};
-  if (body.name !== undefined && body.name.trim()) updates.name = body.name.trim();
-  if (body.code !== undefined) updates.code = body.code.trim().toUpperCase() || null;
+  if (body.name !== undefined) {
+    if (!body.name?.trim()) return c.json({ detail: 'اسم الكلية مطلوب' }, 400);
+    updates.name = body.name.trim();
+  }
+  if (body.code !== undefined) {
+    updates.code = body.code?.trim() ? body.code.trim().toUpperCase() : null;
+  }
   if (typeof body.default_stages === 'number' && body.default_stages > 0) updates.default_stages = body.default_stages;
 
   if (Object.keys(updates).length) {
@@ -1121,8 +1130,13 @@ adminRouter.put('/academic/departments/:id', async (c) => {
   if (!dept) return c.json({ detail: 'القسم غير موجود' }, 404);
 
   const updates: Record<string, unknown> = {};
-  if (body.name !== undefined && body.name.trim()) updates.name = body.name.trim();
-  if (body.code !== undefined) updates.code = body.code.trim().toUpperCase() || null;
+  if (body.name !== undefined) {
+    if (!body.name?.trim()) return c.json({ detail: 'اسم القسم مطلوب' }, 400);
+    updates.name = body.name.trim();
+  }
+  if (body.code !== undefined) {
+    updates.code = body.code?.trim() ? body.code.trim().toUpperCase() : null;
+  }
 
   if (Object.keys(updates).length) {
     await db.update(schema.departments).set(updates).where(eq(schema.departments.id, id));
@@ -1138,8 +1152,15 @@ adminRouter.delete('/academic/departments/:id', async (c) => {
   const dept = await db.select().from(schema.departments).where(eq(schema.departments.id, id)).get();
   if (!dept) return c.json({ detail: 'القسم غير موجود' }, 404);
 
-  const childStages = await db.select().from(schema.stages).where(eq(schema.stages.department_id, id)).limit(1);
-  if (childStages.length > 0) return c.json({ detail: 'لا يمكن حذف القسم — توجد مراحل دراسية مرتبطة به. احذفها أو انقلها أولاً.' }, 400);
+  const childStages = await db.select().from(schema.stages).where(eq(schema.stages.department_id, id));
+  for (const stg of childStages) {
+    await db.update(schema.subjects).set({
+      is_deleted: true,
+      deleted_at: new Date().toISOString(),
+    }).where(eq(schema.subjects.stage_id, stg.id));
+    await db.delete(schema.studySections).where(eq(schema.studySections.stage_id, stg.id));
+    await db.delete(schema.stages).where(eq(schema.stages.id, stg.id));
+  }
 
   await db.delete(schema.departments).where(eq(schema.departments.id, id));
   return c.json({ ok: true });
@@ -1265,13 +1286,14 @@ adminRouter.delete('/academic/programs/:id', async (c) => {
 
   const pStages = await db.select().from(schema.stages).where(eq(schema.stages.program_id, id));
   for (const stg of pStages) {
-    const hasSubs = await db.select().from(schema.subjects).where(eq(schema.subjects.stage_id, stg.id)).limit(1);
-    if (hasSubs.length > 0) {
-      return c.json({ detail: 'لا يمكن حذف البرنامج — توجد مواد دراسية في مراحله. احذف المواد أولاً.' }, 400);
-    }
+    await db.update(schema.subjects).set({
+      is_deleted: true,
+      deleted_at: new Date().toISOString(),
+    }).where(eq(schema.subjects.stage_id, stg.id));
+    await db.delete(schema.studySections).where(eq(schema.studySections.stage_id, stg.id));
+    await db.delete(schema.stages).where(eq(schema.stages.id, stg.id));
   }
 
-  await db.delete(schema.stages).where(eq(schema.stages.program_id, id));
   await db.delete(schema.collegePrograms).where(eq(schema.collegePrograms.id, id));
 
   return c.json({ ok: true });
@@ -1368,8 +1390,15 @@ adminRouter.delete('/academic/stages/:id', async (c) => {
   const stg = await db.select().from(schema.stages).where(eq(schema.stages.id, id)).get();
   if (!stg) return c.json({ detail: 'المرحلة غير موجودة' }, 404);
 
-  const childSubjects = await db.select().from(schema.subjects).where(eq(schema.subjects.stage_id, id));
-  if (childSubjects.length > 0) return c.json({ detail: 'لا يمكن حذف المرحلة — تحتوي على مواد دراسية. احذفها أولاً.' }, 400);
+  const stageSubs = await db.select().from(schema.subjects).where(eq(schema.subjects.stage_id, id));
+  for (const s of stageSubs) {
+    await db.delete(schema.questions).where(eq(schema.questions.subject_id, s.id));
+    await db.delete(schema.exams).where(eq(schema.exams.subject_id, s.id));
+    await db.delete(schema.courses).where(eq(schema.courses.subject_id, s.id));
+    await db.delete(schema.activationCodes).where(eq(schema.activationCodes.subject_id, s.id));
+    await db.delete(schema.professorProfiles).where(eq(schema.professorProfiles.subject_id, s.id));
+    await db.delete(schema.subjects).where(eq(schema.subjects.id, s.id));
+  }
 
   await db.delete(schema.studySections).where(eq(schema.studySections.stage_id, id));
   await db.delete(schema.stages).where(eq(schema.stages.id, id));
@@ -1498,7 +1527,7 @@ adminRouter.put('/academic/subjects/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json<{
     name?: string;
-    code?: string;
+    code?: string | null;
     term?: 'annual' | 'semester_1' | 'semester_2' | 'modular_block';
     is_ministerial?: boolean;
     has_practical?: boolean;
@@ -1508,11 +1537,16 @@ adminRouter.put('/academic/subjects/:id', async (c) => {
   if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
 
   const updates: Record<string, unknown> = {};
-  if (body.name !== undefined && body.name.trim()) updates.name = body.name.trim();
-  if (body.code !== undefined) updates.code = body.code.trim().toUpperCase() || null;
-  if (body.term !== undefined) updates.term = body.term;
-  if (body.is_ministerial !== undefined) updates.is_ministerial = !!body.is_ministerial;
-  if (body.has_practical !== undefined) updates.has_practical = !!body.has_practical;
+  if (body.name !== undefined) {
+    if (!body.name?.trim()) return c.json({ detail: 'اسم المادة مطلوب' }, 400);
+    updates.name = body.name.trim();
+  }
+  if (body.code !== undefined) {
+    updates.code = body.code?.trim() ? body.code.trim().toUpperCase() : null;
+  }
+  if (body.term !== undefined) updates.term = body.term || 'annual';
+  if (body.is_ministerial !== undefined) updates.is_ministerial = Boolean(body.is_ministerial);
+  if (body.has_practical !== undefined) updates.has_practical = Boolean(body.has_practical);
 
   if (Object.keys(updates).length) {
     await db.update(schema.subjects).set(updates).where(eq(schema.subjects.id, id));
@@ -1528,10 +1562,15 @@ adminRouter.delete('/academic/subjects/:id', async (c) => {
   const subj = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
   if (!subj) return c.json({ detail: 'المادة غير موجودة' }, 404);
 
-  await db.update(schema.subjects).set({
-    is_deleted: true,
-    deleted_at: new Date().toISOString(),
-  }).where(eq(schema.subjects.id, id));
+  const hasQuestions = await db.select().from(schema.questions).where(eq(schema.questions.subject_id, id)).limit(1);
+  if (hasQuestions.length === 0) {
+    await db.delete(schema.subjects).where(eq(schema.subjects.id, id));
+  } else {
+    await db.update(schema.subjects).set({
+      is_deleted: true,
+      deleted_at: new Date().toISOString(),
+    }).where(eq(schema.subjects.id, id));
+  }
 
   return c.json({ ok: true });
 });

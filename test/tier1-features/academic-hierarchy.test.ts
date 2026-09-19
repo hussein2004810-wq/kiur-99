@@ -451,4 +451,97 @@ describe('Tier 1: Feature - Iraqi Medical Group Academic Hierarchy & Admin Tools
     expect(targetDept.stages[0].sections.length).toBe(2);
     expect(targetDept.stages[0].sections[0].name).toBe('شعبة أ (صباحي)');
   });
+
+  it('should safely edit a subject with null or empty code without throwing 500 error', async () => {
+    // 1. Create a subject
+    const createRes = await apiRequest(app, 'POST', '/api/admin/academic/subjects', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'اسس التخدير',
+        code: 'ANES101',
+        stage_id: ctx.fixtures.stageId,
+        term: 'semester_1',
+        is_ministerial: false,
+        has_practical: true,
+      },
+    }, ctx);
+    expect(createRes.status).toBe(201);
+    const subject = await createRes.json();
+    expect(subject.name).toBe('اسس التخدير');
+    expect(subject.code).toBe('ANES101');
+
+    // 2. Edit with code: null (simulating empty code in edit modal)
+    const updateRes = await apiRequest(app, 'PUT', `/api/admin/academic/subjects/${subject.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'اسس التخدير المعدلة',
+        code: null,
+        term: 'semester_2',
+        is_ministerial: false,
+        has_practical: true,
+      },
+    }, ctx);
+    expect(updateRes.status).toBe(200);
+    const updated = await updateRes.json();
+    expect(updated.name).toBe('اسس التخدير المعدلة');
+    expect(updated.code).toBeNull();
+    expect(updated.term).toBe('semester_2');
+
+    // 3. Edit with empty string code
+    const updateRes2 = await apiRequest(app, 'PUT', `/api/admin/academic/subjects/${subject.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        code: '   ',
+      },
+    }, ctx);
+    expect(updateRes2.status).toBe(200);
+    const updated2 = await updateRes2.json();
+    expect(updated2.code).toBeNull();
+  });
+
+  it('should delete a stage cleanly without blocking even if subjects were deleted or present', async () => {
+    // 1. Create a dedicated stage
+    const stgRes = await apiRequest(app, 'POST', '/api/admin/academic/stages', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'مرحلة تجريبية للحذف',
+        stage_number: 9,
+        university_id: ctx.fixtures.universityId,
+      },
+    }, ctx);
+    expect(stgRes.status).toBe(201);
+    const stage = await stgRes.json();
+
+    // 2. Add subject to stage
+    const subRes = await apiRequest(app, 'POST', '/api/admin/academic/subjects', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        name: 'مادة ضمن المرحلة',
+        stage_id: stage.id,
+      },
+    }, ctx);
+    expect(subRes.status).toBe(201);
+    const subject = await subRes.json();
+
+    // 3. Delete the subject (soft delete)
+    const delSubRes = await apiRequest(app, 'DELETE', `/api/admin/academic/subjects/${subject.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(delSubRes.status).toBe(200);
+
+    // 4. Delete the stage - must succeed cleanly and not claim stage has subjects
+    const delStageRes = await apiRequest(app, 'DELETE', `/api/admin/academic/stages/${stage.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    expect(delStageRes.status).toBe(200);
+    const delResult = await delStageRes.json();
+    expect(delResult.ok).toBe(true);
+
+    // 5. Verify stage is gone
+    const checkRes = await apiRequest(app, 'GET', `/api/admin/academic/stages?id=${stage.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, ctx);
+    const list = await checkRes.json();
+    expect(list.some((s: any) => s.id === stage.id)).toBe(false);
+  });
 });
