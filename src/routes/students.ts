@@ -54,6 +54,29 @@ studentsRouter.get('/', async (c) => {
   })));
 });
 
+// GET /api/students/profile (current user)
+studentsRouter.get('/profile', async (c) => {
+  const user = c.get('user')!;
+  const skills = await c.env.DB.prepare('SELECT * FROM user_skills WHERE user_id = ?').bind(user.id).all();
+  return c.json({
+    id: user.id,
+    full_name: user.full_name,
+    email: user.email,
+    skills: skills.results ?? [],
+  });
+});
+
+// GET /api/students/stats (current user stats)
+studentsRouter.get('/stats', async (c) => {
+  const user = c.get('user')!;
+  const count = await c.env.DB.prepare('SELECT COUNT(*) as c FROM student_answers WHERE user_id = ?').bind(user.id).first('c');
+  const correct = await c.env.DB.prepare('SELECT COUNT(*) as c FROM student_answers WHERE user_id = ? AND is_correct = 1').bind(user.id).first('c');
+  return c.json({
+    answered_count: Number(count ?? 0),
+    correct_count: Number(correct ?? 0),
+  });
+});
+
 // GET /api/students/:id/profile
 studentsRouter.get('/:id/profile', async (c) => {
   const db = drizzle(c.env.DB, { schema });
