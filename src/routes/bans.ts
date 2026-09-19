@@ -3,8 +3,8 @@
  * Uses requireAuth but allows banned users (to check their ban status).
  */
 import { Hono } from 'hono';
+import { eq, desc, and } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, desc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { decodeAccessToken } from '../services/jwt';
@@ -21,7 +21,17 @@ async function requireAuthAllowBanned(c: any, next: any) {
   if (!payload || !payload.sub || !payload.sid) return c.json({ detail: 'انتهت صلاحية الجلسة' }, 401);
 
   const db = drizzle(c.env.DB, { schema });
-  const session = await db.select().from(schema.userSessions).where(eq(schema.userSessions.id, payload.sid)).get();
+  const session = await db
+    .select()
+    .from(schema.userSessions)
+    .where(
+      and(
+        eq(schema.userSessions.id, payload.sid),
+        eq(schema.userSessions.user_id, payload.sub),
+        eq(schema.userSessions.is_active, true)
+      )
+    )
+    .get();
   if (!session || !session.is_active) return c.json({ detail: 'تم تسجيل الدخول من جهاز آخر' }, 401);
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();
@@ -75,7 +85,7 @@ bansRouter.post('/appeal', async (c) => {
   const record = await db
     .select()
     .from(schema.banRecords)
-    .where(eq(schema.banRecords.user_id, user.id) && eq(schema.banRecords.status, 'active'))
+    .where(and(eq(schema.banRecords.user_id, user.id), eq(schema.banRecords.status, 'active')))
     .orderBy(desc(schema.banRecords.created_at))
     .get();
 

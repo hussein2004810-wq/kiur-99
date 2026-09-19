@@ -165,4 +165,55 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(res.status).toBe(200);
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // P0-3: Atomic Session sid to sub Binding Enforcement
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('P0-3: Strict Atomic Session sid to sub Binding Enforcement', () => {
+    it('rejects JWT where sid belongs to user A but sub is set to user B', async () => {
+      const userA = ctx.fixtures.users.student;
+      const userB = ctx.fixtures.users.admin;
+
+      // Forged cross-session token: sub = user B (admin), but sid = user A (student session)
+      const forgedToken = ctx.createAuthToken(userB.id, 'admin', userA.sessionId);
+
+      const res = await apiRequest(app, 'GET', '/auth/me', {
+        token: forgedToken,
+      }, ctx);
+
+      // Must be rejected with 401 Unauthorized because session.user_id !== sub
+      expect(res.status).toBe(401);
+      const data = await res.json();
+      expect(data.detail).toContain('تم تسجيل الدخول من جهاز آخر');
+    });
+
+    it('accepts JWT where sid belongs to sub and session is active', async () => {
+      const userA = ctx.fixtures.users.student;
+      const validToken = ctx.createAuthToken(userA.id, 'student', userA.sessionId);
+
+      const res = await apiRequest(app, 'GET', '/auth/me', {
+        token: validToken,
+      }, ctx);
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.id).toBe(userA.id);
+    });
+
+    it('rejects /auth/session/restore when token sid belongs to a different user', async () => {
+      const userA = ctx.fixtures.users.student;
+      const userB = ctx.fixtures.users.admin;
+
+      // Mismatched token
+      const forgedToken = ctx.createAuthToken(userB.id, 'admin', userA.sessionId);
+
+      const res = await apiRequest(app, 'POST', '/auth/session/restore', {
+        headers: {
+          Cookie: `nabd_session=${forgedToken}`,
+        },
+      }, ctx);
+
+      expect(res.status).toBe(401);
+    });
+  });
 });

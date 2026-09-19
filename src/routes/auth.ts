@@ -1531,16 +1531,35 @@ authRouter.patch('/me/preferences', requireAuth, async (c) => {
 
 authRouter.post('/session/restore', async (c) => {
   const cookieHeader = c.req.header('Cookie') ?? '';
-  const token = getSessionCookieValue(cookieHeader);
+  let token = getSessionCookieValue(cookieHeader);
+  if (!token) {
+    const authHeader = c.req.header('Authorization') ?? '';
+    if (authHeader.startsWith('Bearer ')) token = authHeader.slice(7);
+  }
+  if (!token) {
+    const body = await c.req.json<{ session_token?: string }>().catch(() => ({} as any));
+    if (body.session_token) token = body.session_token;
+  }
   if (!token) return c.json({ detail: 'لا توجد جلسة محفوظة' }, 401);
 
   const jwtSecret = c.env.JWT_SECRET;
   const payload = await decodeAccessToken(token, jwtSecret);
-  if (!payload) return c.json({ detail: 'انتهت صلاحية الجلسة' }, 401);
+  if (!payload || !payload.sub || !payload.sid) return c.json({ detail: 'انتهت صلاحية الجلسة' }, 401);
 
   const db = drizzle(c.env.DB, { schema });
-  const session = await db.select().from(schema.userSessions).where(eq(schema.userSessions.id, payload.sid)).get();
-  if (!session?.is_active) return c.json({ detail: 'تم تسجيل الدخول من جهاز آخر' }, 401);
+  const session = await db
+    .select()
+    .from(schema.userSessions)
+    .where(
+      and(
+        eq(schema.userSessions.id, payload.sid),
+        eq(schema.userSessions.user_id, payload.sub),
+        eq(schema.userSessions.is_active, true)
+      )
+    )
+    .get();
+
+  if (!session || !session.is_active) return c.json({ detail: 'تم تسجيل الدخول من جهاز آخر' }, 401);
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();
   if (!user) return c.json({ detail: 'المستخدم غير موجود' }, 401);

@@ -3,37 +3,37 @@
  * Validates Bearer token + single-active-session check.
  */
 import type { Context, Next } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../db/schema';
 import type { AppEnv, CurrentUser, CurrentSession } from '../types';
 import { decodeAccessToken } from '../services/jwt';
 
-export async function requireAuth(c: Context<AppEnv>, next: Next) {
-  const authHeader = c.req.header('Authorization') ?? '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-
-  if (!token) {
-    return c.json({ detail: 'مطلوب تسجيل الدخول' }, 401);
-  }
-
-  const jwtSecret = c.env.JWT_SECRET;
+export async function authenticateToken(
+  db: ReturnType<typeof drizzle<typeof schema>>,
+  token: string,
+  jwtSecret: string
+): Promise<{ success: true; user: CurrentUser; session: CurrentSession } | { success: false; status: 401 | 403; detail: string }> {
   const payload = await decodeAccessToken(token, jwtSecret);
   if (!payload || !payload.sub || !payload.sid) {
-    return c.json({ detail: 'انتهت صلاحية الجلسة' }, 401);
+    return { success: false, status: 401, detail: 'انتهت صلاحية الجلسة' };
   }
 
-  const db = drizzle(c.env.DB, { schema });
-
-  // Verify session is still active (anti-piracy single-session check)
+  // Atomic compound session check: session must exist, be active, and belong strictly to payload.sub
   const session = await db
     .select()
     .from(schema.userSessions)
-    .where(eq(schema.userSessions.id, payload.sid))
+    .where(
+      and(
+        eq(schema.userSessions.id, payload.sid),
+        eq(schema.userSessions.user_id, payload.sub),
+        eq(schema.userSessions.is_active, true)
+      )
+    )
     .get();
 
   if (!session || !session.is_active) {
-    return c.json({ detail: 'تم تسجيل الدخول من جهاز آخر' }, 401);
+    return { success: false, status: 401, detail: 'تم تسجيل الدخول من جهاز آخر' };
   }
 
   // Load user
@@ -44,36 +44,53 @@ export async function requireAuth(c: Context<AppEnv>, next: Next) {
     .get();
 
   if (!user) {
-    return c.json({ detail: 'المستخدم غير موجود' }, 401);
+    return { success: false, status: 401, detail: 'المستخدم غير موجود' };
   }
 
   if (user.is_banned) {
-    return c.json({ detail: 'هذا الحساب محظور' }, 403);
+    return { success: false, status: 403, detail: 'هذا الحساب محظور' };
   }
 
-  const currentUser: CurrentUser = {
-    id: user.id,
-    email: user.email,
-    full_name: user.full_name,
-    role: user.role as CurrentUser['role'],
-    is_banned: user.is_banned ?? false,
-    university_id: user.university_id,
-    college_id: user.college_id,
-    department_id: user.department_id,
-    stage_id: user.stage_id,
-    study_section_id: user.study_section_id,
-    section_id: user.section_id,
+  return {
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      role: user.role as CurrentUser['role'],
+      is_banned: user.is_banned ?? false,
+      university_id: user.university_id,
+      college_id: user.college_id,
+      department_id: user.department_id,
+      stage_id: user.stage_id,
+      study_section_id: user.study_section_id,
+      section_id: user.section_id,
+    },
+    session: {
+      id: session.id,
+      user_id: session.user_id,
+      device_label: session.device_label ?? '',
+      is_active: session.is_active ?? false,
+    },
   };
+}
 
-  const currentSession: CurrentSession = {
-    id: session.id,
-    user_id: session.user_id,
-    device_label: session.device_label ?? '',
-    is_active: session.is_active ?? false,
-  };
+export async function requireAuth(c: Context<AppEnv>, next: Next) {
+  const authHeader = c.req.header('Authorization') ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
-  c.set('user', currentUser);
-  c.set('session', currentSession);
+  if (!token) {
+    return c.json({ detail: 'مطلوب تسجيل الدخول' }, 401);
+  }
+
+  const db = drizzle(c.env.DB, { schema });
+  const result = await authenticateToken(db, token, c.env.JWT_SECRET);
+  if (!result.success) {
+    return c.json({ detail: result.detail }, result.status);
+  }
+
+  c.set('user', result.user);
+  c.set('session', result.session);
   await next();
 }
 
