@@ -328,4 +328,82 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(imgSrc).toContain('https://lh3.googleusercontent.com');
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // P0-6: Correct Answer & Rationale Leakage Prevention
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('P0-6: Correct Answer & Rationale Leakage Prevention', () => {
+    it('does NOT expose is_correct or rationale in GET /api/subjects/:subject_id/questions', async () => {
+      const student = ctx.fixtures.users.student;
+      const token = ctx.createAuthToken(student.id, 'student', student.sessionId);
+
+      const res = await apiRequest(app, 'GET', '/api/subjects/sub_anat/questions', {
+        token,
+      }, ctx);
+
+      expect(res.status).toBe(200);
+      const questions = await res.json();
+      expect(Array.isArray(questions)).toBe(true);
+      expect(questions.length).toBeGreaterThan(0);
+
+      for (const q of questions) {
+        // Must NOT leak rationale
+        expect(q.rationale).toBeUndefined();
+        expect(Array.isArray(q.choices)).toBe(true);
+        expect(q.choices.length).toBeGreaterThan(0);
+
+        for (const choice of q.choices) {
+          // Must NOT leak is_correct
+          expect(choice.is_correct).toBeUndefined();
+          expect(choice.id).toBeDefined();
+          expect(choice.text).toBeDefined();
+        }
+      }
+    });
+
+    it('does NOT expose is_correct or rationale in GET /api/me/saved-questions', async () => {
+      const student = ctx.fixtures.users.student;
+      const token = ctx.createAuthToken(student.id, 'student', student.sessionId);
+
+      // Save a question first
+      const saveRes = await apiRequest(app, 'POST', '/api/questions/qst_1/save', {
+        token,
+      }, ctx);
+      expect(saveRes.status).toBe(200);
+
+      // Fetch saved questions
+      const res = await apiRequest(app, 'GET', '/api/me/saved-questions', {
+        token,
+      }, ctx);
+
+      expect(res.status).toBe(200);
+      const saved = await res.json();
+      expect(Array.isArray(saved)).toBe(true);
+      expect(saved.length).toBeGreaterThan(0);
+
+      for (const q of saved) {
+        expect(q.rationale).toBeUndefined();
+        for (const choice of q.choices) {
+          expect(choice.is_correct).toBeUndefined();
+        }
+      }
+    });
+
+    it('returns is_correct, correct_choice_id, and rationale ONLY AFTER answer submission', async () => {
+      const student = ctx.fixtures.users.student;
+      const token = ctx.createAuthToken(student.id, 'student', student.sessionId);
+
+      const res = await apiRequest(app, 'POST', '/api/questions/qst_1/answer', {
+        token,
+        body: { choice_id: 'cho_1_1' },
+      }, ctx);
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.is_correct).toBe(true);
+      expect(data.correct_choice_id).toBe('cho_1_1');
+      expect(data.rationale).toBe('توضيح الإجابة الصحيحة 1');
+    });
+  });
 });
+
