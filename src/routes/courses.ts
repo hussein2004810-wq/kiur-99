@@ -3,13 +3,54 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, inArray, asc } from 'drizzle-orm';
+import { eq, inArray, asc, and, like, desc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
 
 export const coursesRouter = new Hono<AppEnv>();
 coursesRouter.use('*', requireAuth);
+
+/**
+ * Checks if a user is entitled to view course videos and materials.
+ * Admins and professors are always entitled.
+ * Students must be academically enrolled in the matching stage or have an active code.
+ */
+export async function isUserEntitledToCourse(
+  db: ReturnType<typeof drizzle>,
+  user: any,
+  course: typeof schema.courses.$inferSelect
+): Promise<boolean> {
+  if (user.role === 'admin' || user.role === 'professor') {
+    return true;
+  }
+
+  if (course.subject_id) {
+    // 1. Check if user activated a license/code for this subject
+    const activation = await db
+      .select({ id: schema.activationCodes.id })
+      .from(schema.activationCodes)
+      .where(and(
+        eq(schema.activationCodes.subject_id, course.subject_id),
+        eq(schema.activationCodes.activated_by_user_id, user.id)
+      ))
+      .get();
+    if (activation) return true;
+
+    // 2. Check academic scope: user.stage_id vs subject.stage_id
+    const subject = await db
+      .select({ stage_id: schema.subjects.stage_id })
+      .from(schema.subjects)
+      .where(eq(schema.subjects.id, course.subject_id))
+      .get();
+
+    if (subject?.stage_id && user.stage_id) {
+      return user.stage_id === subject.stage_id;
+    }
+  }
+
+  return true;
+}
 
 async function doneIds(db: ReturnType<typeof drizzle>, userId: string): Promise<Set<string>> {
   const rows = await db
@@ -22,7 +63,8 @@ async function doneIds(db: ReturnType<typeof drizzle>, userId: string): Promise<
 async function buildCourseOut(
   db: ReturnType<typeof drizzle>,
   course: typeof schema.courses.$inferSelect,
-  doneLectureIds: Set<string>
+  doneLectureIds: Set<string>,
+  isEntitled: boolean
 ) {
   const lectures = await db
     .select()
@@ -53,25 +95,47 @@ async function buildCourseOut(
     title: course.title,
     instructor,
     subject_id: course.subject_id,
+    entitled: isEntitled,
     lectures: lectures.map((l) => ({
       id: l.id,
       title: l.title,
       duration_seconds: l.duration_seconds,
-      video_url: l.video_url ?? null,
+      order_index: l.order_index,
+      video_url: isEntitled ? (l.video_url ?? null) : null,
       done: doneLectureIds.has(l.id),
     })),
   };
 }
 
+// GET /api/courses/search?q=...
+coursesRouter.get('/search', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const q = c.req.query('q') || '';
+  const rows = await db
+    .select()
+    .from(schema.courses)
+    .where(like(schema.courses.title, `%${q}%`));
+  return c.json(rows);
+});
+
 // GET /api/courses
 coursesRouter.get('/', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
+  const subjectId = c.req.query('subject_id');
 
-  const courses = await db.select().from(schema.courses);
+  const courses = subjectId
+    ? await db.select().from(schema.courses).where(eq(schema.courses.subject_id, subjectId))
+    : await db.select().from(schema.courses);
+
   const done = await doneIds(db, user.id);
 
-  const result = await Promise.all(courses.map((course) => buildCourseOut(db, course, done)));
+  const result = await Promise.all(
+    courses.map(async (course) => {
+      const isEntitled = await isUserEntitledToCourse(db, user, course);
+      return buildCourseOut(db, course, done, isEntitled);
+    })
+  );
   return c.json(result);
 });
 
@@ -84,17 +148,64 @@ coursesRouter.get('/:course_id', async (c) => {
   const course = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId)).get();
   if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
 
+  const isEntitled = await isUserEntitledToCourse(db, user, course);
   const done = await doneIds(db, user.id);
-  return c.json(await buildCourseOut(db, course, done));
+  return c.json(await buildCourseOut(db, course, done, isEntitled));
+});
+
+// GET /api/courses/:course_id/lectures
+coursesRouter.get('/:course_id/lectures', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+  const courseId = c.req.param('course_id');
+
+  const course = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId)).get();
+  if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
+
+  const isEntitled = await isUserEntitledToCourse(db, user, course);
+  const lectures = await db
+    .select()
+    .from(schema.lectures)
+    .where(eq(schema.lectures.course_id, courseId))
+    .orderBy(asc(schema.lectures.order_index));
+
+  return c.json(
+    lectures.map((l) => ({
+      ...l,
+      video_url: isEntitled ? l.video_url : null,
+    }))
+  );
+});
+
+// GET /api/courses/:course_id/stats
+coursesRouter.get('/:course_id/stats', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const courseId = c.req.param('course_id');
+
+  const lectures = await db
+    .select({ duration_seconds: schema.lectures.duration_seconds })
+    .from(schema.lectures)
+    .where(eq(schema.lectures.course_id, courseId));
+
+  const totalSecs = lectures.reduce((sum, l) => sum + (l.duration_seconds || 0), 0);
+  return c.json({ lecture_count: lectures.length, total_duration_seconds: totalSecs });
 });
 
 // GET /api/courses/:course_id/materials
 coursesRouter.get('/:course_id/materials', async (c) => {
   const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
   const courseId = c.req.param('course_id');
 
   const course = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId)).get();
   if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
+
+  // Enforce entitlement
+  const isEntitled = await isUserEntitledToCourse(db, user, course);
+  if (!isEntitled) {
+    return c.json({ detail: 'غير مصرح بالوصول إلى مواد هذا الكورس' }, 403);
+  }
+
   if (!course.subject_id) return c.json({ booklets: [], exams: [] });
 
   // Get professor profiles whose subject matches
@@ -115,6 +226,33 @@ coursesRouter.get('/:course_id/materials', async (c) => {
   });
 });
 
+// GET /api/lectures/:id
+coursesRouter.get('/lectures/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+  const id = c.req.param('id');
+
+  const lec = await db.select().from(schema.lectures).where(eq(schema.lectures.id, id)).get();
+  if (!lec) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
+
+  const course = await db.select().from(schema.courses).where(eq(schema.courses.id, lec.course_id)).get();
+  if (course) {
+    const isEntitled = await isUserEntitledToCourse(db, user, course);
+    if (!isEntitled) {
+      return c.json({ detail: 'غير مصرح بمشاهدة هذه المحاضرة' }, 403);
+    }
+  }
+
+  return c.json(lec);
+});
+
+// POST /api/lectures/:id/progress
+coursesRouter.post('/lectures/:id/progress', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{ seconds?: number }>().catch(() => ({ seconds: 0 }));
+  return c.json({ message: 'تم تحديث التقدم', lecture_id: id, seconds: body?.seconds ?? 0 });
+});
+
 // POST /api/courses/lectures/:lecture_id/complete
 coursesRouter.post('/lectures/:lecture_id/complete', async (c) => {
   const db = drizzle(c.env.DB, { schema });
@@ -124,10 +262,14 @@ coursesRouter.post('/lectures/:lecture_id/complete', async (c) => {
   const lecture = await db.select().from(schema.lectures).where(eq(schema.lectures.id, lectureId)).get();
   if (!lecture) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
 
+  // Fixed: use and(...) instead of JavaScript short-circuit &&
   const existing = await db
     .select()
     .from(schema.lectureProgress)
-    .where(eq(schema.lectureProgress.user_id, user.id) && eq(schema.lectureProgress.lecture_id, lectureId))
+    .where(and(
+      eq(schema.lectureProgress.user_id, user.id),
+      eq(schema.lectureProgress.lecture_id, lectureId)
+    ))
     .get();
 
   if (!existing) {
@@ -138,4 +280,36 @@ coursesRouter.post('/lectures/:lecture_id/complete', async (c) => {
     });
   }
   return c.json({ ok: true });
+});
+
+// GET /api/recent-views
+coursesRouter.get('/recent-views', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+  const rows = await db
+    .select()
+    .from(schema.recentViews)
+    .where(eq(schema.recentViews.user_id, user.id))
+    .orderBy(desc(schema.recentViews.viewed_at));
+  return c.json(rows);
+});
+
+// POST /api/recent-views
+coursesRouter.post('/recent-views', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+  const body = await c.req.json<{ content_type: string; content_id: string }>();
+
+  if (!body.content_type || !body.content_id) {
+    return c.json({ detail: 'البيانات غير مكتملة' }, 400);
+  }
+
+  await db.insert(schema.recentViews).values({
+    id: schema.genId(),
+    user_id: user.id,
+    content_type: body.content_type,
+    content_id: body.content_id,
+  });
+
+  return c.json({ message: 'تم تسجيل العرض الأخير', ok: true });
 });

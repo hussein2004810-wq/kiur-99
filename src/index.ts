@@ -68,6 +68,7 @@ api.route('/questions', questionsRouter);
 api.route('/', questionsRouter);
 api.route('/professors', professorsRouter);
 api.route('/courses', coursesRouter);
+api.route('/', coursesRouter);
 api.route('/store', storeRouter);
 api.route('/admin/glimpses', adminGlimpsesRouter);
 api.route('/admin', adminRouter);

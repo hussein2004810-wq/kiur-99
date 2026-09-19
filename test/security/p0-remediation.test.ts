@@ -405,5 +405,119 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(data.rationale).toBe('توضيح الإجابة الصحيحة 1');
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // P0-7: Media Governance, Drizzle Operator Fix & Course Academic Entitlement
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('P0-7: Media Governance & Course Entitlement Hardening', () => {
+    it('denies access (404) to media files not registered in the database even if present in R2', async () => {
+      // Put a raw secret file directly into R2 bucket
+      await ctx.r2.put('internal_backup_secret.mp4', new Uint8Array([1, 2, 3, 4]), {
+        httpMetadata: { contentType: 'video/mp4' },
+      });
+
+      // Request without DB mediaFiles record
+      const res = await apiRequest(app, 'GET', '/media-files/internal_backup_secret.mp4', {}, ctx);
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.detail).toContain('الملف غير موجود أو غير مصرح');
+    });
+
+    it('isolates student lecture progress independently without Drizzle short-circuit bug', async () => {
+      const student1 = ctx.fixtures.users.student;
+      const token1 = ctx.createAuthToken(student1.id, 'student', student1.sessionId);
+
+      // Create a second student
+      const hash = '$2a$10$abcdefghijklmnopqrstuu';
+      await ctx.db.prepare(
+        "INSERT INTO users (id, email, full_name, password_hash, role, stage_id) VALUES ('usr_student2', 'student2@nabd.app', 'طالب ثان', ?, 'student', 'stg_2')"
+      ).bind(hash).run();
+      await ctx.db.prepare(
+        "INSERT INTO user_sessions (id, user_id, device_label, is_active) VALUES ('ses_student2', 'usr_student2', 'Device 2', 1)"
+      ).run();
+      const token2 = ctx.createAuthToken('usr_student2', 'student', 'ses_student2');
+
+      // Student 1 completes lecture lec_1
+      const comp1 = await apiRequest(app, 'POST', '/api/courses/lectures/lec_1/complete', {
+        token: token1,
+      }, ctx);
+      expect(comp1.status).toBe(200);
+
+      // Verify in DB that only student 1 has progress record
+      const s1Prog = await ctx.db.prepare(
+        'SELECT * FROM lecture_progress WHERE user_id = ? AND lecture_id = ?'
+      ).bind(student1.id, 'lec_1').first();
+      expect(s1Prog).toBeDefined();
+
+      const s2Prog = await ctx.db.prepare(
+        'SELECT * FROM lecture_progress WHERE user_id = ? AND lecture_id = ?'
+      ).bind('usr_student2', 'lec_1').first();
+      expect(s2Prog).toBeNull();
+
+      // Student 2 completes lecture lec_1
+      const comp2 = await apiRequest(app, 'POST', '/api/courses/lectures/lec_1/complete', {
+        token: token2,
+      }, ctx);
+      expect(comp2.status).toBe(200);
+
+      const s2ProgAfter = await ctx.db.prepare(
+        'SELECT * FROM lecture_progress WHERE user_id = ? AND lecture_id = ?'
+      ).bind('usr_student2', 'lec_1').first();
+      expect(s2ProgAfter).toBeDefined();
+    });
+
+    it('restricts course video URL and materials from students outside academic scope or without code', async () => {
+      // Create stage 3 and student in stage 3 (different from anatomy course in stage 2)
+      await ctx.db.prepare(
+        "INSERT INTO stages (id, name, university_id) VALUES ('stg_3', 'المرحلة الثالثة', 'uni_bgd')"
+      ).run();
+
+      const hash = '$2a$10$abcdefghijklmnopqrstuu';
+      await ctx.db.prepare(
+        "INSERT INTO users (id, email, full_name, password_hash, role, stage_id) VALUES ('usr_outsider', 'outsider@nabd.app', 'طالب مرحلة 3', ?, 'student', 'stg_3')"
+      ).bind(hash).run();
+      await ctx.db.prepare(
+        "INSERT INTO user_sessions (id, user_id, device_label, is_active) VALUES ('ses_outsider', 'usr_outsider', 'Device Outsider', 1)"
+      ).run();
+      const outsiderToken = ctx.createAuthToken('usr_outsider', 'student', 'ses_outsider');
+
+      // 1. Check course syllabus: video_url must be null for outsider
+      const courseRes = await apiRequest(app, 'GET', `/api/courses/${ctx.fixtures.courseId}`, {
+        token: outsiderToken,
+      }, ctx);
+      expect(courseRes.status).toBe(200);
+      const courseData = await courseRes.json();
+      expect(courseData.entitled).toBe(false);
+      for (const lec of courseData.lectures) {
+        expect(lec.video_url).toBeNull();
+      }
+
+      // 2. Materials endpoint returns 403 Forbidden for outsider
+      const matRes = await apiRequest(app, 'GET', `/api/courses/${ctx.fixtures.courseId}/materials`, {
+        token: outsiderToken,
+      }, ctx);
+      expect(matRes.status).toBe(403);
+      const matData = await matRes.json();
+      expect(matData.detail).toContain('غير مصرح بالوصول');
+
+      // 3. Directly accessing lecture returns 403
+      const lecRes = await apiRequest(app, 'GET', '/api/lectures/lec_1', {
+        token: outsiderToken,
+      }, ctx);
+      expect(lecRes.status).toBe(403);
+
+      // 4. Enrolled student in stage 2 has full access
+      const student1 = ctx.fixtures.users.student;
+      const enrolledToken = ctx.createAuthToken(student1.id, 'student', student1.sessionId);
+      const enrolledRes = await apiRequest(app, 'GET', `/api/courses/${ctx.fixtures.courseId}`, {
+        token: enrolledToken,
+      }, ctx);
+      expect(enrolledRes.status).toBe(200);
+      const enrolledData = await enrolledRes.json();
+      expect(enrolledData.entitled).toBe(true);
+      expect(enrolledData.lectures[0].video_url).toBeTruthy();
+    });
+  });
 });
+
 
