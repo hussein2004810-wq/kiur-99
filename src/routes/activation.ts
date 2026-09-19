@@ -1,5 +1,6 @@
 /**
  * Activation code redemption routes — mirrors Python app/routers/activation.py
+ * Enhanced with rate limiting, anti-bruteforce, audit logging, and contract compatibility
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
@@ -7,6 +8,8 @@ import { eq, desc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
+import { redeemRateLimiter } from '../middleware/rate-limit';
+import { recordAuditEvent } from '../services/audit';
 
 export const activationRouter = new Hono<AppEnv>();
 activationRouter.use('*', requireAuth);
@@ -16,7 +19,7 @@ const MAX_FAILED_REDEEMS = 5;
 const REDEEM_LOCKOUT_MINUTES = 15;
 
 // POST /api/activation/redeem
-activationRouter.post('/redeem', async (c) => {
+activationRouter.post('/redeem', redeemRateLimiter, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
 
@@ -27,14 +30,23 @@ activationRouter.post('/redeem', async (c) => {
   // Check redeem lockout
   if (fullUser.redeem_locked_until) {
     const lockedUntil = new Date(fullUser.redeem_locked_until);
-    if (lockedUntil > new Date()) {
-      const minutesLeft = Math.max(1, Math.floor((lockedUntil.getTime() - Date.now()) / 60000) + 1);
-      return c.json({ detail: `محاولات كثيرة فاشلة لتفعيل كود — حاول بعد ${minutesLeft} دقيقة` }, 429);
+    if (lockedUntil.getTime() > Date.now()) {
+      recordAuditEvent({
+        event: 'ACTIVATION_CODE_FAILED',
+        status: 'LOCKED',
+        actorId: user.id,
+        details: { reason: 'account_locked' },
+      });
+      return c.json({ detail: 'تم قفل تفعيل الأكواد مؤقتاً لكثرة المحاولات الخاطئة' }, 429);
     }
   }
 
-  const body = await c.req.json<{ code: string }>();
-  const codeStr = body.code?.trim().toUpperCase();
+  const body = await c.req.json<{ code?: string }>().catch(() => ({ code: '' }));
+  if (!body || !body.code || !body.code.trim()) {
+    return c.json({ detail: 'رمز التفعيل مطلوب' }, 400);
+  }
+
+  const codeStr = body.code.trim().toUpperCase();
 
   const code = await db
     .select()
@@ -45,25 +57,52 @@ activationRouter.post('/redeem', async (c) => {
   if (!code) {
     // Register failed attempt
     const attempts = (fullUser.failed_redeem_attempts ?? 0) + 1;
+    let lockUntil: string | null = null;
     if (attempts >= MAX_FAILED_REDEEMS) {
-      const lockUntil = new Date(Date.now() + REDEEM_LOCKOUT_MINUTES * 60000).toISOString();
+      lockUntil = new Date(Date.now() + REDEEM_LOCKOUT_MINUTES * 60000).toISOString();
       await db.update(schema.users).set({ failed_redeem_attempts: 0, redeem_locked_until: lockUntil }).where(eq(schema.users.id, user.id));
     } else {
       await db.update(schema.users).set({ failed_redeem_attempts: attempts }).where(eq(schema.users.id, user.id));
     }
+
+    recordAuditEvent({
+      event: 'ACTIVATION_CODE_FAILED',
+      status: 'FAILURE',
+      actorId: user.id,
+      details: { reason: 'invalid_code', attempts },
+    });
+
+    if (attempts >= MAX_FAILED_REDEEMS) {
+      return c.json({ detail: 'تم قفل تفعيل الأكواد مؤقتاً لكثرة المحاولات الخاطئة' }, 429);
+    }
     return c.json({ detail: 'الكود غير موجود — تأكد من كتابته بشكل صحيح' }, 404);
   }
 
-  if (code.status === 'expired') return c.json({ detail: 'هذا الكود منتهي الصلاحية' }, 400);
-
-  if (code.status === 'active') {
-    if (code.activated_by_user_id === user.id) return c.json({ detail: 'هذا الكود مُفعّل مسبقاً على حسابك' }, 400);
-    const attempts = (fullUser.failed_redeem_attempts ?? 0) + 1;
-    await db.update(schema.users).set({ failed_redeem_attempts: attempts }).where(eq(schema.users.id, user.id));
-    return c.json({ detail: 'هذا الكود مُفعّل مسبقاً من مستخدم آخر' }, 400);
+  if (code.status === 'expired') {
+    recordAuditEvent({
+      event: 'ACTIVATION_CODE_FAILED',
+      status: 'FAILURE',
+      actorId: user.id,
+      targetId: code.id,
+      details: { reason: 'expired_code' },
+    });
+    return c.json({ detail: 'هذا الكود مستخدم بالفعل أو منتهي الصلاحية' }, 400);
   }
 
-  // Redeem
+  if (code.status === 'active') {
+    const attempts = (fullUser.failed_redeem_attempts ?? 0) + 1;
+    await db.update(schema.users).set({ failed_redeem_attempts: attempts }).where(eq(schema.users.id, user.id));
+    recordAuditEvent({
+      event: 'ACTIVATION_CODE_FAILED',
+      status: 'FAILURE',
+      actorId: user.id,
+      targetId: code.id,
+      details: { reason: 'already_active' },
+    });
+    return c.json({ detail: 'هذا الكود مستخدم بالفعل أو منتهي الصلاحية' }, 400);
+  }
+
+  // Redeem code
   const now = new Date();
   const expiresAt = new Date(now.getTime() + CODE_VALIDITY_DAYS * 86400000);
 
@@ -84,13 +123,35 @@ activationRouter.post('/redeem', async (c) => {
     if (subject) subjectName = subject.name;
   }
 
+  recordAuditEvent({
+    event: 'ACTIVATION_CODE_REDEEMED',
+    status: 'SUCCESS',
+    actorId: user.id,
+    targetId: code.id,
+    details: { subject_id: code.subject_id, is_vip: code.subject_id === null },
+  });
+
   return c.json({
     id: code.id,
     code_masked: codeStr.slice(0, 4) + '••••',
+    message: 'تم تفعيل الاشتراك بنجاح',
+    subject_id: code.subject_id,
     subject_name: subjectName,
+    is_vip: code.subject_id === null,
     activated_at: now.toISOString(),
     expires_at: expiresAt.toISOString(),
   });
+});
+
+// GET /api/activation/status
+activationRouter.get('/status', async (c) => {
+  const user = c.get('user')!;
+  const res = await c.env.DB.prepare(
+    "SELECT * FROM activation_codes WHERE activated_by_user_id = ? AND status = 'active'"
+  )
+    .bind(user.id)
+    .all();
+  return c.json({ active_subscriptions: res.results ?? [] });
 });
 
 // GET /api/activation/mine
