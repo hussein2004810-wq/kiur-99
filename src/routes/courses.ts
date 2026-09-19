@@ -8,9 +8,6 @@ import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
 
-export const coursesRouter = new Hono<AppEnv>();
-coursesRouter.use('*', requireAuth);
-
 /**
  * Checks if a user is entitled to view course videos and materials.
  * Admins and professors are always entitled.
@@ -106,6 +103,12 @@ async function buildCourseOut(
     })),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. Courses Router (mounted at /api/courses)
+// ─────────────────────────────────────────────────────────────────────────────
+export const coursesRouter = new Hono<AppEnv>();
+coursesRouter.use('*', requireAuth);
 
 // GET /api/courses/search?q=...
 coursesRouter.get('/search', async (c) => {
@@ -226,33 +229,6 @@ coursesRouter.get('/:course_id/materials', async (c) => {
   });
 });
 
-// GET /api/lectures/:id
-coursesRouter.get('/lectures/:id', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
-  const user = c.get('user')!;
-  const id = c.req.param('id');
-
-  const lec = await db.select().from(schema.lectures).where(eq(schema.lectures.id, id)).get();
-  if (!lec) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
-
-  const course = await db.select().from(schema.courses).where(eq(schema.courses.id, lec.course_id)).get();
-  if (course) {
-    const isEntitled = await isUserEntitledToCourse(db, user, course);
-    if (!isEntitled) {
-      return c.json({ detail: 'غير مصرح بمشاهدة هذه المحاضرة' }, 403);
-    }
-  }
-
-  return c.json(lec);
-});
-
-// POST /api/lectures/:id/progress
-coursesRouter.post('/lectures/:id/progress', async (c) => {
-  const id = c.req.param('id');
-  const body = await c.req.json<{ seconds?: number }>().catch(() => ({ seconds: 0 }));
-  return c.json({ message: 'تم تحديث التقدم', lecture_id: id, seconds: body?.seconds ?? 0 });
-});
-
 // POST /api/courses/lectures/:lecture_id/complete
 coursesRouter.post('/lectures/:lecture_id/complete', async (c) => {
   const db = drizzle(c.env.DB, { schema });
@@ -282,8 +258,47 @@ coursesRouter.post('/lectures/:lecture_id/complete', async (c) => {
   return c.json({ ok: true });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. Lectures Router (mounted at /api/lectures)
+// ─────────────────────────────────────────────────────────────────────────────
+export const lecturesRouter = new Hono<AppEnv>();
+lecturesRouter.use('*', requireAuth);
+
+// GET /api/lectures/:id
+lecturesRouter.get('/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+  const id = c.req.param('id');
+
+  const lec = await db.select().from(schema.lectures).where(eq(schema.lectures.id, id)).get();
+  if (!lec) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
+
+  const course = await db.select().from(schema.courses).where(eq(schema.courses.id, lec.course_id)).get();
+  if (course) {
+    const isEntitled = await isUserEntitledToCourse(db, user, course);
+    if (!isEntitled) {
+      return c.json({ detail: 'غير مصرح بمشاهدة هذه المحاضرة' }, 403);
+    }
+  }
+
+  return c.json(lec);
+});
+
+// POST /api/lectures/:id/progress
+lecturesRouter.post('/:id/progress', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{ seconds?: number }>().catch(() => ({ seconds: 0 }));
+  return c.json({ message: 'تم تحديث التقدم', lecture_id: id, seconds: body?.seconds ?? 0 });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. Recent Views Router (mounted at /api/recent-views)
+// ─────────────────────────────────────────────────────────────────────────────
+export const recentViewsRouter = new Hono<AppEnv>();
+recentViewsRouter.use('*', requireAuth);
+
 // GET /api/recent-views
-coursesRouter.get('/recent-views', async (c) => {
+recentViewsRouter.get('/', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
   const rows = await db
@@ -295,7 +310,7 @@ coursesRouter.get('/recent-views', async (c) => {
 });
 
 // POST /api/recent-views
-coursesRouter.post('/recent-views', async (c) => {
+recentViewsRouter.post('/', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
   const body = await c.req.json<{ content_type: string; content_id: string }>();

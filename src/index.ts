@@ -9,9 +9,9 @@ import { registerStaticRoutes } from './routes/static';
 
 import { authRouter } from './routes/auth';
 import { catalogRouter } from './routes/catalog';
-import { questionsRouter } from './routes/questions';
+import { questionsRouter, subjectsQuestionsRouter, savedQuestionsRouter, meRouter } from './routes/questions';
 import { professorsRouter } from './routes/professors';
-import { coursesRouter } from './routes/courses';
+import { coursesRouter, lecturesRouter, recentViewsRouter } from './routes/courses';
 import { storeRouter } from './routes/store';
 import { adminRouter } from './routes/admin';
 import { resellerRouter } from './routes/reseller';
@@ -61,14 +61,19 @@ app.route('/auth', authRouter);
 app.route('/media-files', mediaRouter);
 app.route('/api/media', mediaRouter);
 
+// Connect /me/notifications to notificationsRouter
+meRouter.route('/notifications', notificationsRouter);
+
 // Mount all /api routes under /api
 const api = new Hono<AppEnv>();
 api.route('/catalog', catalogRouter);
 api.route('/questions', questionsRouter);
-api.route('/', questionsRouter);
+api.route('/subjects', subjectsQuestionsRouter);
+api.route('/saved-questions', savedQuestionsRouter);
 api.route('/professors', professorsRouter);
 api.route('/courses', coursesRouter);
-api.route('/', coursesRouter);
+api.route('/lectures', lecturesRouter);
+api.route('/recent-views', recentViewsRouter);
 api.route('/store', storeRouter);
 api.route('/admin/glimpses', adminGlimpsesRouter);
 api.route('/admin', adminRouter);
@@ -77,7 +82,7 @@ api.route('/activation', activationRouter);
 api.route('/bans', bansRouter);
 api.route('/exams', examsRouter);
 api.route('/notifications', notificationsRouter);
-api.route('/me/notifications', notificationsRouter);
+api.route('/me', meRouter);
 api.route('/students', studentsRouter);
 api.route('/glimpses', glimpsesRouter);
 api.route('/pearls', pearlsRouter);

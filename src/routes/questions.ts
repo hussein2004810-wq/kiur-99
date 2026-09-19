@@ -3,56 +3,30 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, desc, and, inArray } from 'drizzle-orm';
+import { eq, desc, and, inArray, like } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. Questions Router (mounted at /api/questions)
+// ─────────────────────────────────────────────────────────────────────────────
 export const questionsRouter = new Hono<AppEnv>();
-questionsRouter.use('*', requireAuth);
 
-// GET /api/subjects/:subject_id/questions
-questionsRouter.get('/subjects/:subject_id/questions', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
-  const subjectId = c.req.param('subject_id');
-  const limit = Math.min(parseInt(c.req.query('limit') ?? '20'), 100);
-  const offset = parseInt(c.req.query('offset') ?? '0');
-
-  const questions = await db
-    .select()
-    .from(schema.questions)
-    .where(eq(schema.questions.subject_id, subjectId))
-    .limit(limit)
-    .offset(offset);
-
-  const questionIds = questions.map((q) => q.id);
-  const choices =
-    questionIds.length > 0
-      ? await db.select().from(schema.choices).where(inArray(schema.choices.question_id, questionIds))
-      : [];
-
-  return c.json(
-    questions.map((q) => {
-      const { rationale: _rationale, ...safeQ } = q;
-      return {
-        ...safeQ,
-        choices: choices
-          .filter((ch) => ch.question_id === q.id)
-          .map((ch) => ({ id: ch.id, text: ch.text })),
-      };
-    })
-  );
-});
-
-// GET /api/questions (with ?subject_id=...)
-questionsRouter.get('/questions', async (c) => {
+// GET /api/questions (supports ?subject_id=... and ?search=...)
+questionsRouter.get('/', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const subjectId = c.req.query('subject_id');
+  const search = c.req.query('search');
   const limit = Math.min(parseInt(c.req.query('limit') ?? '50'), 100);
   const offset = parseInt(c.req.query('offset') ?? '0');
 
-  const questions = subjectId
-    ? await db.select().from(schema.questions).where(eq(schema.questions.subject_id, subjectId)).limit(limit).offset(offset)
+  const conditions = [];
+  if (subjectId) conditions.push(eq(schema.questions.subject_id, subjectId));
+  if (search) conditions.push(like(schema.questions.text, `%${search}%`));
+
+  const questions = conditions.length > 0
+    ? await db.select().from(schema.questions).where(and(...conditions)).limit(limit).offset(offset)
     : await db.select().from(schema.questions).limit(limit).offset(offset);
 
   const questionIds = questions.map((q) => q.id);
@@ -68,16 +42,41 @@ questionsRouter.get('/questions', async (c) => {
         ...safeQ,
         choices: choices
           .filter((ch) => ch.question_id === q.id)
-          .map((ch) => ({ id: ch.id, text: ch.text })),
+          .map((ch) => ({ id: ch.id, text: ch.text, order_index: ch.order_index })),
+      };
+    })
+  );
+});
+
+// GET /api/questions/daily
+questionsRouter.get('/daily', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const questions = await db.select().from(schema.questions).limit(5);
+  const questionIds = questions.map((q) => q.id);
+  const choices =
+    questionIds.length > 0
+      ? await db.select().from(schema.choices).where(inArray(schema.choices.question_id, questionIds))
+      : [];
+
+  return c.json(
+    questions.map((q) => {
+      const { rationale: _rationale, ...safeQ } = q;
+      return {
+        ...safeQ,
+        choices: choices
+          .filter((ch) => ch.question_id === q.id)
+          .map((ch) => ({ id: ch.id, text: ch.text, order_index: ch.order_index })),
       };
     })
   );
 });
 
 // GET /api/questions/:id
-questionsRouter.get('/questions/:id', async (c) => {
+questionsRouter.get('/:id', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const id = c.req.param('id');
+  if (!id) return c.json({ detail: 'معرف السؤال مطلوب' }, 400);
+
   const q = await db.select().from(schema.questions).where(eq(schema.questions.id, id)).get();
   if (!q) return c.json({ detail: 'السؤال غير موجود' }, 404);
 
@@ -85,15 +84,15 @@ questionsRouter.get('/questions/:id', async (c) => {
   const { rationale: _rationale, ...safeQ } = q;
   return c.json({
     ...safeQ,
-    choices: choices.map((ch) => ({ id: ch.id, text: ch.text })),
+    choices: choices.map((ch) => ({ id: ch.id, text: ch.text, order_index: ch.order_index })),
   });
 });
 
-// POST /api/questions/:question_id/answer
-questionsRouter.post('/questions/:question_id/answer', async (c) => {
+// POST /api/questions/:question_id/answer (requires auth)
+questionsRouter.post('/:question_id/answer', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
-  const questionId = c.req.param('question_id');
+  const questionId = c.req.param('question_id') as string;
   const body = await c.req.json<{ choice_id: string }>();
 
   const question = await db.select().from(schema.questions).where(eq(schema.questions.id, questionId)).get();
@@ -121,11 +120,11 @@ questionsRouter.post('/questions/:question_id/answer', async (c) => {
   });
 });
 
-// POST /api/questions/:question_id/save
-questionsRouter.post('/questions/:question_id/save', async (c) => {
+// POST /api/questions/:question_id/save (requires auth)
+questionsRouter.post('/:question_id/save', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
-  const questionId = c.req.param('question_id');
+  const questionId = c.req.param('question_id') as string;
 
   const question = await db.select().from(schema.questions).where(eq(schema.questions.id, questionId)).get();
   if (!question) return c.json({ detail: 'السؤال غير موجود' }, 404);
@@ -146,11 +145,11 @@ questionsRouter.post('/questions/:question_id/save', async (c) => {
   return c.json({ ok: true, saved: true });
 });
 
-// DELETE /api/questions/:question_id/save
-questionsRouter.delete('/questions/:question_id/save', async (c) => {
+// DELETE /api/questions/:question_id/save (requires auth)
+questionsRouter.delete('/:question_id/save', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
-  const questionId = c.req.param('question_id');
+  const questionId = c.req.param('question_id') as string;
 
   await db
     .delete(schema.savedQuestions)
@@ -159,8 +158,136 @@ questionsRouter.delete('/questions/:question_id/save', async (c) => {
   return c.json({ ok: true, saved: false });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. Subjects Questions Router (mounted at /api/subjects)
+// ─────────────────────────────────────────────────────────────────────────────
+export const subjectsQuestionsRouter = new Hono<AppEnv>();
+
+// GET /api/subjects/:subject_id/questions
+subjectsQuestionsRouter.get('/:subject_id/questions', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const subjectId = c.req.param('subject_id');
+  if (!subjectId) return c.json({ detail: 'معرف المادة مطلوب' }, 400);
+
+  const limit = Math.min(parseInt(c.req.query('limit') ?? '20'), 100);
+  const offset = parseInt(c.req.query('offset') ?? '0');
+
+  const questions = await db
+    .select()
+    .from(schema.questions)
+    .where(eq(schema.questions.subject_id, subjectId))
+    .limit(limit)
+    .offset(offset);
+
+  const questionIds = questions.map((q) => q.id);
+  const choices =
+    questionIds.length > 0
+      ? await db.select().from(schema.choices).where(inArray(schema.choices.question_id, questionIds))
+      : [];
+
+  return c.json(
+    questions.map((q) => {
+      const { rationale: _rationale, ...safeQ } = q;
+      return {
+        ...safeQ,
+        choices: choices
+          .filter((ch) => ch.question_id === q.id)
+          .map((ch) => ({ id: ch.id, text: ch.text, order_index: ch.order_index })),
+      };
+    })
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. Saved Questions Router (mounted at /api/saved-questions)
+// ─────────────────────────────────────────────────────────────────────────────
+export const savedQuestionsRouter = new Hono<AppEnv>();
+savedQuestionsRouter.use('*', requireAuth);
+
+// GET /api/saved-questions
+savedQuestionsRouter.get('/', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+
+  const saved = await db
+    .select()
+    .from(schema.savedQuestions)
+    .where(eq(schema.savedQuestions.user_id, user.id))
+    .orderBy(desc(schema.savedQuestions.created_at));
+
+  if (saved.length === 0) return c.json([]);
+
+  const questionIds = saved.map((s) => s.question_id);
+  const questions = await db.select().from(schema.questions).where(inArray(schema.questions.id, questionIds));
+  const choices = await db.select().from(schema.choices).where(inArray(schema.choices.question_id, questionIds));
+
+  const questionsMap: Record<string, any> = {};
+  questions.forEach((q) => {
+    const { rationale: _rationale, ...safeQ } = q;
+    questionsMap[q.id] = {
+      ...safeQ,
+      choices: choices.filter((ch) => ch.question_id === q.id).map((ch) => ({ id: ch.id, text: ch.text, order_index: ch.order_index })),
+    };
+  });
+
+  return c.json(
+    saved.map((s) => ({
+      bookmark_id: s.id,
+      question_id: s.question_id,
+      ...(questionsMap[s.question_id] || {}),
+    }))
+  );
+});
+
+// POST /api/saved-questions/:id
+savedQuestionsRouter.post('/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+  const questionId = c.req.param('id') as string;
+
+  const question = await db.select().from(schema.questions).where(eq(schema.questions.id, questionId)).get();
+  if (!question) return c.json({ detail: 'السؤال غير موجود' }, 404);
+
+  const existing = await db
+    .select()
+    .from(schema.savedQuestions)
+    .where(and(eq(schema.savedQuestions.user_id, user.id), eq(schema.savedQuestions.question_id, questionId)))
+    .get();
+
+  if (!existing) {
+    await db.insert(schema.savedQuestions).values({
+      id: schema.genId(),
+      user_id: user.id,
+      question_id: questionId,
+    });
+  }
+  return c.json({ message: 'تم حفظ السؤال', ok: true, saved: true });
+});
+
+// DELETE /api/saved-questions/:id
+savedQuestionsRouter.delete('/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+  const questionId = c.req.param('id') as string;
+
+  await db
+    .delete(schema.savedQuestions)
+    .where(and(
+      eq(schema.savedQuestions.user_id, user.id),
+      eq(schema.savedQuestions.question_id, questionId)
+    ));
+
+  return c.json({ message: 'تم إلغاء حفظ السؤال', ok: true, saved: false });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Me Router (mounted at /api/me)
+// ─────────────────────────────────────────────────────────────────────────────
+export const meRouter = new Hono<AppEnv>();
+meRouter.use('*', requireAuth);
+
 // GET /api/me/saved-questions
-questionsRouter.get('/me/saved-questions', async (c) => {
+meRouter.get('/saved-questions', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
 
@@ -183,10 +310,12 @@ questionsRouter.get('/me/saved-questions', async (c) => {
     .map((q) => {
       const { rationale: _rationale, ...safeQ } = q;
       return {
+        bookmark_id: saved.find((s) => s.question_id === q.id)?.id,
+        question_id: q.id,
         ...safeQ,
         choices: choices
           .filter((ch) => ch.question_id === q.id)
-          .map((ch) => ({ id: ch.id, text: ch.text })),
+          .map((ch) => ({ id: ch.id, text: ch.text, order_index: ch.order_index })),
       };
     })
     .sort((a, b) => (order[a.id] ?? 0) - (order[b.id] ?? 0));
@@ -194,83 +323,8 @@ questionsRouter.get('/me/saved-questions', async (c) => {
   return c.json(result);
 });
 
-// GET /api/saved-questions (contract alias)
-questionsRouter.get('/saved-questions', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
-  const user = c.get('user')!;
-
-  const saved = await db
-    .select()
-    .from(schema.savedQuestions)
-    .where(eq(schema.savedQuestions.user_id, user.id))
-    .orderBy(desc(schema.savedQuestions.created_at));
-
-  if (saved.length === 0) return c.json([]);
-
-  const questionIds = saved.map((s) => s.question_id);
-  const questions = await db.select().from(schema.questions).where(inArray(schema.questions.id, questionIds));
-  const choices = await db.select().from(schema.choices).where(inArray(schema.choices.question_id, questionIds));
-
-  const questionsMap: Record<string, any> = {};
-  questions.forEach((q) => {
-    const { rationale: _rationale, ...safeQ } = q;
-    questionsMap[q.id] = {
-      ...safeQ,
-      choices: choices.filter((ch) => ch.question_id === q.id).map((ch) => ({ id: ch.id, text: ch.text })),
-    };
-  });
-
-  return c.json(
-    saved.map((s) => ({
-      bookmark_id: s.id,
-      ...(questionsMap[s.question_id] || {}),
-    }))
-  );
-});
-
-// POST /api/saved-questions/:id (contract alias)
-questionsRouter.post('/saved-questions/:id', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
-  const user = c.get('user')!;
-  const questionId = c.req.param('id');
-
-  const question = await db.select().from(schema.questions).where(eq(schema.questions.id, questionId)).get();
-  if (!question) return c.json({ detail: 'السؤال غير موجود' }, 404);
-
-  const existing = await db
-    .select()
-    .from(schema.savedQuestions)
-    .where(and(eq(schema.savedQuestions.user_id, user.id), eq(schema.savedQuestions.question_id, questionId)))
-    .get();
-
-  if (!existing) {
-    await db.insert(schema.savedQuestions).values({
-      id: schema.genId(),
-      user_id: user.id,
-      question_id: questionId,
-    });
-  }
-  return c.json({ message: 'تم حفظ السؤال', ok: true, saved: true });
-});
-
-// DELETE /api/saved-questions/:id (contract alias)
-questionsRouter.delete('/saved-questions/:id', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
-  const user = c.get('user')!;
-  const questionId = c.req.param('id');
-
-  await db
-    .delete(schema.savedQuestions)
-    .where(and(
-      eq(schema.savedQuestions.user_id, user.id),
-      eq(schema.savedQuestions.question_id, questionId)
-    ));
-
-  return c.json({ message: 'تم إلغاء حفظ السؤال', ok: true, saved: false });
-});
-
 // GET /api/me/mistakes
-questionsRouter.get('/me/mistakes', async (c) => {
+meRouter.get('/mistakes', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
   const limit = Math.min(parseInt(c.req.query('limit') ?? '50'), 200);
