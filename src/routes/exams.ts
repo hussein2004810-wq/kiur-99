@@ -35,6 +35,27 @@ async function autoFinishD1(db: D1Database, attemptId: string, finishedAt: Date)
     .run();
 }
 
+// D1 statements have a practical bound on bound parameters.  Legacy attempts
+// may have no snapshots, so fetch their live rows in bounded chunks rather
+// than constructing a single unsafe IN (...) statement for a long exam.
+async function selectInChunks(
+  db: D1Database,
+  statementPrefix: string,
+  ids: string[],
+): Promise<any[]> {
+  const rows: any[] = [];
+  const chunkSize = 90;
+  for (let offset = 0; offset < ids.length; offset += chunkSize) {
+    const chunk = ids.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map(() => '?').join(',');
+    const result = await db.prepare(`${statementPrefix} (${placeholders})`)
+      .bind(...chunk)
+      .all();
+    rows.push(...((result.results ?? []) as any[]));
+  }
+  return rows;
+}
+
 async function getItemsOut(db: D1Database, attemptId: string, reveal: boolean) {
   const items = await db
     .prepare('SELECT * FROM exam_attempt_questions WHERE attempt_id = ? ORDER BY order_index ASC')
@@ -43,31 +64,37 @@ async function getItemsOut(db: D1Database, attemptId: string, reveal: boolean) {
 
   if (!items.results || items.results.length === 0) return [];
 
-  const qIds = (items.results as any[]).map((it) => it.question_id);
-  const placeholders = qIds.map(() => '?').join(',');
+  const itemRows = items.results as any[];
+  const legacyQuestionIds = itemRows
+    .filter((item) => !parseSnapshot(item.question_snapshot))
+    .map((item) => item.question_id);
+  const legacyChoiceQuestionIds = itemRows
+    .filter((item) => !Array.isArray(parseSnapshot(item.choices_snapshot)))
+    .map((item) => item.question_id);
 
-  const questionsRes = await db
-    .prepare(`SELECT * FROM questions WHERE id IN (${placeholders})`)
-    .bind(...qIds)
-    .all();
-
-  const choicesRes = await db
-    .prepare(`SELECT * FROM choices WHERE question_id IN (${placeholders}) ORDER BY order_index ASC`)
-    .bind(...qIds)
-    .all();
+  const questions = await selectInChunks(
+    db,
+    'SELECT * FROM questions WHERE id IN',
+    legacyQuestionIds,
+  );
+  const choices = await selectInChunks(
+    db,
+    'SELECT * FROM choices WHERE question_id IN',
+    legacyChoiceQuestionIds,
+  );
 
   const qMap: Record<string, any> = {};
-  for (const q of questionsRes.results as any[]) {
+  for (const q of questions) {
     qMap[q.id] = q;
   }
 
   const chMap: Record<string, any[]> = {};
-  for (const ch of choicesRes.results as any[]) {
+  for (const ch of choices) {
     chMap[ch.question_id] ??= [];
     chMap[ch.question_id].push(ch);
   }
 
-  return (items.results as any[])
+  return itemRows
     .map((it) => {
       const snapshotQuestion = parseSnapshot(it.question_snapshot);
       const snapshotChoices = parseSnapshot(it.choices_snapshot);
@@ -511,26 +538,22 @@ examsRouter.post('/:exam_id/start', requireAuth, async (c) => {
   }
 
   if (!attempt) {
-    // Pick questions from subject pool
+    // Select only the requested questions inside D1.  Loading and shuffling a
+    // whole subject bank in the Worker is both unnecessary and unsafe at scale.
+    const configuredCount = Number((exam as any).question_count);
+    const requestedCount = Number.isFinite(configuredCount) && configuredCount > 0
+      ? Math.min(Math.floor(configuredCount), 200)
+      : 50;
     const poolRes = await c.env.DB.prepare(
-      'SELECT * FROM questions WHERE subject_id = ?'
+      'SELECT * FROM questions WHERE subject_id = ? ORDER BY RANDOM() LIMIT ?'
     )
-      .bind(exam.subject_id ?? '')
+      .bind(exam.subject_id ?? '', requestedCount)
       .all();
 
-    const pool = (poolRes.results ?? []) as any[];
-    if (pool.length === 0) {
+    const chosen = (poolRes.results ?? []) as any[];
+    if (chosen.length === 0) {
       return c.json({ detail: 'لا توجد أسئلة متاحة لهذا الامتحان بعد' }, 400);
     }
-
-    // Shuffle pool
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-
-    const count = Number((exam as any).question_count || pool.length);
-    const chosen = pool.slice(0, count);
 
     const attemptId = 'att_' + Math.random().toString(36).substring(2, 10);
     const now = new Date().toISOString();

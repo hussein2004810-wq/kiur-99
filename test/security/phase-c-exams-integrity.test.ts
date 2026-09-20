@@ -272,4 +272,36 @@ describe('Phase C Security & Reliability: Exam Integrity, Concurrency & Scoring'
     }, ctx);
     expect(profile.status).toBe(403);
   });
+
+  it('C.10: Serves a legacy attempt with more than 100 items without an oversized D1 IN query', async () => {
+    const attemptId = 'att_legacy_long';
+    const statements: any[] = [
+      ctx.db.prepare(
+        'INSERT INTO exam_attempts (id, exam_id, user_id, total, score) VALUES (?, ?, ?, ?, 0)'
+      ).bind(attemptId, ctx.fixtures.examId, ctx.fixtures.users.student.id, 105),
+    ];
+
+    for (let index = 0; index < 105; index += 1) {
+      const questionId = `legacy_q_${index}`;
+      const choiceId = `legacy_c_${index}`;
+      statements.push(
+        ctx.db.prepare('INSERT INTO questions (id, subject_id, text) VALUES (?, ?, ?)')
+          .bind(questionId, ctx.fixtures.subjectIds.anatomy, `سؤال قديم ${index}`),
+        ctx.db.prepare('INSERT INTO choices (id, question_id, text, is_correct, order_index) VALUES (?, ?, ?, 0, 0)')
+          .bind(choiceId, questionId, `خيار قديم ${index}`),
+        ctx.db.prepare(
+          'INSERT INTO exam_attempt_questions (id, attempt_id, question_id, order_index) VALUES (?, ?, ?, ?)'
+        ).bind(`legacy_item_${index}`, attemptId, questionId, index),
+      );
+    }
+    await ctx.db.batch(statements);
+
+    const result = await apiRequest(app, 'GET', `/api/exams/attempts/${attemptId}/result`, {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
+    expect(result.status).toBe(200);
+    const body = await result.json();
+    expect(body.items).toHaveLength(105);
+    expect(body.items[104].question_id).toBe('legacy_q_104');
+  });
 });
