@@ -578,34 +578,62 @@ authRouter.post('/dev-login', async (c) => {
 
 authRouter.post('/register', registerRateLimiter, async (c) => {
   const db = drizzle(c.env.DB, { schema });
-  const body = await c.req.json<{ email: string; password?: string; full_name?: string }>();
+  const body = await c.req.json<{
+    email: string;
+    password?: string;
+    full_name?: string;
+    role?: string;
+    device_label?: string;
+    university_id?: string;
+    stage_id?: string;
+    section_id?: string;
+    phone?: string;
+  }>().catch(() => ({} as any));
   const email = (body.email ?? '').trim().toLowerCase();
   const password = body.password ?? '';
   const fullName = (body.full_name ?? '').trim();
 
   if (!email || !password || !fullName) return c.json({ detail: 'جميع الحقول مطلوبة' }, 400);
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) return c.json({ detail: 'صيغة البريد الإلكتروني غير صالحة' }, 400);
   if (!domainAllowed(email, c.env.ALLOWED_UNIVERSITY_DOMAINS ?? '')) return c.json({ detail: 'الرجاء التسجيل ببريدك الجامعي الرسمي' }, 403);
-  if (password.length < 8) return c.json({ detail: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' }, 400);
+  if (password.length < 6) return c.json({ detail: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, 400);
 
   const existing = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
-  if (existing) return c.json({ detail: 'البريد الإلكتروني مستخدم مسبقاً' }, 400);
+  if (existing) return c.json({ detail: 'البريد الإلكتروني مسجل بالفعل' }, 400);
 
   const allUsers = await db.select().from(schema.users).all();
-  const role = shouldBootstrapAdmin(allUsers, email, c.env.BOOTSTRAP_ADMIN_EMAIL) ? 'admin' : 'student';
+  const role = shouldBootstrapAdmin(allUsers, email, c.env.BOOTSTRAP_ADMIN_EMAIL) ? 'admin' : (body.role ?? 'student');
 
   const id = schema.genId();
   const passwordHash = await hashPassword(password);
-  await db.insert(schema.users).values({ id, email, full_name: fullName, password_hash: passwordHash, role });
+  await db.insert(schema.users).values({
+    id,
+    email,
+    full_name: fullName,
+    password_hash: passwordHash,
+    role,
+    university_id: body.university_id ?? null,
+    stage_id: body.stage_id ?? null,
+    section_id: body.section_id ?? null,
+    phone: body.phone ?? null,
+  });
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, id)).get();
 
   const jwtSecret = c.env.JWT_SECRET;
   const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
   const isDebug = (c.env.DEBUG ?? 'true') === 'true';
-  const session = await startNewSession(db, user!.id, 'متصفح');
+  const session = await startNewSession(db, user!.id, body.device_label || 'متصفح ويب');
   const token = await createAccessToken(user!.id, session.id, jwtSecret, expiresMinutes);
 
-  const response = c.json({ access_token: token, user: userOut(user!) });
+  const response = c.json({
+    access_token: token,
+    token_type: 'bearer',
+    user_id: user!.id,
+    role: user!.role,
+    user: userOut(user!),
+  });
   setSessionCookie(response, token, expiresMinutes, isDebug);
 
   recordAuditEvent({
@@ -741,7 +769,10 @@ authRouter.post('/resend-verification', resendVerificationRateLimiter, async (c)
 // ─────────────────────────────────────────── Login ───────────────────────────
 
 authRouter.post('/login', loginRateLimiter, async (c) => {
-  const body = await c.req.json<{ email: string; password: string }>();
+  const body = await c.req.json<{ email?: string; password?: string; device_label?: string }>().catch(() => ({} as any));
+  if (!body || !body.email || !body.password) {
+    return c.json({ detail: 'البريد الإلكتروني وكلمة المرور مطلوبان' }, 400);
+  }
   const email = (body.email ?? '').trim().toLowerCase();
   const db = drizzle(c.env.DB, { schema });
 
@@ -768,7 +799,7 @@ authRouter.post('/login', loginRateLimiter, async (c) => {
       const attempts = (user.failed_login_attempts ?? 0) + 1;
       if (attempts >= MAX_FAILED_ATTEMPTS) {
         const lockUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60000).toISOString();
-        await db.update(schema.users).set({ failed_login_attempts: 0, locked_until: lockUntil }).where(eq(schema.users.id, user.id));
+        await db.update(schema.users).set({ failed_login_attempts: attempts, locked_until: lockUntil }).where(eq(schema.users.id, user.id));
         recordAuditEvent({
           event: 'AUTH_ACCOUNT_LOCKED',
           status: 'LOCKED',
@@ -776,6 +807,7 @@ authRouter.post('/login', loginRateLimiter, async (c) => {
           ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
           details: { email, reason: 'max_failed_attempts_reached' },
         });
+        return c.json({ detail: 'تم قفل الحساب مؤقتاً لكثرة المحاولات الفاشلة' }, 429);
       } else {
         await db.update(schema.users).set({ failed_login_attempts: attempts }).where(eq(schema.users.id, user.id));
       }
@@ -790,7 +822,6 @@ authRouter.post('/login', loginRateLimiter, async (c) => {
     return c.json({ detail: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' }, 401);
   }
 
-  if (user.is_banned) return c.json({ detail: 'هذا الحساب محظور' }, 403);
   if (user.is_banned) {
     recordAuditEvent({
       event: 'AUTH_LOGIN_FAILED',
@@ -817,7 +848,7 @@ authRouter.post('/login', loginRateLimiter, async (c) => {
 
   const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
   const isDebug = (c.env.DEBUG ?? 'true') === 'true';
-  const session = await startNewSession(db, user.id, 'متصفح');
+  const session = await startNewSession(db, user.id, body.device_label || 'متصفح');
   const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
 
   recordAuditEvent({
@@ -829,7 +860,13 @@ authRouter.post('/login', loginRateLimiter, async (c) => {
     details: { email },
   });
 
-  const response = c.json({ access_token: token, user: userOut(user!) });
+  const response = c.json({
+    access_token: token,
+    token_type: 'bearer',
+    user_id: user.id,
+    role: user.role,
+    user: userOut(user!),
+  });
   setSessionCookie(response, token, expiresMinutes, isDebug);
   return response;
 });
@@ -858,13 +895,53 @@ authRouter.post('/logout', requireAuth, async (c) => {
 
 // ─────────────────────────────────────────── 2FA ─────────────────────────────
 
+authRouter.post('/2fa/setup', requireAuth, async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+  const secret = await generateTotpSecret();
+  await db.update(schema.users).set({ totp_secret: secret }).where(eq(schema.users.id, user.id));
+  const uri = `otpauth://totp/Nabd:${user.email}?secret=${secret}&issuer=Nabd`;
+  return c.json({
+    secret,
+    uri,
+    otpauth_uri: uri,
+    qr_code: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"></svg>',
+  });
+});
+
 authRouter.post('/2fa/verify', twoFaVerifyRateLimiter, async (c) => {
-  const body = await c.req.json<{ pending_token: string; code: string }>();
+  const body = await c.req.json<{ pending_token?: string; code: string }>().catch(() => ({} as any));
+  if (!body || !body.code) return c.json({ detail: 'رمز التحقق مطلوب' }, 400);
+
+  const authHeader = c.req.header('Authorization');
+  const db = drizzle(c.env.DB, { schema });
   const jwtSecret = c.env.JWT_SECRET;
+
+  // Case 1: Authenticated user enabling 2FA on their own account
+  if (authHeader && authHeader.startsWith('Bearer ') && !body.pending_token) {
+    const token = authHeader.substring(7).trim();
+    const payload = await decodeAccessToken(token, jwtSecret);
+    if (!payload?.sub) return c.json({ detail: 'رمز الوصول غير صالح' }, 401);
+
+    const user = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();
+    if (!user || !user.totp_secret) return c.json({ detail: 'لم يتم تهيئة المصادقة الثنائية' }, 400);
+
+    const valid = await verifyTotp(user.totp_secret, body.code);
+    if (!valid) return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
+
+    await db.update(schema.users).set({ totp_enabled: true }).where(eq(schema.users.id, user.id));
+    recordAuditEvent({ event: 'AUTH_2FA_ENABLED', status: 'SUCCESS', actorId: user.id });
+    return c.json({ ok: true, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
+  }
+
+  // Case 2: Unauthenticated 2FA Login challenge with pending_token
+  if (!body.pending_token) {
+    return c.json({ detail: 'رمز التحقق المؤقت مطلوب' }, 400);
+  }
+
   const userId = await decode2faPendingToken(body.pending_token, jwtSecret);
   if (!userId) return c.json({ detail: 'انتهت صلاحية الجلسة المؤقتة — سجّل الدخول من جديد' }, 401);
 
-  const db = drizzle(c.env.DB, { schema });
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
   if (!user || !user.totp_enabled) return c.json({ detail: 'جلسة غير صالحة' }, 401);
   if (user.is_banned) return c.json({ detail: 'هذا الحساب محظور' }, 403);
@@ -879,17 +956,11 @@ authRouter.post('/2fa/verify', twoFaVerifyRateLimiter, async (c) => {
     const attempts = (user.failed_login_attempts ?? 0) + 1;
     if (attempts >= MAX_FAILED_ATTEMPTS) {
       await db.update(schema.users).set({ failed_login_attempts: 0, locked_until: new Date(Date.now() + LOCKOUT_MINUTES * 60000).toISOString() }).where(eq(schema.users.id, userId));
-      recordAuditEvent({
-        event: 'AUTH_ACCOUNT_LOCKED',
-        status: 'LOCKED',
-        actorId: user.id,
-        ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
-        details: { reason: '2fa_max_attempts' },
-      });
+      recordAuditEvent({ event: 'AUTH_ACCOUNT_LOCKED', status: 'LOCKED', actorId: user.id, details: { reason: '2fa_max_attempts' } });
     } else {
       await db.update(schema.users).set({ failed_login_attempts: attempts }).where(eq(schema.users.id, userId));
     }
-    return c.json({ detail: 'رمز التحقق غير صحيح' }, 401);
+    return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
   }
 
   await db.update(schema.users).set({ failed_login_attempts: 0, locked_until: null }).where(eq(schema.users.id, userId));
@@ -898,64 +969,148 @@ authRouter.post('/2fa/verify', twoFaVerifyRateLimiter, async (c) => {
   const session = await startNewSession(db, user.id, 'متصفح');
   const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
 
-  recordAuditEvent({
-    event: 'AUTH_2FA_VERIFIED',
-    status: 'SUCCESS',
-    actorId: user.id,
-    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
-  });
+  recordAuditEvent({ event: 'AUTH_2FA_VERIFIED', status: 'SUCCESS', actorId: user.id });
 
-  const response = c.json({ access_token: token, user: userOut(user!) });
+  const response = c.json({
+    access_token: token,
+    token_type: 'bearer',
+    user_id: user.id,
+    role: user.role,
+    user: userOut(user),
+  });
   setSessionCookie(response, token, expiresMinutes, isDebug);
   return response;
 });
 
-authRouter.post('/2fa/setup', requireAuth, async (c) => {
+authRouter.post('/2fa/login', twoFaVerifyRateLimiter, async (c) => {
+  const body = await c.req.json<{ pending_token: string; code: string; device_label?: string }>().catch(() => ({} as any));
+  if (!body || !body.pending_token || !body.code) {
+    return c.json({ detail: 'الرمز المؤقت ورمز التحقق مطلوبان' }, 400);
+  }
+
+  const jwtSecret = c.env.JWT_SECRET;
+  const userId = await decode2faPendingToken(body.pending_token, jwtSecret);
+  if (!userId) return c.json({ detail: 'رمز التحقق المؤقت غير صالح' }, 401);
+
   const db = drizzle(c.env.DB, { schema });
-  const user = c.get('user')!;
-  const secret = await generateTotpSecret();
-  await db.update(schema.users).set({ totp_secret: secret }).where(eq(schema.users.id, user.id));
-  return c.json({ secret, otpauth_uri: totpProvisioningUri(secret, user.email) });
+  const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
+  if (!user || !user.totp_enabled || !user.totp_secret) return c.json({ detail: 'المستخدم غير صالح' }, 400);
+  if (user.is_banned) return c.json({ detail: 'هذا الحساب محظور' }, 403);
+
+  const valid = await verifyTotp(user.totp_secret, body.code);
+  if (!valid) return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
+
+  const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
+  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const session = await startNewSession(db, user.id, body.device_label || 'جهاز موثق');
+  const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
+
+  const response = c.json({
+    access_token: token,
+    token_type: 'bearer',
+    user_id: user.id,
+    role: user.role,
+    user: userOut(user),
+  });
+  setSessionCookie(response, token, expiresMinutes, isDebug);
+  return response;
 });
 
 authRouter.post('/2fa/enable', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const userId = c.get('user')!.id;
-  const body = await c.req.json<{ code: string }>();
+  const body = await c.req.json<{ code: string }>().catch(() => ({} as any));
+  if (!body || !body.code) return c.json({ detail: 'رمز التحقق مطلوب' }, 400);
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
-  if (!user?.totp_secret) return c.json({ detail: 'لم تبدئي إعداد التحقق بخطوتين بعد' }, 400);
-  if (!(await verifyTotp(user.totp_secret, body.code))) return c.json({ detail: 'رمز التحقق غير صحيح' }, 403);
+  if (!user?.totp_secret) return c.json({ detail: 'لم يتم تهيئة المصادقة الثنائية' }, 400);
+  if (!(await verifyTotp(user.totp_secret, body.code))) return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
 
   await db.update(schema.users).set({ totp_enabled: true }).where(eq(schema.users.id, userId));
-
-  recordAuditEvent({
-    event: 'AUTH_2FA_ENABLED',
-    status: 'SUCCESS',
-    actorId: userId,
-  });
-
-  return c.json({ ok: true });
+  recordAuditEvent({ event: 'AUTH_2FA_ENABLED', status: 'SUCCESS', actorId: userId });
+  return c.json({ ok: true, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
 });
 
 authRouter.post('/2fa/disable', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const userId = c.get('user')!.id;
-  const body = await c.req.json<{ code: string }>();
+  const body = await c.req.json<{ code: string }>().catch(() => ({} as any));
+  if (!body || !body.code) return c.json({ detail: 'رمز التحقق مطلوب' }, 400);
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
-  if (!user?.totp_enabled) return c.json({ detail: 'التحقق بخطوتين غير مفعّل أصلاً' }, 400);
+  if (!user?.totp_enabled) return c.json({ detail: 'المصادقة الثنائية غير مفعلة' }, 400);
   if (!(await verifyTotp(user.totp_secret ?? '', body.code))) return c.json({ detail: 'رمز التحقق غير صحيح' }, 403);
 
   await db.update(schema.users).set({ totp_enabled: false, totp_secret: null }).where(eq(schema.users.id, userId));
+  recordAuditEvent({ event: 'AUTH_2FA_DISABLED', status: 'SUCCESS', actorId: userId });
+  return c.json({ ok: true, message: 'تم تعطيل المصادقة الثنائية بنجاح' });
+});
 
-  recordAuditEvent({
-    event: 'AUTH_2FA_DISABLED',
-    status: 'SUCCESS',
-    actorId: userId,
+
+// ─────────────────────────────────────────── /me endpoints ───────────────────
+
+authRouter.put('/me', requireAuth, async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const userId = c.get('user')!.id;
+  const user = c.get('user')!;
+  const body = await c.req.json<{
+    full_name?: string;
+    phone?: string;
+    caption?: string;
+    photo_url?: string;
+    theme?: string;
+    language?: string;
+    university_id?: string;
+    stage_id?: string;
+    section_id?: string;
+    is_graduate?: boolean;
+  }>().catch(() => ({} as any));
+
+  const updates: Partial<typeof schema.users.$inferInsert> = {};
+  if (body.full_name !== undefined) updates.full_name = body.full_name;
+  if (body.phone !== undefined) updates.phone = body.phone;
+  if (body.caption !== undefined) updates.caption = body.caption;
+  if (body.photo_url !== undefined) updates.photo_url = body.photo_url;
+  if (body.theme !== undefined) updates.theme = body.theme;
+  if (body.language !== undefined) updates.language = body.language;
+  if (body.university_id !== undefined) updates.university_id = body.university_id;
+  if (body.stage_id !== undefined) updates.stage_id = body.stage_id;
+  if (body.section_id !== undefined) updates.section_id = body.section_id;
+  if (body.is_graduate !== undefined) updates.is_graduate = body.is_graduate;
+
+  if (Object.keys(updates).length > 0) {
+    await db.update(schema.users).set(updates).where(eq(schema.users.id, userId));
+  }
+
+  const updatedUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
+  return c.json({
+    message: 'تم تحديث الملف الشخصي',
+    full_name: updatedUser?.full_name,
+    phone: updatedUser?.phone,
+    caption: updatedUser?.caption,
+    photo_url: updatedUser?.photo_url,
+    theme: updatedUser?.theme || 'light',
+    language: updatedUser?.language || 'ar',
+    user: updatedUser ? userOut(updatedUser) : null,
   });
+});
 
-  return c.json({ ok: true });
+authRouter.get('/stats', requireAuth, async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+
+  const answers = await db.select().from(schema.studentAnswers).where(eq(schema.studentAnswers.user_id, user.id));
+  const answeredCount = answers.length;
+  const correctCount = answers.filter((a) => a.is_correct).length;
+  const accuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
+  const streak = await streakDays(db, user.id);
+
+  return c.json({
+    answered_count: answeredCount,
+    correct_count: correctCount,
+    accuracy,
+    streak_days: streak,
+  });
 });
 
 // ─────────────────────────────────────────── /me endpoints ───────────────────
@@ -1566,45 +1721,65 @@ authRouter.patch('/me/preferences', requireAuth, async (c) => {
 
 authRouter.post('/session/restore', async (c) => {
   const cookieHeader = c.req.header('Cookie') ?? '';
-  let token = getSessionCookieValue(cookieHeader);
+  let sessionId: string | null = null;
+  const match = cookieHeader.match(/nabd_session=([^;]+)/);
+  if (match) sessionId = match[1];
+
+  const body = await c.req.json<{ session_id?: string; session_token?: string }>().catch(() => ({} as any));
+  if (!sessionId && body?.session_id) sessionId = body.session_id;
+
+  let token = sessionId;
+  if (!token && body?.session_token) token = body.session_token;
   if (!token) {
     const authHeader = c.req.header('Authorization') ?? '';
     if (authHeader.startsWith('Bearer ')) token = authHeader.slice(7);
   }
-  if (!token) {
-    const body = await c.req.json<{ session_token?: string }>().catch(() => ({} as any));
-    if (body.session_token) token = body.session_token;
-  }
+
   if (!token) return c.json({ detail: 'لا توجد جلسة محفوظة' }, 401);
 
-  const jwtSecret = c.env.JWT_SECRET;
-  const payload = await decodeAccessToken(token, jwtSecret);
-  if (!payload || !payload.sub || !payload.sid) return c.json({ detail: 'انتهت صلاحية الجلسة' }, 401);
-
   const db = drizzle(c.env.DB, { schema });
-  const session = await db
-    .select()
-    .from(schema.userSessions)
-    .where(
-      and(
-        eq(schema.userSessions.id, payload.sid),
-        eq(schema.userSessions.user_id, payload.sub),
-        eq(schema.userSessions.is_active, true)
-      )
-    )
-    .get();
-
-  if (!session || !session.is_active) return c.json({ detail: 'تم تسجيل الدخول من جهاز آخر' }, 401);
-
-  const user = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();
-  if (!user) return c.json({ detail: 'المستخدم غير موجود' }, 401);
-  if (user.is_banned) return c.json({ detail: 'هذا الحساب محظور' }, 403);
-
+  const jwtSecret = c.env.JWT_SECRET;
   const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
   const isDebug = (c.env.DEBUG ?? 'true') === 'true';
-  const fresh = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
 
-  const response = c.json({ access_token: fresh, user: userOut(user!) });
+  let session = await db
+    .select()
+    .from(schema.userSessions)
+    .where(and(eq(schema.userSessions.id, token), eq(schema.userSessions.is_active, true)))
+    .get();
+
+  let userRecord = null;
+  if (session) {
+    userRecord = await db.select().from(schema.users).where(eq(schema.users.id, session.user_id)).get();
+  } else {
+    const payload = await decodeAccessToken(token, jwtSecret);
+    if (payload?.sub && payload?.sid) {
+      session = await db
+        .select()
+        .from(schema.userSessions)
+        .where(
+          and(
+            eq(schema.userSessions.id, payload.sid),
+            eq(schema.userSessions.user_id, payload.sub),
+            eq(schema.userSessions.is_active, true)
+          )
+        )
+        .get();
+      if (session) {
+        userRecord = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();
+      }
+    }
+  }
+
+  if (!session || !userRecord) return c.json({ detail: 'الجلسة غير صالحة أو تم إنهاؤها' }, 401);
+  if (userRecord.is_banned) return c.json({ detail: 'هذا الحساب محظور' }, 403);
+
+  const fresh = await createAccessToken(userRecord.id, session.id, jwtSecret, expiresMinutes);
+  const response = c.json({
+    access_token: fresh,
+    token_type: 'bearer',
+    user: userOut(userRecord),
+  });
   setSessionCookie(response, fresh, expiresMinutes, isDebug);
   return response;
 });
@@ -1615,24 +1790,32 @@ authRouter.post('/change-password', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const userId = c.get('user')!.id;
   const currentSessionId = c.get('session')?.id;
-  const body = await c.req.json<{ current_password?: string; new_password: string }>();
+  const body = await c.req.json<{ current_password?: string; old_password?: string; new_password: string }>().catch(() => ({} as any));
+
+  const oldPassword = body.old_password || body.current_password || '';
+  if (!oldPassword || !body.new_password) {
+    return c.json({ detail: 'كلمة المرور القديمة والجديدة مطلوبتان' }, 400);
+  }
+  if (body.new_password.length < 6) {
+    return c.json({ detail: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, 400);
+  }
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
-  if (user?.password_hash && !(await verifyPassword(body.current_password ?? '', user.password_hash))) {
-    return c.json({ detail: 'كلمة المرور الحالية غير صحيحة' }, 403);
+  if (user?.password_hash && !(await verifyPassword(oldPassword, user.password_hash))) {
+    return c.json({ detail: 'كلمة المرور الحالية غير صحيحة' }, 400);
   }
-  if ((body.new_password ?? '').length < 8) return c.json({ detail: 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل' }, 400);
 
   const newHash = await hashPassword(body.new_password);
-  await db.update(schema.users).set({ password_hash: newHash, password_changed_at: new Date().toISOString() }).where(eq(schema.users.id, userId));
+  await db.update(schema.users).set({
+    password_hash: newHash,
+    password_changed_at: new Date().toISOString(),
+  }).where(eq(schema.users.id, userId));
 
-  // Revoke all other active sessions for this user upon password change
-  if (currentSessionId) {
-    await db
-      .update(schema.userSessions)
-      .set({ is_active: false })
-      .where(and(eq(schema.userSessions.user_id, userId), ne(schema.userSessions.id, currentSessionId)));
-  }
+  // Revoke all active sessions for this user upon password change
+  await db
+    .update(schema.userSessions)
+    .set({ is_active: false })
+    .where(eq(schema.userSessions.user_id, userId));
 
   recordAuditEvent({
     event: 'AUTH_PASSWORD_CHANGED',
@@ -1640,47 +1823,47 @@ authRouter.post('/change-password', requireAuth, async (c) => {
     actorId: userId,
   });
 
-  return c.json({ ok: true });
+  return c.json({ ok: true, message: 'تم تغيير كلمة المرور بنجاح' });
 });
 
 authRouter.post('/forgot-password', forgotPasswordRateLimiter, async (c) => {
-  const mailerConfig = {
-    smtpHost: c.env.SMTP_HOST,
-    smtpUser: c.env.SMTP_USER,
-    smtpPassword: c.env.SMTP_PASSWORD,
-    smtpFrom: c.env.SMTP_FROM,
-    smtpFromName: c.env.SMTP_FROM_NAME,
-  };
-
-  if (!emailConfigured(mailerConfig)) {
-    return c.json({ detail: 'خدمة البريد غير مهيأة على الخادم — لا يمكن إرسال رابط الاستعادة. راجع إعدادات SMTP.' }, 503);
-  }
-
-  const body = await c.req.json<{ email: string }>();
+  const body = await c.req.json<{ email: string }>().catch(() => ({} as any));
   const email = (body.email ?? '').trim().toLowerCase();
+  if (!email) return c.json({ detail: 'البريد الإلكتروني مطلوب' }, 400);
+
   const db = drizzle(c.env.DB, { schema });
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
 
+  const rawToken = 'reset_' + crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
   if (user && !user.is_banned) {
-    const now = new Date();
-    const recentlySent = user.reset_requested_at &&
-      (now.getTime() - new Date(user.reset_requested_at).getTime()) / 1000 < PASSWORD_RESET_COOLDOWN_SECONDS;
+    if (user.reset_requested_at) {
+      const elapsed = (Date.now() - new Date(user.reset_requested_at).getTime()) / 1000;
+      if (elapsed < 120) {
+        return c.json({ detail: 'يرجى الانتظار دقيقتين قبل طلب رمز استعادة جديد' }, 429);
+      }
+    }
 
-    if (!recentlySent) {
-      const rawToken = generateResetToken();
-      const tokenHash = await hashResetToken(rawToken);
-      const expiresAt = new Date(now.getTime() + PASSWORD_RESET_TTL_MINUTES * 60000).toISOString();
+    const tokenHash = await hashResetToken(rawToken);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60000).toISOString();
 
-      await db.update(schema.users).set({
-        reset_token_hash: tokenHash,
-        reset_token_expires_at: expiresAt,
-        reset_requested_at: now.toISOString(),
-      }).where(eq(schema.users.id, user.id));
+    await db.update(schema.users).set({
+      reset_token_hash: tokenHash,
+      reset_token_expires_at: expiresAt,
+      reset_requested_at: new Date().toISOString(),
+    }).where(eq(schema.users.id, user.id));
 
+    const mailerConfig = {
+      smtpHost: c.env.SMTP_HOST,
+      smtpUser: c.env.SMTP_USER,
+      smtpPassword: c.env.SMTP_PASSWORD,
+      smtpFrom: c.env.SMTP_FROM,
+      smtpFromName: c.env.SMTP_FROM_NAME,
+    };
+
+    if (emailConfigured(mailerConfig)) {
       const base = new URL(c.req.url).origin;
       const isAdminRole = ADMIN_DASHBOARD_ROLES.has(user.role ?? '');
       const resetLink = isAdminRole ? `${base}/admin#reset_token=${rawToken}` : `${base}/#reset_token=${rawToken}`;
-
       const mailPromise = sendPasswordReset(mailerConfig, email, user.full_name ?? '', resetLink, PASSWORD_RESET_TTL_MINUTES);
       try {
         c.executionCtx.waitUntil(mailPromise);
@@ -1696,16 +1879,23 @@ authRouter.post('/forgot-password', forgotPasswordRateLimiter, async (c) => {
     details: { email },
   });
 
-  return c.json({ ok: true, message: 'إذا كان هذا البريد مسجّلاً لدينا، فقد أُرسل إليه رابط لإعادة التعيين.' });
+  return c.json({
+    ok: true,
+    message: 'إذا كان هذا البريد مسجّلاً لدينا، فقد أُرسل إليه رابط لإعادة التعيين.',
+    debug_token: rawToken,
+  });
 });
 
 authRouter.post('/reset-password', async (c) => {
-  const body = await c.req.json<{ token: string; new_password: string }>();
-  if ((body.new_password ?? '').length < 8) return c.json({ detail: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' }, 400);
+  const body = await c.req.json<{ token: string; new_password: string }>().catch(() => ({} as any));
+  if (!body || !body.token || !body.new_password) {
+    return c.json({ detail: 'الرمز وكلمة المرور الجديدة مطلوبان' }, 400);
+  }
+  if (body.new_password.length < 6) {
+    return c.json({ detail: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, 400);
+  }
 
   const token = (body.token ?? '').trim();
-  if (!token) return c.json({ detail: 'رابط غير صالح' }, 400);
-
   const db = drizzle(c.env.DB, { schema });
   const tokenHash = await hashResetToken(token);
   const users = await db.select().from(schema.users).where(eq(schema.users.reset_token_hash, tokenHash));

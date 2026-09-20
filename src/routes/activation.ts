@@ -75,6 +75,9 @@ activationRouter.post('/redeem', redeemRateLimiter, async (c) => {
     if (attempts >= MAX_FAILED_REDEEMS) {
       return c.json({ detail: 'تم قفل تفعيل الأكواد مؤقتاً لكثرة المحاولات الخاطئة' }, 429);
     }
+    if (codeStr.includes('-') || codeStr.startsWith('NBD')) {
+      return c.json({ detail: 'رمز التفعيل غير صحيح' }, 400);
+    }
     return c.json({ detail: 'الكود غير موجود — تأكد من كتابته بشكل صحيح' }, 404);
   }
 

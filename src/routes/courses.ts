@@ -6,7 +6,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { eq, inArray, asc, and, like, desc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, optionalAuth } from '../middleware/auth';
 
 /**
  * Checks if a user is entitled to view course videos and materials.
@@ -108,7 +108,7 @@ async function buildCourseOut(
 // 1. Courses Router (mounted at /api/courses)
 // ─────────────────────────────────────────────────────────────────────────────
 export const coursesRouter = new Hono<AppEnv>();
-coursesRouter.use('*', requireAuth);
+coursesRouter.use('*', optionalAuth);
 
 // GET /api/courses/search?q=...
 coursesRouter.get('/search', async (c) => {
@@ -124,18 +124,18 @@ coursesRouter.get('/search', async (c) => {
 // GET /api/courses
 coursesRouter.get('/', async (c) => {
   const db = drizzle(c.env.DB, { schema });
-  const user = c.get('user')!;
+  const user = c.get('user');
   const subjectId = c.req.query('subject_id');
 
   const courses = subjectId
     ? await db.select().from(schema.courses).where(eq(schema.courses.subject_id, subjectId))
     : await db.select().from(schema.courses);
 
-  const done = await doneIds(db, user.id);
+  const done = user ? await doneIds(db, user.id) : new Set<string>();
 
   const result = await Promise.all(
     courses.map(async (course) => {
-      const isEntitled = await isUserEntitledToCourse(db, user, course);
+      const isEntitled = user ? await isUserEntitledToCourse(db, user, course) : false;
       return buildCourseOut(db, course, done, isEntitled);
     })
   );
@@ -145,27 +145,27 @@ coursesRouter.get('/', async (c) => {
 // GET /api/courses/:course_id
 coursesRouter.get('/:course_id', async (c) => {
   const db = drizzle(c.env.DB, { schema });
-  const user = c.get('user')!;
+  const user = c.get('user');
   const courseId = c.req.param('course_id');
 
   const course = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId)).get();
   if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
 
-  const isEntitled = await isUserEntitledToCourse(db, user, course);
-  const done = await doneIds(db, user.id);
+  const isEntitled = user ? await isUserEntitledToCourse(db, user, course) : false;
+  const done = user ? await doneIds(db, user.id) : new Set<string>();
   return c.json(await buildCourseOut(db, course, done, isEntitled));
 });
 
 // GET /api/courses/:course_id/lectures
 coursesRouter.get('/:course_id/lectures', async (c) => {
   const db = drizzle(c.env.DB, { schema });
-  const user = c.get('user')!;
+  const user = c.get('user');
   const courseId = c.req.param('course_id');
 
   const course = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId)).get();
   if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
 
-  const isEntitled = await isUserEntitledToCourse(db, user, course);
+  const isEntitled = user ? await isUserEntitledToCourse(db, user, course) : false;
   const lectures = await db
     .select()
     .from(schema.lectures)
@@ -262,22 +262,24 @@ coursesRouter.post('/lectures/:lecture_id/complete', async (c) => {
 // 2. Lectures Router (mounted at /api/lectures)
 // ─────────────────────────────────────────────────────────────────────────────
 export const lecturesRouter = new Hono<AppEnv>();
-lecturesRouter.use('*', requireAuth);
 
 // GET /api/lectures/:id
-lecturesRouter.get('/:id', async (c) => {
+lecturesRouter.get('/:id', optionalAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
-  const user = c.get('user')!;
-  const id = c.req.param('id');
+  const id = c.req.param('id') as string;
+  if (!id) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
+  const user = c.get('user');
 
   const lec = await db.select().from(schema.lectures).where(eq(schema.lectures.id, id)).get();
   if (!lec) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
 
-  const course = await db.select().from(schema.courses).where(eq(schema.courses.id, lec.course_id)).get();
-  if (course) {
-    const isEntitled = await isUserEntitledToCourse(db, user, course);
-    if (!isEntitled) {
-      return c.json({ detail: 'غير مصرح بمشاهدة هذه المحاضرة' }, 403);
+  if (user && lec.course_id) {
+    const course = await db.select().from(schema.courses).where(eq(schema.courses.id, lec.course_id)).get();
+    if (course) {
+      const isEntitled = await isUserEntitledToCourse(db, user, course);
+      if (!isEntitled) {
+        return c.json({ detail: 'غير مصرح بالوصول إلى هذه المحاضرة' }, 403);
+      }
     }
   }
 
@@ -285,7 +287,7 @@ lecturesRouter.get('/:id', async (c) => {
 });
 
 // POST /api/lectures/:id/progress
-lecturesRouter.post('/:id/progress', async (c) => {
+lecturesRouter.post('/:id/progress', requireAuth, async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json<{ seconds?: number }>().catch(() => ({ seconds: 0 }));
   return c.json({ message: 'تم تحديث التقدم', lecture_id: id, seconds: body?.seconds ?? 0 });

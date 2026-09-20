@@ -14,6 +14,10 @@ export const publicRouter = new Hono<AppEnv>();
 publicRouter.get('/stats', async (c) => {
   const db = drizzle(c.env.DB, { schema });
 
+  const students = await c.env.DB.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'student'").first('c');
+  const courses = await c.env.DB.prepare('SELECT COUNT(*) as c FROM courses').first('c');
+  const exams = await c.env.DB.prepare('SELECT COUNT(*) as c FROM exams').first('c');
+
   const [questionsCount] = await db.select({ count: count() }).from(schema.questions);
   const [lecturesCount] = await db.select({ count: count() }).from(schema.lectures);
   const [pearlsCount] = await db.select({ count: count() }).from(schema.clinicalPearls);
@@ -35,11 +39,25 @@ publicRouter.get('/stats', async (c) => {
   }
 
   return c.json({
-    questions: questionsCount.count,
+    total_students: Number(students ?? 0),
+    total_courses: Number(courses ?? 0),
+    total_exams: Number(exams ?? 0),
+    questions: questionsCount?.count ?? 0,
     professors: professorsCount,
-    lectures: lecturesCount.count,
-    pearls: pearlsCount.count,
+    lectures: lecturesCount?.count ?? 0,
+    pearls: pearlsCount?.count ?? 0,
   });
+});
+
+// GET /api/public/professors
+publicRouter.get('/professors', async (c) => {
+  const res = await c.env.DB.prepare(`
+    SELECT p.*, u.full_name, s.name as subject_name
+    FROM professor_profiles p
+    JOIN users u ON p.user_id = u.id
+    LEFT JOIN subjects s ON p.subject_id = s.id
+  `).all();
+  return c.json(res.results ?? []);
 });
 
 // GET /api/public/certificates/:code (B6 - Rate limited verifiable certificates)

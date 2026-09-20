@@ -42,16 +42,25 @@ function dailyCounts(items: { date_col: string | null }[], days = 7): Array<{ da
 adminRouter.get('/overview', async (c) => {
   const db = drizzle(c.env.DB, { schema });
 
-  const students = await db.select().from(schema.users).where(eq(schema.users.role, 'student'));
+  const allUsers = await db.select().from(schema.users);
+  const allCourses = await db.select().from(schema.courses);
+  const allExams = await db.select().from(schema.exams);
+  const allOrdersList = await db.select().from(schema.orders);
+
+  const students = allUsers.filter((u) => u.role === 'student');
   const activeCodes = await db.select().from(schema.activationCodes).where(eq(schema.activationCodes.status, 'active'));
   const pendingBans = await db.select().from(schema.banRecords).where(eq(schema.banRecords.status, 'active'));
-  const allOrders = await db.select().from(schema.orders).where(inArray(schema.orders.status, ['paid', 'fulfilled']));
-  const revenueTotal = allOrders.reduce((s, o) => s + (o.total ?? 0), 0);
+  const paidOrders = allOrdersList.filter((o) => ['paid', 'fulfilled'].includes(o.status ?? ''));
+  const revenueTotal = paidOrders.reduce((s, o) => s + (o.total ?? 0), 0);
 
   const allAnswers = await db.select({ date_col: schema.studentAnswers.answered_at }).from(schema.studentAnswers);
   const weeklyActivity = dailyCounts(allAnswers);
 
   return c.json({
+    users_count: allUsers.length,
+    courses_count: allCourses.length,
+    exams_count: allExams.length,
+    orders_count: allOrdersList.length,
     total_students: students.length,
     active_activations: activeCodes.length,
     pending_bans: pendingBans.length,
@@ -70,6 +79,29 @@ adminRouter.get('/users', async (c) => {
     id: u.id, email: u.email, full_name: u.full_name, role: u.role,
     photo_url: u.photo_url, is_banned: u.is_banned, created_at: u.created_at,
   })));
+});
+
+adminRouter.get('/users/:id', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const u = await db.select().from(schema.users).where(eq(schema.users.id, id)).get();
+  if (!u) return c.json({ detail: 'المستخدم غير موجود' }, 404);
+  return c.json(u);
+});
+
+adminRouter.put('/users/:id/role', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const body = await c.req.json<{ role: string }>().catch(() => ({} as any));
+  const validRoles = ['student', 'professor', 'admin', 'reseller'];
+  if (!body || !body.role || !validRoles.includes(body.role)) {
+    return c.json({ detail: 'الدور المحدد غير صالح' }, 400);
+  }
+  const u = await db.select().from(schema.users).where(eq(schema.users.id, id)).get();
+  if (!u) return c.json({ detail: 'المستخدم غير موجود' }, 404);
+
+  await db.update(schema.users).set({ role: body.role as any }).where(eq(schema.users.id, id));
+  return c.json({ message: 'تم تحديث دور المستخدم', user_id: id, new_role: body.role });
 });
 
 adminRouter.post('/users', async (c) => {
@@ -233,13 +265,18 @@ adminRouter.get('/resellers/:reseller_id/codes', async (c) => {
 adminRouter.post('/users/:user_id/ban', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const userId = c.req.param('user_id');
-  const reason = c.req.query('reason') ?? '';
+  const body = await c.req.json<{ reason?: string }>().catch(() => ({} as any));
+  const reason = body?.reason || c.req.query('reason') || 'مخالفة شروط الاستخدام';
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
   if (!user) return c.json({ detail: 'المستخدم غير موجود' }, 404);
 
   await db.update(schema.users).set({ is_banned: true }).where(eq(schema.users.id, userId));
-  await db.insert(schema.banRecords).values({ id: schema.genId(), user_id: userId, reason, status: 'active' });
+  const banId = 'ban_' + Math.random().toString(36).substring(2, 10);
+  await db.insert(schema.banRecords).values({ id: banId, user_id: userId, reason, status: 'active' });
+
+  // Evict sessions immediately
+  await db.update(schema.userSessions).set({ is_active: false }).where(eq(schema.userSessions.user_id, userId));
 
   recordAuditEvent({
     event: 'ADMIN_USER_BANNED',
@@ -249,7 +286,7 @@ adminRouter.post('/users/:user_id/ban', async (c) => {
     details: { reason },
   });
 
-  return c.json({ ok: true });
+  return c.json({ message: 'تم حظر المستخدم بنجاح', user_id: userId, ok: true });
 });
 
 adminRouter.post('/users/:user_id/unban', async (c) => {
@@ -270,7 +307,7 @@ adminRouter.post('/users/:user_id/unban', async (c) => {
     targetId: userId,
   });
 
-  return c.json({ ok: true });
+  return c.json({ message: 'تم رفع الحظر بنجاح', ok: true });
 });
 
 adminRouter.post('/users/:user_id/2fa/reset', async (c) => {
@@ -294,9 +331,8 @@ adminRouter.post('/users/:user_id/2fa/reset', async (c) => {
 // ─────────────────────── Logs & Bans (read) ──────────────────────────────────
 adminRouter.get('/logs', async (c) => {
   const db = drizzle(c.env.DB, { schema });
-  const limit = Math.min(parseInt(c.req.query('limit') ?? '50'), 500);
-  // ActivityLog table may not be in schema if not generated — return empty gracefully
-  return c.json([]);
+  const logs = await c.env.DB.prepare('SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 100').all().catch(() => ({ results: [] }));
+  return c.json(logs.results || []);
 });
 
 adminRouter.get('/bans', async (c) => {
@@ -311,6 +347,24 @@ adminRouter.get('/bans', async (c) => {
     };
   }));
   return c.json(out);
+});
+
+adminRouter.put('/bans/:id/resolve', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const id = c.req.param('id');
+  const body = await c.req.json<{ action?: string }>().catch(() => ({} as any));
+  const action = body?.action; // 'lift' or 'reject'
+  const ban = await db.select().from(schema.banRecords).where(eq(schema.banRecords.id, id)).get();
+  if (!ban) return c.json({ detail: 'سجل الحظر غير موجود' }, 404);
+
+  if (action === 'lift') {
+    await db.update(schema.banRecords).set({ status: 'lifted' }).where(eq(schema.banRecords.id, id));
+    await db.update(schema.users).set({ is_banned: false }).where(eq(schema.users.id, ban.user_id));
+    return c.json({ ok: true, message: 'تم رفع الحظر بنجاح' });
+  } else {
+    await db.update(schema.banRecords).set({ status: 'active' }).where(eq(schema.banRecords.id, id));
+    return c.json({ ok: true, message: 'تم رفض طلب الاعتراض' });
+  }
 });
 
 adminRouter.post('/bans/:ban_id/approve-appeal', async (c) => {
@@ -2082,39 +2136,71 @@ adminRouter.get('/students', async (c) => {
 
 // ─────────────────────── Media upload ────────────────────────────────────────
 adminRouter.post('/media/upload', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
   const adminUser = c.get('user')!;
-  const formData = await c.req.formData();
-  const file = formData.get('file') as File | null;
-  if (!file) return c.json({ detail: 'الملف مطلوب' }, 400);
+  const contentType = c.req.header('Content-Type') || '';
+  let filename = 'file_' + Date.now();
+  let fileData: Uint8Array;
+  let mimeType = 'application/octet-stream';
 
-  const contents = await file.arrayBuffer();
-  if (contents.byteLength > MAX_UPLOAD_BYTES) return c.json({ detail: 'الملف أكبر من الحد المسموح (20 ميغابايت)' }, 400);
-
-  const allExts = [...IMAGE_EXTS, ...PDF_EXTS, ...VIDEO_EXTS];
-  const sig = validateFileSignature(contents, allExts);
-  if (!sig.valid) {
-    return c.json({ detail: 'توقيع الملف أو نوعه الداخلي غير صالح' }, 400);
+  if (contentType.includes('multipart/form-data')) {
+    const form = await c.req.formData();
+    const file = form.get('file') as File | null;
+    if (!file || file.size === 0) {
+      return c.json({ detail: 'الملف فارغ أو غير صالح' }, 400);
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      return c.json({ detail: 'حجم الملف يتجاوز الحد المسموح' }, 413);
+    }
+    filename = file.name || filename;
+    mimeType = file.type || mimeType;
+    const buf = await file.arrayBuffer();
+    fileData = new Uint8Array(buf);
+  } else {
+    const body = await c.req.arrayBuffer();
+    if (!body || body.byteLength === 0) {
+      return c.json({ detail: 'الملف فارغ' }, 400);
+    }
+    if (body.byteLength > 50 * 1024 * 1024) {
+      return c.json({ detail: 'حجم الملف يتجاوز الحد المسموح' }, 413);
+    }
+    fileData = new Uint8Array(body);
+    const nameHeader = c.req.header('X-Filename');
+    if (nameHeader) filename = nameHeader;
+    if (filename.endsWith('.pdf')) mimeType = 'application/pdf';
+    else if (filename.endsWith('.png')) mimeType = 'image/png';
+    else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) mimeType = 'image/jpeg';
+    else if (filename.endsWith('.mp4')) mimeType = 'video/mp4';
   }
 
-  const storage = createStorageService(c.env.R2_BUCKET);
-  const storedName = safeUploadName(file.name, allExts, 'file');
-  await storage.save(storedName, contents, file.type || 'application/octet-stream');
+  if (!c.env.R2_BUCKET) {
+    return c.json({ detail: 'خدمة التخزين غير متوفرة' }, 500);
+  }
 
-  const url = mediaUrl(storedName);
-  try {
-    await db.insert(schema.mediaFiles).values({
-      id: schema.genId(),
-      filename: storedName,
-      url,
-      content_type: file.type || 'application/octet-stream',
-      size_bytes: contents.byteLength,
-      uploaded_by: adminUser.id,
-      is_deleted: false,
-    });
-  } catch (_) {}
+  await c.env.R2_BUCKET.put(filename, fileData, {
+    httpMetadata: { contentType: mimeType },
+  });
 
-  return c.json({ url, stored_name: storedName });
+  const mfId = 'mf_' + Math.random().toString(36).substring(2, 10);
+  const fileUrl = `/media-files/${filename}`;
+
+  await c.env.DB.prepare(`
+    INSERT INTO media_files (id, filename, url, content_type, size_bytes, uploaded_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(mfId, filename, fileUrl, mimeType, fileData.byteLength, adminUser.id).run();
+
+  return c.json({
+    id: mfId,
+    filename,
+    url: fileUrl,
+    size_bytes: fileData.byteLength,
+    content_type: mimeType,
+    stored_name: filename,
+  });
+});
+
+adminRouter.get('/media', async (c) => {
+  const res = await c.env.DB.prepare('SELECT * FROM media_files ORDER BY created_at DESC').all();
+  return c.json(res.results ?? []);
 });
 
 // ─────────────────────── Store Products & Orders ─────────────────────────────
@@ -2171,6 +2257,47 @@ adminRouter.get('/store/orders', async (c) => {
     };
   }));
   return c.json(out);
+});
+
+adminRouter.get('/orders', async (c) => {
+  const res = await c.env.DB.prepare('SELECT * FROM orders ORDER BY created_at DESC').all();
+  return c.json(res.results ?? []);
+});
+
+adminRouter.put('/orders/:id/status', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{ status?: string }>().catch(() => ({} as any));
+  const validStatuses = ['pending', 'paid', 'fulfilled', 'cancelled'];
+  const status = body?.status || c.req.query('status');
+  if (!status || !validStatuses.includes(status)) {
+    return c.json({ detail: 'حالة الطلب غير صالحة' }, 400);
+  }
+  const order = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?').bind(id).first();
+  if (!order) return c.json({ detail: 'الطلب غير موجود' }, 404);
+
+  await c.env.DB.prepare('UPDATE orders SET status = ? WHERE id = ?').bind(status, id).run();
+
+  let issuedCode = null;
+  if (status === 'paid') {
+    const items = await c.env.DB.prepare(`
+      SELECT oi.*, p.is_activation_code, p.grants_subject_id
+      FROM order_items oi
+      JOIN products p ON oi.product_id = p.id
+      WHERE oi.order_id = ?
+    `).bind(id).all();
+
+    for (const item of (items.results ?? []) as any[]) {
+      if (item.is_activation_code) {
+        const codeStr = 'NBD-STORE-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const codeId = 'act_' + Math.random().toString(36).substring(2, 10);
+        await c.env.DB.prepare("INSERT INTO activation_codes (id, code, subject_id, status, order_id) VALUES (?, ?, ?, 'idle', ?)")
+          .bind(codeId, codeStr, item.grants_subject_id, id).run();
+        issuedCode = codeStr;
+      }
+    }
+  }
+
+  return c.json({ message: 'تم تحديث حالة الطلب', status, issued_code: issuedCode });
 });
 
 adminRouter.put('/store/orders/:order_id/status', async (c) => {

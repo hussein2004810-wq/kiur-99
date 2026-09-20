@@ -100,7 +100,7 @@ questionsRouter.post('/:question_id/answer', requireAuth, async (c) => {
 
   const questionChoices = await db.select().from(schema.choices).where(eq(schema.choices.question_id, questionId));
   const choice = questionChoices.find((ch) => ch.id === body.choice_id);
-  if (!choice) return c.json({ detail: 'خيار غير صالح' }, 400);
+  if (!choice) return c.json({ detail: 'الخيار المحدد لا ينتمي لهذا السؤال' }, 400);
 
   const correctChoice = questionChoices.find((ch) => ch.is_correct);
 

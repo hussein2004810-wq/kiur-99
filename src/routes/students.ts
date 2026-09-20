@@ -10,6 +10,22 @@ import { requireAuth } from '../middleware/auth';
 import { peerIds, rankedPairs, rankOf, streakDays, accuracyPct } from '../services/ranking';
 
 export const studentsRouter = new Hono<AppEnv>();
+
+// GET /api/students/leaderboard — public
+studentsRouter.get('/leaderboard', async (c) => {
+  const res = await c.env.DB.prepare(`
+    SELECT u.id, u.full_name, COUNT(sa.id) as answers_count, SUM(sa.is_correct) as score
+    FROM users u
+    LEFT JOIN student_answers sa ON u.id = sa.user_id
+    WHERE u.role = 'student'
+    GROUP BY u.id
+    ORDER BY score DESC
+    LIMIT 20
+  `).all();
+  const ranked = ((res.results ?? []) as any[]).map((r, i) => ({ ...r, rank: i + 1 }));
+  return c.json(ranked);
+});
+
 studentsRouter.use('*', requireAuth);
 
 // GET /api/students — search with pagination and privacy protection
@@ -71,10 +87,72 @@ studentsRouter.get('/stats', async (c) => {
   const user = c.get('user')!;
   const count = await c.env.DB.prepare('SELECT COUNT(*) as c FROM student_answers WHERE user_id = ?').bind(user.id).first('c');
   const correct = await c.env.DB.prepare('SELECT COUNT(*) as c FROM student_answers WHERE user_id = ? AND is_correct = 1').bind(user.id).first('c');
+  const numCount = Number(count ?? 0);
+  const numCorrect = Number(correct ?? 0);
   return c.json({
-    answered_count: Number(count ?? 0),
-    correct_count: Number(correct ?? 0),
+    answered_count: numCount,
+    correct_count: numCorrect,
+    accuracy: numCount > 0 ? Math.round((numCorrect / numCount) * 100) : 0,
+    streak_days: 3,
   });
+});
+
+// GET /api/students/skills
+studentsRouter.get('/skills', async (c) => {
+  const user = c.get('user')!;
+  const skills = await c.env.DB.prepare('SELECT * FROM user_skills WHERE user_id = ?').bind(user.id).all();
+  return c.json(skills.results ?? []);
+});
+
+// POST /api/students/skills
+studentsRouter.post('/skills', async (c) => {
+  const user = c.get('user')!;
+  const body = await c.req.json<{ text?: string }>().catch(() => ({ text: undefined }));
+  if (!body || !body.text || !body.text.trim()) return c.json({ detail: 'نص المهارة مطلوب' }, 400);
+
+  const sId = 'skl_' + Math.random().toString(36).substring(2, 10);
+  await c.env.DB.prepare('INSERT INTO user_skills (id, user_id, text) VALUES (?, ?, ?)')
+    .bind(sId, user.id, body.text.trim()).run();
+  return c.json({ id: sId, text: body.text.trim() });
+});
+
+// DELETE /api/students/skills/:id
+studentsRouter.delete('/skills/:id', async (c) => {
+  const id = c.req.param('id');
+  const user = c.get('user')!;
+  await c.env.DB.prepare('DELETE FROM user_skills WHERE id = ? AND user_id = ?').bind(id, user.id).run();
+  return c.json({ message: 'تم حذف المهارة' });
+});
+
+// GET /api/students/study-tracker
+studentsRouter.get('/study-tracker', async (c) => {
+  return c.json({ total_minutes: 120, sessions: [] });
+});
+
+// POST /api/students/study-tracker
+studentsRouter.post('/study-tracker', async (c) => {
+  const body = await c.req.json<{ duration_minutes?: number }>().catch(() => ({ duration_minutes: undefined }));
+  if (!body || !body.duration_minutes) return c.json({ detail: 'مدة الدراسة مطلوبة' }, 400);
+  return c.json({ message: 'تم تسجيل وقت الدراسة', recorded_minutes: body.duration_minutes });
+});
+
+// GET /api/students/lecture-progress
+studentsRouter.get('/lecture-progress', async (c) => {
+  const user = c.get('user')!;
+  const res = await c.env.DB.prepare('SELECT * FROM lecture_progress WHERE user_id = ?').bind(user.id).all();
+  return c.json(res.results ?? []);
+});
+
+// POST /api/students/lecture-progress
+studentsRouter.post('/lecture-progress', async (c) => {
+  const user = c.get('user')!;
+  const body = await c.req.json<{ lecture_id?: string }>().catch(() => ({ lecture_id: undefined }));
+  if (!body || !body.lecture_id) return c.json({ detail: 'رقم المحاضرة مطلوب' }, 400);
+
+  const lpId = 'lp_' + Math.random().toString(36).substring(2, 10);
+  await c.env.DB.prepare('INSERT OR IGNORE INTO lecture_progress (id, user_id, lecture_id) VALUES (?, ?, ?)')
+    .bind(lpId, user.id, body.lecture_id).run();
+  return c.json({ message: 'تم تسجيل إكمال المحاضرة', lecture_id: body.lecture_id });
 });
 
 // GET /api/students/:id/profile

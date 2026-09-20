@@ -3,14 +3,15 @@ import { TestContext } from './test-context';
 
 export async function createTestApp(ctx: TestContext): Promise<any> {
   // If explicitly requested to test against src/index.ts:
-  if (process.env.TEST_TARGET === 'src') {
+  if (process.env.TEST_TARGET?.trim() === 'src') {
     try {
       const mainModule = await import('../../src/index');
       if (mainModule && mainModule.default) {
         return mainModule.default;
       }
-    } catch {
-      // Fallback
+    } catch (err) {
+      console.error('FAILED TO IMPORT SRC/INDEX:', err);
+      throw err;
     }
   }
 

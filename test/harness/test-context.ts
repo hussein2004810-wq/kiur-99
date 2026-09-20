@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { MockD1Database } from './d1-mock';
 import { MockR2Bucket } from './r2-mock';
 import { hashPassword, signJwt } from './crypto-helpers';
+import { resetRateLimitStore } from '../../src/middleware/rate-limit';
 
 export interface TestFixtures {
   sectionId: string;
@@ -59,6 +60,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = 'test-jwt-secret-key-32-chars-long!';
 
 export async function createTestContext(): Promise<TestContext> {
+  resetRateLimitStore();
   const db = new MockD1Database(true);
   const r2 = new MockR2Bucket();
 
@@ -290,6 +292,7 @@ export async function createTestContext(): Promise<TestContext> {
     createSession,
     cleanup: () => {
       db.close();
+      resetRateLimitStore();
     },
   };
 }

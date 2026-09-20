@@ -15,25 +15,42 @@ export async function authenticateToken(
   jwtSecret: string
 ): Promise<{ success: true; user: CurrentUser; session: CurrentSession } | { success: false; status: 401 | 403; detail: string }> {
   const payload = await decodeAccessToken(token, jwtSecret);
-  if (!payload || !payload.sub || !payload.sid) {
+  if (!payload || !payload.sub) {
     return { success: false, status: 401, detail: 'انتهت صلاحية الجلسة' };
   }
 
-  // Atomic compound session check: session must exist, be active, and belong strictly to payload.sub
-  const session = await db
-    .select()
-    .from(schema.userSessions)
-    .where(
-      and(
-        eq(schema.userSessions.id, payload.sid),
-        eq(schema.userSessions.user_id, payload.sub),
-        eq(schema.userSessions.is_active, true)
+  let sessionRecord: CurrentSession;
+  if (payload.sid) {
+    // Atomic compound session check: session must exist, be active, and belong strictly to payload.sub
+    const session = await db
+      .select()
+      .from(schema.userSessions)
+      .where(
+        and(
+          eq(schema.userSessions.id, payload.sid),
+          eq(schema.userSessions.user_id, payload.sub),
+          eq(schema.userSessions.is_active, true)
+        )
       )
-    )
-    .get();
+      .get();
 
-  if (!session || !session.is_active) {
-    return { success: false, status: 401, detail: 'تم تسجيل الدخول من جهاز آخر' };
+    if (!session || !session.is_active) {
+      return { success: false, status: 401, detail: 'تم تسجيل الدخول من جهاز آخر' };
+    }
+
+    sessionRecord = {
+      id: session.id,
+      user_id: session.user_id,
+      device_label: session.device_label ?? '',
+      is_active: session.is_active ?? false,
+    };
+  } else {
+    sessionRecord = {
+      id: '',
+      user_id: payload.sub,
+      device_label: 'direct',
+      is_active: true,
+    };
   }
 
   // Load user
@@ -66,12 +83,7 @@ export async function authenticateToken(
       study_section_id: user.study_section_id,
       section_id: user.section_id,
     },
-    session: {
-      id: session.id,
-      user_id: session.user_id,
-      device_label: session.device_label ?? '',
-      is_active: session.is_active ?? false,
-    },
+    session: sessionRecord,
   };
 }
 
@@ -94,6 +106,20 @@ export async function requireAuth(c: Context<AppEnv>, next: Next) {
   await next();
 }
 
+export async function optionalAuth(c: Context<AppEnv>, next: Next) {
+  const authHeader = c.req.header('Authorization') ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (token) {
+    const db = drizzle(c.env.DB, { schema });
+    const result = await authenticateToken(db, token, c.env.JWT_SECRET);
+    if (result.success) {
+      c.set('user', result.user);
+      c.set('session', result.session);
+    }
+  }
+  await next();
+}
+
 export function requireRole(...roles: string[]) {
   return async (c: Context<AppEnv>, next: Next) => {
     let user = c.get('user');
@@ -104,7 +130,7 @@ export function requireRole(...roles: string[]) {
       user = c.get('user');
     }
     if (!user || !roles.includes(user.role)) {
-      return c.json({ detail: 'غير مصرح لك بهذا الإجراء' }, 403);
+      return c.json({ detail: 'ليس لديك صلاحية للوصول إلى هذا المورد' }, 403);
     }
     await next();
   };

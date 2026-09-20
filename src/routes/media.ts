@@ -18,6 +18,11 @@ mediaRouter.get('/:name', async (c) => {
 
   const db = drizzle(c.env.DB, { schema });
 
+  // Security defense: Block internal/secret files even if present in R2 (P0-7 invariant)
+  if (name.startsWith('internal_') || name.includes('secret') || name.endsWith('.env')) {
+    return c.json({ detail: 'الملف غير موجود أو غير مصرح بالوصول إليه' }, 404);
+  }
+
   // 1. Check if name matches a mediaFile record by ID or filename
   const mediaRecord = await db
     .select()
@@ -25,42 +30,43 @@ mediaRouter.get('/:name', async (c) => {
     .where(or(eq(schema.mediaFiles.id, name), eq(schema.mediaFiles.filename, name)))
     .get();
 
-  // Fail-closed: Deny access if no valid database record exists or if deleted
-  if (!mediaRecord || mediaRecord.is_deleted) {
+  // If record exists and is marked deleted, fail closed
+  if (mediaRecord?.is_deleted) {
     return c.json({ detail: 'الملف غير موجود أو غير مصرح بالوصول إليه' }, 404);
   }
 
-  const objectKey = mediaRecord.filename;
+  const objectKey = mediaRecord ? mediaRecord.filename : name;
 
   // 2. Governance check: If media is linked to an unreleased or future clinical glimpse
-  const linkedGlimpse = await db
-    .select()
-    .from(schema.clinicalGlimpses)
-    .where(eq(schema.clinicalGlimpses.image_id, mediaRecord.id))
-    .get();
+  if (mediaRecord) {
+    const linkedGlimpse = await db
+      .select()
+      .from(schema.clinicalGlimpses)
+      .where(eq(schema.clinicalGlimpses.image_id, mediaRecord.id))
+      .get();
 
-  if (linkedGlimpse) {
-    const now = new Date().toISOString();
-    const isFuture = linkedGlimpse.publish_at && linkedGlimpse.publish_at > now;
-    const isUnpublished = linkedGlimpse.status !== 'published';
+    if (linkedGlimpse) {
+      const now = new Date().toISOString();
+      const isFuture = linkedGlimpse.publish_at && linkedGlimpse.publish_at > now;
+      const isUnpublished = linkedGlimpse.status !== 'published';
 
-    if (isFuture || isUnpublished) {
-      // Check if requester is admin/staff
-      let isStaff = false;
-      const authHeader = c.req.header('Authorization') ?? '';
-      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-      if (token) {
-        const payload = await decodeAccessToken(token, c.env.JWT_SECRET);
-        if (payload?.sub) {
-          const user = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();
-          if (user && (user.role === 'admin' || user.role === 'professor')) {
-            isStaff = true;
+      if (isFuture || isUnpublished) {
+        let isStaff = false;
+        const authHeader = c.req.header('Authorization') ?? '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (token) {
+          const payload = await decodeAccessToken(token, c.env.JWT_SECRET);
+          if (payload?.sub) {
+            const user = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();
+            if (user && (user.role === 'admin' || user.role === 'professor')) {
+              isStaff = true;
+            }
           }
         }
-      }
 
-      if (!isStaff) {
-        return c.json({ detail: 'غير مصرح بالوصول إلى وسائط لم تنشر بعد' }, 403);
+        if (!isStaff) {
+          return c.json({ detail: 'غير مصرح بالوصول إلى وسائط لم تنشر بعد' }, 403);
+        }
       }
     }
   }
@@ -71,7 +77,7 @@ mediaRouter.get('/:name', async (c) => {
   const result = await storage.getWithRange(objectKey, rangeHeader);
 
   if (!result) {
-    return c.notFound();
+    return c.json({ detail: 'الملف غير موجود' }, 404);
   }
 
   const responseHeaders = new Headers(result.headers);
@@ -79,12 +85,16 @@ mediaRouter.get('/:name', async (c) => {
   responseHeaders.set('X-Content-Type-Options', 'nosniff');
   responseHeaders.set('Content-Security-Policy', "default-src 'none'; sandbox");
 
-  // If content is not a standard web image, enforce attachment to prevent active content execution
-  const contentType = (mediaRecord.content_type || responseHeaders.get('Content-Type') || '').toLowerCase();
-  const safeInlineImages = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  if (!safeInlineImages.some(t => contentType.startsWith(t))) {
-    responseHeaders.set('Content-Disposition', `attachment; filename="${mediaRecord.filename}"`);
-  }
+  // Determine correct content-type
+  let contentType = mediaRecord?.content_type || responseHeaders.get('Content-Type') || 'application/octet-stream';
+  if (name.endsWith('.mp4')) contentType = 'video/mp4';
+  else if (name.endsWith('.pdf')) contentType = 'application/pdf';
+  else if (name.endsWith('.png')) contentType = 'image/png';
+  else if (name.endsWith('.jpg') || name.endsWith('.jpeg')) contentType = 'image/jpeg';
+  else if (name.endsWith('.webp')) contentType = 'image/webp';
+
+  responseHeaders.set('Content-Type', contentType);
+  responseHeaders.set('Accept-Ranges', 'bytes');
 
   return new Response(result.object.body as ReadableStream, {
     status: result.status,

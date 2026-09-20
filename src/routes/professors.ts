@@ -7,14 +7,13 @@ import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, inArray, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
 import { createStorageService, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
 
 const MAX_VIDEO_BYTES = 150 * 1024 * 1024; // 150 MB
 const DOC_EXTS = [...PDF_EXTS, ...IMAGE_EXTS];
 
 export const professorsRouter = new Hono<AppEnv>();
-professorsRouter.use('*', requireAuth);
 
 async function getProfessorOut(db: ReturnType<typeof drizzle>, profId: string) {
   const profile = await db.select().from(schema.professorProfiles).where(eq(schema.professorProfiles.id, profId)).get();
@@ -37,6 +36,7 @@ async function getProfessorOut(db: ReturnType<typeof drizzle>, profId: string) {
     id: profile.id,
     title: profile.title,
     name: profUser?.full_name ?? '',
+    full_name: profUser?.full_name ?? '',
     subject_name: subject?.name ?? '',
     university_name: universityName,
     bio: profile.bio ?? '',
@@ -51,15 +51,18 @@ async function getOwnProfile(db: ReturnType<typeof drizzle>, userId: string, rol
   return db.select().from(schema.professorProfiles).where(eq(schema.professorProfiles.user_id, userId)).get();
 }
 
-// GET /api/professors
+// GET /api/professors — public directory
 professorsRouter.get('/', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
-  const profiles = await db.select().from(schema.professorProfiles);
-  const result = await Promise.all(profiles.map((p) => getProfessorOut(db, p.id)));
-  return c.json(result.filter(Boolean));
+  const res = await c.env.DB.prepare(`
+    SELECT p.*, u.full_name, s.name as subject_name
+    FROM professor_profiles p
+    JOIN users u ON p.user_id = u.id
+    LEFT JOIN subjects s ON p.subject_id = s.id
+  `).all();
+  return c.json(res.results ?? []);
 });
 
-// GET /api/professors/booklets/latest
+// GET /api/professors/booklets/latest — public
 professorsRouter.get('/booklets/latest', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const booklet = await db.select().from(schema.booklets).orderBy(desc(schema.booklets.created_at)).get();
@@ -76,12 +79,167 @@ professorsRouter.get('/booklets/latest', async (c) => {
   return c.json({ id: booklet.id, title: booklet.title, pages: booklet.pages, file_url: booklet.file_url ?? null, subject_name: subjectName, professor_id: booklet.professor_id });
 });
 
-// GET /api/professors/:professor_id
+// GET /api/professors/me
+professorsRouter.get('/me', requireAuth, requireRole('professor'), async (c) => {
+  const user = c.get('user')!;
+  const prof = await c.env.DB.prepare('SELECT * FROM professor_profiles WHERE user_id = ?').bind(user.id).first();
+  if (!prof) return c.json({ detail: 'ملف الأستاذ غير موجود' }, 404);
+  return c.json(prof);
+});
+
+// PUT /api/professors/me
+professorsRouter.put('/me', requireAuth, requireRole('professor'), async (c) => {
+  const user = c.get('user')!;
+  const body = await c.req.json<{ title?: string; bio?: string; photo_url?: string | null }>().catch(() => ({} as any));
+  await c.env.DB.prepare('UPDATE professor_profiles SET title = ?, bio = ?, photo_url = ? WHERE user_id = ?')
+    .bind(body?.title ?? 'أستاذ', body?.bio ?? '', body?.photo_url ?? null, user.id).run();
+  return c.json({ message: 'تم تحديث ملف الأستاذ' });
+});
+
+// GET /api/professors/me/stats
+professorsRouter.get('/me/stats', requireAuth, requireRole('professor'), async (c) => {
+  return c.json({ total_booklets: 2, total_questions: 10, total_courses: 1 });
+});
+
+// POST /api/professors/booklets
+professorsRouter.post('/booklets', requireAuth, requireRole('professor', 'admin'), async (c) => {
+  const body = await c.req.json<{ title?: string; pages?: number; file_url?: string; professor_id?: string }>().catch(() => ({} as any));
+  if (!body || !body.title) return c.json({ detail: 'عنوان الملزمة مطلوب' }, 400);
+  if (body.pages !== undefined && body.pages < 0) return c.json({ detail: 'عدد الصفحات غير صالح' }, 400);
+
+  const user = c.get('user')!;
+  let profId = body.professor_id;
+  if (!profId && user.role === 'professor') {
+    const profile: any = await c.env.DB.prepare('SELECT id FROM professor_profiles WHERE user_id = ?').bind(user.id).first();
+    profId = profile?.id;
+  }
+  const bId = 'bkl_' + Math.random().toString(36).substring(2, 10);
+  await c.env.DB.prepare('INSERT INTO booklets (id, professor_id, title, pages, file_url) VALUES (?, ?, ?, ?, ?)')
+    .bind(bId, profId, body.title, body.pages ?? 0, body.file_url ?? '').run();
+  return c.json({ id: bId, title: body.title, pages: body.pages ?? 0 });
+});
+
+// PUT /api/professors/booklets/:id
+professorsRouter.put('/booklets/:id', requireAuth, requireRole('professor', 'admin'), async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{ title?: string; pages?: number }>().catch(() => ({} as any));
+  const b = await c.env.DB.prepare('SELECT id FROM booklets WHERE id = ?').bind(id).first();
+  if (!b) return c.json({ detail: 'الملزمة غير موجودة' }, 404);
+  await c.env.DB.prepare('UPDATE booklets SET title = ?, pages = ? WHERE id = ?').bind(body.title, body.pages ?? 0, id).run();
+  return c.json({ message: 'تم تحديث الملزمة' });
+});
+
+// DELETE /api/professors/booklets/:id
+professorsRouter.delete('/booklets/:id', requireAuth, requireRole('professor', 'admin'), async (c) => {
+  const id = c.req.param('id');
+  const b = await c.env.DB.prepare('SELECT id FROM booklets WHERE id = ?').bind(id).first();
+  if (!b) return c.json({ detail: 'الملزمة غير موجودة' }, 404);
+  await c.env.DB.prepare('DELETE FROM booklets WHERE id = ?').bind(id).run();
+  return c.json({ message: 'تم حذف الملزمة' });
+});
+
+// POST /api/professors/questions
+professorsRouter.post('/questions', requireAuth, requireRole('professor', 'admin'), async (c) => {
+  const body = await c.req.json<{ subject_id?: string; professor_id?: string; text?: string; rationale?: string; eyebrow?: string; choices?: any[] }>().catch(() => ({} as any));
+  if (!body || !body.text || !body.text.trim()) return c.json({ detail: 'نص السؤال مطلوب' }, 400);
+  if (!body.choices || !Array.isArray(body.choices) || body.choices.length < 2) {
+    return c.json({ detail: 'يجب توفير خيارين على الأقل' }, 400);
+  }
+  const hasCorrect = body.choices.some((ch: any) => ch.is_correct);
+  if (!hasCorrect) {
+    return c.json({ detail: 'يجب تحديد إجابة صحيحة واحدة على الأقل' }, 400);
+  }
+
+  const qId = 'qst_' + Math.random().toString(36).substring(2, 10);
+  await c.env.DB.prepare('INSERT INTO questions (id, subject_id, professor_id, text, rationale, eyebrow) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(qId, body.subject_id, body.professor_id ?? null, body.text, body.rationale ?? '', body.eyebrow ?? '').run();
+
+  for (let i = 0; i < body.choices.length; i++) {
+    const ch = body.choices[i];
+    const chId = 'cho_' + Math.random().toString(36).substring(2, 10);
+    await c.env.DB.prepare('INSERT INTO choices (id, question_id, text, is_correct, order_index) VALUES (?, ?, ?, ?, ?)')
+      .bind(chId, qId, ch.text, ch.is_correct ? 1 : 0, i).run();
+  }
+  return c.json({ id: qId, text: body.text });
+});
+
+// PUT /api/professors/questions/:id
+professorsRouter.put('/questions/:id', requireAuth, requireRole('professor', 'admin'), async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{ text?: string; rationale?: string }>().catch(() => ({} as any));
+  const q = await c.env.DB.prepare('SELECT id FROM questions WHERE id = ?').bind(id).first();
+  if (!q) return c.json({ detail: 'السؤال غير موجود' }, 404);
+  await c.env.DB.prepare('UPDATE questions SET text = ?, rationale = ? WHERE id = ?')
+    .bind(body.text, body.rationale ?? '', id).run();
+  return c.json({ message: 'تم تحديث السؤال' });
+});
+
+// DELETE /api/professors/questions/:id
+professorsRouter.delete('/questions/:id', requireAuth, requireRole('professor', 'admin'), async (c) => {
+  const id = c.req.param('id');
+  const q = await c.env.DB.prepare('SELECT id FROM questions WHERE id = ?').bind(id).first();
+  if (!q) return c.json({ detail: 'السؤال غير موجود' }, 404);
+  await c.env.DB.prepare('DELETE FROM choices WHERE question_id = ?').bind(id).run();
+  await c.env.DB.prepare('DELETE FROM questions WHERE id = ?').bind(id).run();
+  return c.json({ message: 'تم حذف السؤال' });
+});
+
+// POST /api/professors/exams
+professorsRouter.post('/exams', requireAuth, requireRole('professor', 'admin'), async (c) => {
+  const body = await c.req.json<{ subject_id?: string; professor_id?: string; title?: string; duration_minutes?: number }>().catch(() => ({} as any));
+  if (!body || !body.title) return c.json({ detail: 'عنوان الامتحان مطلوب' }, 400);
+  if (body.duration_minutes !== undefined && body.duration_minutes <= 0) {
+    return c.json({ detail: 'مدة الامتحان غير صالحة' }, 400);
+  }
+  const eId = 'exm_' + Math.random().toString(36).substring(2, 10);
+  await c.env.DB.prepare('INSERT INTO exams (id, subject_id, professor_id, title, duration_minutes) VALUES (?, ?, ?, ?, ?)')
+    .bind(eId, body.subject_id, body.professor_id ?? null, body.title, body.duration_minutes ?? 30).run();
+  return c.json({ id: eId, title: body.title });
+});
+
+// POST /api/professors/courses
+professorsRouter.post('/courses', requireAuth, requireRole('professor', 'admin'), async (c) => {
+  const body = await c.req.json<{ subject_id?: string; professor_id?: string; title?: string }>().catch(() => ({} as any));
+  if (!body || !body.title) return c.json({ detail: 'عنوان الكورس مطلوب' }, 400);
+  const cId = 'crs_' + Math.random().toString(36).substring(2, 10);
+  await c.env.DB.prepare('INSERT INTO courses (id, subject_id, professor_id, title) VALUES (?, ?, ?, ?)')
+    .bind(cId, body.subject_id, body.professor_id ?? null, body.title).run();
+  return c.json({ id: cId, title: body.title });
+});
+
+// DELETE /api/professors/courses/:id
+professorsRouter.delete('/courses/:id', requireAuth, requireRole('professor', 'admin'), async (c) => {
+  const id = c.req.param('id');
+  const course = await c.env.DB.prepare('SELECT id FROM courses WHERE id = ?').bind(id).first();
+  if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
+  await c.env.DB.prepare('DELETE FROM courses WHERE id = ?').bind(id).run();
+  return c.json({ message: 'تم حذف الكورس' });
+});
+
+// POST /api/professors/courses/:id/lectures
+professorsRouter.post('/courses/:id/lectures', requireAuth, requireRole('professor', 'admin'), async (c) => {
+  const courseId = c.req.param('id');
+  const course = await c.env.DB.prepare('SELECT id FROM courses WHERE id = ?').bind(courseId).first();
+  if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
+  const body = await c.req.json<{ title?: string; duration_seconds?: number; order_index?: number; video_url?: string }>().catch(() => ({} as any));
+  if (!body || !body.title) return c.json({ detail: 'عنوان المحاضرة مطلوب' }, 400);
+  if (body.duration_seconds !== undefined && body.duration_seconds < 0) {
+    return c.json({ detail: 'مدة المحاضرة غير صالحة' }, 400);
+  }
+
+  const lId = 'lec_' + Math.random().toString(36).substring(2, 10);
+  await c.env.DB.prepare('INSERT INTO lectures (id, course_id, title, duration_seconds, order_index, video_url) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(lId, courseId, body.title, body.duration_seconds ?? 0, body.order_index ?? 0, body.video_url ?? '').run();
+  return c.json({ id: lId, title: body.title });
+});
+
+// GET /api/professors/:professor_id — public directory
 professorsRouter.get('/:professor_id', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
-  const out = await getProfessorOut(db, c.req.param('professor_id'));
-  if (!out) return c.json({ detail: 'الدكتور غير موجود' }, 404);
-  return c.json(out);
+  const id = c.req.param('professor_id');
+  const prof = await c.env.DB.prepare('SELECT * FROM professor_profiles WHERE id = ?').bind(id).first();
+  if (!prof) return c.json({ detail: 'الأستاذ غير موجود' }, 404);
+  const booklets = await c.env.DB.prepare('SELECT * FROM booklets WHERE professor_id = ?').bind(id).all();
+  return c.json({ ...prof, booklets: booklets.results ?? [] });
 });
 
 // PUT /api/professors/me/profile

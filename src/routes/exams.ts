@@ -204,8 +204,14 @@ examsRouter.post('/attempts/:attempt_id/finish', requireAuth, async (c) => {
   const attempt = await c.env.DB.prepare('SELECT * FROM exam_attempts WHERE id = ?')
     .bind(attemptId)
     .first();
-  if (!attempt || attempt.user_id !== user.id) {
-    return c.json({ detail: 'المحاولة غير موجودة' }, 404);
+  if (!attempt) {
+    return c.json({ detail: 'محاولة الامتحان غير موجودة' }, 404);
+  }
+  if (attempt.user_id !== user.id) {
+    if (user.role === 'admin') {
+      return c.json({ detail: 'لا تملك صلاحية الوصول لهذه المحاولة' }, 403);
+    }
+    return c.json({ detail: 'محاولة الامتحان غير موجودة' }, 404);
   }
   if (attempt.finished_at) {
     return c.json({ detail: 'تم إنهاء الامتحان مسبقاً' }, 400);
@@ -273,8 +279,11 @@ examsRouter.post('/attempts/:attempt_id/items/:item_id/answer', requireAuth, asy
   const attempt = await c.env.DB.prepare('SELECT * FROM exam_attempts WHERE id = ?')
     .bind(attempt_id)
     .first();
-  if (!attempt || attempt.user_id !== user.id) {
-    return c.json({ detail: 'المحاولة غير موجودة' }, 404);
+  if (!attempt) {
+    return c.json({ detail: 'محاولة الامتحان غير موجودة' }, 404);
+  }
+  if (attempt.user_id !== user.id) {
+    return c.json({ detail: 'محاولة الامتحان غير موجودة' }, 404);
   }
 
   // Check deadline
@@ -308,7 +317,7 @@ examsRouter.post('/attempts/:attempt_id/items/:item_id/answer', requireAuth, asy
     .bind(body.choice_id, item.question_id)
     .first();
   if (!choice) {
-    return c.json({ detail: 'خيار غير صالح' }, 400);
+    return c.json({ detail: 'الخيار المحدد لا ينتمي لهذا السؤال' }, 400);
   }
 
   const isCorrect = Boolean(choice.is_correct);
@@ -328,11 +337,33 @@ const handleAttemptAnswer = async (c: Context<AppEnv>) => {
   const attempt_id = c.req.param('attempt_id') ?? '';
   if (!attempt_id) return c.json({ detail: 'المحاولة غير موجودة' }, 404);
 
+  const body = await c.req.json<any>().catch(() => ({}));
+
+  let choiceId = body?.choice_id;
+  if (!choiceId && body?.selected_option !== undefined && body?.question_id) {
+    const chs = await c.env.DB.prepare(
+      'SELECT id FROM choices WHERE question_id = ? ORDER BY order_index ASC'
+    )
+      .bind(body.question_id)
+      .all();
+    const selected = (chs.results ?? [])[Number(body.selected_option)];
+    if (selected) {
+      choiceId = (selected as any).id;
+    }
+  }
+
+  if (!body || (!body.question_id && !body.item_id) || !choiceId) {
+    return c.json({ detail: 'رقم السؤال ورقم الخيار مطلوبان' }, 400);
+  }
+
   const attempt = await c.env.DB.prepare('SELECT * FROM exam_attempts WHERE id = ?')
     .bind(attempt_id)
     .first();
-  if (!attempt || attempt.user_id !== user.id) {
-    return c.json({ detail: 'المحاولة غير موجودة' }, 404);
+  if (!attempt) {
+    return c.json({ detail: 'محاولة الامتحان غير موجودة' }, 404);
+  }
+  if (attempt.user_id !== user.id) {
+    return c.json({ detail: 'لا تملك صلاحية الوصول لهذه المحاولة' }, 403);
   }
 
   // Check deadline FIRST
@@ -349,25 +380,6 @@ const handleAttemptAnswer = async (c: Context<AppEnv>) => {
 
   if (attempt.finished_at) {
     return c.json({ detail: 'تم إنهاء الامتحان بالفعل ولا يمكن تعديل الإجابات' }, 400);
-  }
-
-  const body = await c.req.json<any>().catch(() => ({}));
-
-  let choiceId = body.choice_id;
-  if (!choiceId && body.selected_option !== undefined && body.question_id) {
-    const chs = await c.env.DB.prepare(
-      'SELECT id FROM choices WHERE question_id = ? ORDER BY order_index ASC'
-    )
-      .bind(body.question_id)
-      .all();
-    const selected = (chs.results ?? [])[Number(body.selected_option)];
-    if (selected) {
-      choiceId = (selected as any).id;
-    }
-  }
-
-  if (!body || (!body.question_id && !body.item_id) || !choiceId) {
-    return c.json({ detail: 'رقم السؤال ورقم الخيار مطلوبان' }, 400);
   }
 
   let item: any;

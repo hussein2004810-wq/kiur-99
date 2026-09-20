@@ -18,21 +18,23 @@ async function requireAuthAllowBanned(c: any, next: any) {
   if (!token) return c.json({ detail: 'مطلوب تسجيل الدخول' }, 401);
 
   const payload = await decodeAccessToken(token, c.env.JWT_SECRET);
-  if (!payload || !payload.sub || !payload.sid) return c.json({ detail: 'انتهت صلاحية الجلسة' }, 401);
+  if (!payload || !payload.sub) return c.json({ detail: 'انتهت صلاحية الجلسة' }, 401);
 
   const db = drizzle(c.env.DB, { schema });
-  const session = await db
-    .select()
-    .from(schema.userSessions)
-    .where(
-      and(
-        eq(schema.userSessions.id, payload.sid),
-        eq(schema.userSessions.user_id, payload.sub),
-        eq(schema.userSessions.is_active, true)
+  if (payload.sid) {
+    const session = await db
+      .select()
+      .from(schema.userSessions)
+      .where(
+        and(
+          eq(schema.userSessions.id, payload.sid),
+          eq(schema.userSessions.user_id, payload.sub),
+          eq(schema.userSessions.is_active, true)
+        )
       )
-    )
-    .get();
-  if (!session || !session.is_active) return c.json({ detail: 'تم تسجيل الدخول من جهاز آخر' }, 401);
+      .get();
+    if (!session || !session.is_active) return c.json({ detail: 'تم تسجيل الدخول من جهاز آخر' }, 401);
+  }
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();
   if (!user) return c.json({ detail: 'المستخدم غير موجود' }, 401);
@@ -91,14 +93,26 @@ bansRouter.post('/appeal', async (c) => {
 
   if (!record) return c.json({ detail: 'لا يوجد سجل حظر نشط لهذا الحساب' }, 404);
 
-  const body = await c.req.json<{ message: string }>();
-  if (!body.message?.trim()) return c.json({ detail: 'الرجاء كتابة سبب الطعن' }, 400);
+  const body = await c.req.json<{ message?: string; appeal_message?: string }>().catch(() => ({} as any));
+  const appealMsg = body.appeal_message || body.message || '';
+  if (!appealMsg.trim()) return c.json({ detail: 'الرجاء كتابة سبب الطعن' }, 400);
 
   await db.update(schema.banRecords).set({
-    appeal_message: body.message.trim(),
+    appeal_message: appealMsg.trim(),
     appealed_at: new Date().toISOString(),
     status: 'appealed',
   }).where(eq(schema.banRecords.id, record.id));
 
-  return c.json({ ok: true });
+  return c.json({ ok: true, message: 'تم تقديم طلب الاعتراض بنجاح' });
+});
+
+// GET /api/bans/records
+bansRouter.get('/records', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
+  if (user.role !== 'admin') {
+    return c.json({ detail: 'لا تملك صلاحية الوصول' }, 403);
+  }
+  const records = await db.select().from(schema.banRecords).orderBy(desc(schema.banRecords.created_at));
+  return c.json(records);
 });

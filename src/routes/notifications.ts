@@ -3,7 +3,7 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, or, isNull, desc, and } from 'drizzle-orm';
+import { eq, or, isNull, desc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
@@ -11,7 +11,7 @@ import { requireAuth } from '../middleware/auth';
 export const notificationsRouter = new Hono<AppEnv>();
 notificationsRouter.use('*', requireAuth);
 
-// GET /api/me/notifications
+// GET /api/me/notifications or /api/notifications
 notificationsRouter.get('/', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
@@ -38,86 +38,48 @@ notificationsRouter.get('/', async (c) => {
       body: n.body,
       created_at: n.created_at,
       read: readIds.has(n.id),
+      is_read: readIds.has(n.id) ? 1 : 0,
     }))
   );
 });
 
-// GET /api/me/notifications/unread-count
+// GET /unread-count
 notificationsRouter.get('/unread-count', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
-
-  const allNotifs = await db
-    .select({ id: schema.notifications.id })
-    .from(schema.notifications)
-    .where(or(eq(schema.notifications.user_id, user.id), isNull(schema.notifications.user_id)));
-
-  const reads = await db
-    .select()
-    .from(schema.notificationReads)
-    .where(eq(schema.notificationReads.user_id, user.id));
-
-  const readIds = new Set(reads.map((r) => r.notification_id));
-  const count = allNotifs.filter((n) => !readIds.has(n.id)).length;
-
-  return c.json({ count });
+  const total = await c.env.DB.prepare('SELECT COUNT(*) as c FROM notifications WHERE user_id IS NULL OR user_id = ?')
+    .bind(user.id).first('c');
+  const read = await c.env.DB.prepare('SELECT COUNT(*) as c FROM notification_reads WHERE user_id = ?')
+    .bind(user.id).first('c');
+  const unread = Math.max(0, Number(total ?? 0) - Number(read ?? 0));
+  return c.json({ unread_count: unread, count: unread });
 });
 
-// POST & PATCH /api/me/notifications/:notification_id/read
+// POST & PATCH /:id/read or /:notification_id/read
 const markAsRead = async (c: any) => {
-  const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
-  const notificationId = c.req.param('notification_id');
+  const notificationId = c.req.param('notification_id') || c.req.param('id');
+  const notif = await c.env.DB.prepare('SELECT id FROM notifications WHERE id = ?').bind(notificationId).first();
+  if (!notif) return c.json({ detail: 'الإشعار غير موجود' }, 404);
 
-  const existing = await db
-    .select()
-    .from(schema.notificationReads)
-    .where(
-      and(
-        eq(schema.notificationReads.notification_id, notificationId),
-        eq(schema.notificationReads.user_id, user.id)
-      )
-    )
-    .get();
-
-  if (!existing) {
-    await db.insert(schema.notificationReads).values({
-      id: schema.genId(),
-      notification_id: notificationId,
-      user_id: user.id,
-    });
-  }
-  return c.json({ ok: true });
+  const nrId = 'nr_' + Math.random().toString(36).substring(2, 10);
+  await c.env.DB.prepare('INSERT OR IGNORE INTO notification_reads (id, notification_id, user_id) VALUES (?, ?, ?)')
+    .bind(nrId, notificationId, user.id).run();
+  return c.json({ ok: true, message: 'تم تعليم الإشعار كمقروء' });
 };
 
+notificationsRouter.post('/:id/read', markAsRead);
+notificationsRouter.patch('/:id/read', markAsRead);
 notificationsRouter.post('/:notification_id/read', markAsRead);
 notificationsRouter.patch('/:notification_id/read', markAsRead);
 
-// POST /api/me/notifications/read-all
+// POST /read-all
 notificationsRouter.post('/read-all', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
-
-  const allNotifs = await db
-    .select({ id: schema.notifications.id })
-    .from(schema.notifications)
-    .where(or(eq(schema.notifications.user_id, user.id), isNull(schema.notifications.user_id)));
-
-  const reads = await db
-    .select()
-    .from(schema.notificationReads)
-    .where(eq(schema.notificationReads.user_id, user.id));
-
-  const readIds = new Set(reads.map((r) => r.notification_id));
-  const unread = allNotifs.filter((n) => !readIds.has(n.id));
-
-  for (const n of unread) {
-    await db.insert(schema.notificationReads).values({
-      id: schema.genId(),
-      notification_id: n.id,
-      user_id: user.id,
-    });
+  const notifs = await c.env.DB.prepare('SELECT id FROM notifications WHERE user_id IS NULL OR user_id = ?').bind(user.id).all();
+  for (const n of (notifs.results ?? []) as any[]) {
+    const nrId = 'nr_' + Math.random().toString(36).substring(2, 10);
+    await c.env.DB.prepare('INSERT OR IGNORE INTO notification_reads (id, notification_id, user_id) VALUES (?, ?, ?)')
+      .bind(nrId, n.id, user.id).run();
   }
-
-  return c.json({ ok: true, marked_read: unread.length });
+  return c.json({ ok: true, message: 'تم تعليم جميع الإشعارات كمقروءة', marked_read: notifs.results?.length ?? 0 });
 });

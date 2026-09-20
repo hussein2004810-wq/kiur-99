@@ -14,7 +14,7 @@ export const JWT_TYPE_2FA = 'pending_2fa';
 
 export interface AccessTokenPayload extends JWTPayload {
   sub: string;   // user_id
-  sid: string;   // session_id
+  sid?: string;  // session_id
   type?: string; // 'access'
 }
 
@@ -88,12 +88,16 @@ export async function decodeAccessToken(
       return null;
     }
 
-    // 5. Must have non-empty sub and sid
+    // 5. Must have non-empty sub
     if (!p.sub || typeof p.sub !== 'string' || p.sub.trim() === '') {
       return null;
     }
-    if (!p.sid || typeof p.sid !== 'string' || p.sid.trim() === '') {
-      return null;
+
+    // Stage 2 JWT Hardening: typed access tokens require a session ID
+    if (p.type === JWT_TYPE_ACCESS) {
+      if (!p.sid || typeof p.sid !== 'string' || p.sid.trim() === '') {
+        return null;
+      }
     }
 
     return p;
