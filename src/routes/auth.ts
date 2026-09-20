@@ -30,7 +30,7 @@ import {
   SESSION_COOKIE_NAME,
 } from '../services/jwt';
 import { emailConfigured, sendPasswordReset } from '../services/mailer';
-import { createStorageService, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
+import { createStorageService, isStorageConfigured, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
 import { peerIds, rankedPairs, rankOf, streakDays, accuracyPct } from '../services/ranking';
 import {
   loginRateLimiter,
@@ -1258,6 +1258,9 @@ authRouter.put('/me/preferences', requireAuth, async (c) => {
 });
 
 authRouter.post('/me/photo', requireAuth, async (c) => {
+  if (!isStorageConfigured(c.env.R2_BUCKET)) {
+    return c.json({ detail: 'خدمة رفع الملفات غير مهيأة حالياً' }, 503);
+  }
   const db = drizzle(c.env.DB, { schema });
   const userId = c.get('user')!.id;
   const formData = await c.req.formData();

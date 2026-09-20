@@ -545,6 +545,17 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
   });
 
   describe('P0-8: Active Content Upload & Magic Bytes Validation Hardening', () => {
+    it('fails closed with 503 before parsing an upload when the R2 binding is absent', async () => {
+      const student = ctx.fixtures.users.student;
+      (ctx.bindings as any).R2_BUCKET = undefined;
+
+      const response = await apiRequest(app, 'POST', '/auth/me/photo', {
+        token: student.token,
+      }, ctx);
+      expect(response.status).toBe(503);
+      expect((await response.json()).detail).toContain('غير مهيأة');
+    });
+
     it('rejects HTML or script payload disguised as image in /auth/me/photo with 400', async () => {
       const student = ctx.fixtures.users.student;
       const token = ctx.createAuthToken(student.id, 'student', student.sessionId);

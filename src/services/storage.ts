@@ -15,6 +15,10 @@ export interface StorageService {
   } | null>;
 }
 
+export function isStorageConfigured(bucket?: R2Bucket): bucket is R2Bucket {
+  return Boolean(bucket);
+}
+
 export function createStorageService(bucket?: R2Bucket): StorageService {
   return {
     async save(name, data, contentType) {

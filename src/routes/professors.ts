@@ -8,7 +8,7 @@ import { eq, desc, inArray, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv, CurrentUser } from '../types';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { createStorageService, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
+import { createStorageService, isStorageConfigured, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
 
 const MAX_VIDEO_BYTES = 150 * 1024 * 1024; // 150 MB
 const DOC_EXTS = [...PDF_EXTS, ...IMAGE_EXTS];
@@ -323,6 +323,9 @@ professorsRouter.put('/me/profile', async (c) => {
 
 // POST /api/professors/me/photo (file upload)
 professorsRouter.post('/me/photo', async (c) => {
+  if (!isStorageConfigured(c.env.R2_BUCKET)) {
+    return c.json({ detail: 'خدمة رفع الملفات غير مهيأة حالياً' }, 503);
+  }
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
   const profile = await getOwnProfile(db, user.id, user.role);
@@ -492,6 +495,9 @@ professorsRouter.delete('/me/booklets/:booklet_id', async (c) => {
 });
 
 professorsRouter.post('/me/booklets/:booklet_id/file', async (c) => {
+  if (!isStorageConfigured(c.env.R2_BUCKET)) {
+    return c.json({ detail: 'خدمة رفع الملفات غير مهيأة حالياً' }, 503);
+  }
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
   const profile = await getOwnProfile(db, user.id, user.role);
@@ -708,6 +714,9 @@ professorsRouter.delete('/me/lectures/:lecture_id', async (c) => {
 });
 
 professorsRouter.post('/me/lectures/:lecture_id/file', async (c) => {
+  if (!isStorageConfigured(c.env.R2_BUCKET)) {
+    return c.json({ detail: 'خدمة رفع الملفات غير مهيأة حالياً' }, 503);
+  }
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
   const profile = await getOwnProfile(db, user.id, user.role);
