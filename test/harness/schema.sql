@@ -349,6 +349,13 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 CREATE INDEX IF NOT EXISTS activity_logs_user_id_idx ON activity_logs(user_id);
 CREATE INDEX IF NOT EXISTS activity_logs_created_at_idx ON activity_logs(created_at);
 
+CREATE TABLE IF NOT EXISTS rate_limit_windows (
+    key TEXT PRIMARY KEY NOT NULL,
+    count INTEGER NOT NULL,
+    reset_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS rate_limit_windows_reset_at_idx ON rate_limit_windows(reset_at);
+
 -- 23. media_files
 CREATE TABLE IF NOT EXISTS media_files (
     id TEXT PRIMARY KEY NOT NULL,

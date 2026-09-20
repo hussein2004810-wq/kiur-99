@@ -2,14 +2,6 @@ import type { MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../types';
 import { recordAuditEvent } from '../services/audit';
 
-interface RateLimitRecord {
-  count: number;
-  resetAt: number;
-}
-
-// In-memory sliding window storage
-const store = new Map<string, RateLimitRecord>();
-
 export interface RateLimitOptions {
   max: number;
   windowSeconds: number;
@@ -25,37 +17,35 @@ export function rateLimiter(options: RateLimitOptions): MiddlewareHandler<AppEnv
   return async (c, next) => {
     const now = Date.now();
 
-    // Periodic cleanup of stale records
-    if (store.size > 2000) {
-      for (const [k, v] of store.entries()) {
-        if (now > v.resetAt) store.delete(k);
-      }
-    }
-
     const ip =
       c.req.header('cf-connecting-ip') ||
       c.req.header('x-real-ip') ||
       c.req.header('x-forwarded-for')?.split(',')[0].trim() ||
       '127.0.0.1';
 
+    // D1 is shared by all Worker isolates.  This single UPSERT avoids the
+    // per-isolate Map bypass and atomically starts a fresh window when expired.
     const key = `${keyPrefix}:${ip}`;
-    let record = store.get(key);
+    const newResetAt = now + windowSeconds * 1000;
+    const record = await c.env.DB.prepare(`
+      INSERT INTO rate_limit_windows (key, count, reset_at) VALUES (?, 1, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        count = CASE WHEN rate_limit_windows.reset_at <= ? THEN 1 ELSE rate_limit_windows.count + 1 END,
+        reset_at = CASE WHEN rate_limit_windows.reset_at <= ? THEN excluded.reset_at ELSE rate_limit_windows.reset_at END
+      RETURNING count, reset_at
+    `).bind(key, newResetAt, now, now).first<{ count: number; reset_at: number }>();
+    if (!record) return c.json({ detail: 'تعذر التحقق من حد الطلبات' }, 503);
+    const resetAt = Number(record.reset_at);
+    const count = Number(record.count);
 
-    if (!record || now > record.resetAt) {
-      record = { count: 1, resetAt: now + windowSeconds * 1000 };
-      store.set(key, record);
-    } else {
-      record.count += 1;
-    }
-
-    const remaining = Math.max(0, max - record.count);
-    const retryAfter = Math.ceil((record.resetAt - now) / 1000);
+    const remaining = Math.max(0, max - count);
+    const retryAfter = Math.max(1, Math.ceil((resetAt - now) / 1000));
 
     c.header('X-RateLimit-Limit', String(max));
     c.header('X-RateLimit-Remaining', String(remaining));
-    c.header('X-RateLimit-Reset', String(Math.ceil(record.resetAt / 1000)));
+    c.header('X-RateLimit-Reset', String(Math.ceil(resetAt / 1000)));
 
-    if (record.count > max) {
+    if (count > max) {
       recordAuditEvent({
         event: 'SECURITY_RATE_LIMITED',
         status: 'DENIED',
@@ -90,5 +80,6 @@ export const redeemRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPr
  * Resets the rate limiter store (used for test isolation).
  */
 export function resetRateLimitStore(): void {
-  store.clear();
+  // Kept as a compatibility no-op for test harnesses.  Each test creates a
+  // fresh in-memory D1 database, so counters cannot leak between tests.
 }
