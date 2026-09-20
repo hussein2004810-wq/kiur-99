@@ -29,7 +29,7 @@ import {
   getSessionCookieValue,
   SESSION_COOKIE_NAME,
 } from '../services/jwt';
-import { emailConfigured, sendPasswordReset } from '../services/mailer';
+import { emailConfigured, sendEmailVerification, sendPasswordReset } from '../services/mailer';
 import { createStorageService, isStorageConfigured, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
 import { peerIds, rankedPairs, rankOf, streakDays, accuracyPct } from '../services/ranking';
 import {
@@ -615,6 +615,8 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
     token_hash: verificationHash,
     expires_at: verifExpires,
   });
+  const mailerConfig = { smtpHost: c.env.SMTP_HOST, smtpUser: c.env.SMTP_USER, smtpPassword: c.env.SMTP_PASSWORD, smtpFrom: c.env.SMTP_FROM, smtpFromName: c.env.SMTP_FROM_NAME };
+  if (emailConfigured(mailerConfig)) c.executionCtx.waitUntil(sendEmailVerification(mailerConfig, email, `${new URL(c.req.url).origin}/auth/verify-email?token=${encodeURIComponent(rawVerificationToken)}`));
 
   await recordAccountEvent(db, {
     userId: user!.id,
@@ -688,6 +690,13 @@ authRouter.post('/verify-email', async (c) => {
   return c.json({ ok: true, message: 'تم توثيق البريد الإلكتروني بنجاح' });
 });
 
+authRouter.get('/verify-email', async (c) => {
+  const token = c.req.query('token')?.trim();
+  if (!token) return c.redirect('/#email_verification_failed=1');
+  const result = await authRouter.fetch(new Request(c.req.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) }), c.env, c.executionCtx);
+  return c.redirect(result.ok ? '/#email_verified=1' : '/#email_verification_failed=1');
+});
+
 authRouter.post('/resend-verification', resendVerificationRateLimiter, async (c) => {
   const body = await c.req.json<{ email?: string }>().catch(() => ({} as Record<string, string>));
   const email = (body?.email ?? '').trim().toLowerCase();
@@ -714,6 +723,8 @@ authRouter.post('/resend-verification', resendVerificationRateLimiter, async (c)
       token_hash: verificationHash,
       expires_at: verifExpires,
     });
+    const mailerConfig = { smtpHost: c.env.SMTP_HOST, smtpUser: c.env.SMTP_USER, smtpPassword: c.env.SMTP_PASSWORD, smtpFrom: c.env.SMTP_FROM, smtpFromName: c.env.SMTP_FROM_NAME };
+    if (emailConfigured(mailerConfig)) c.executionCtx.waitUntil(sendEmailVerification(mailerConfig, user.email, `${new URL(c.req.url).origin}/auth/verify-email?token=${encodeURIComponent(rawVerificationToken)}`));
 
     await recordAccountEvent(db, {
       userId: user.id,

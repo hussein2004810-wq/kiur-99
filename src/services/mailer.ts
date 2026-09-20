@@ -162,3 +162,7 @@ export async function sendPasswordReset(
 
   return sendEmail(config, to, 'إعادة تعيين كلمة المرور — Kiur', textBody, htmlBody);
 }
+
+export function sendEmailVerification(config: MailerConfig, to: string, verifyUrl: string): Promise<boolean> {
+  return sendEmail(config, to, 'تأكيد البريد الإلكتروني — Kiur', `أكّد بريدك الإلكتروني لتفعيل حساب Kiur:\n${verifyUrl}`, `<p dir="rtl">أكّد بريدك الإلكتروني لتفعيل حساب Kiur:</p><p><a href="${verifyUrl}">تأكيد البريد الإلكتروني</a></p>`);
+}
