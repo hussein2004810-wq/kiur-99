@@ -30,7 +30,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `npm test` passed: 40 files and 530 tests after the final ownership, media, rate-limit, D1-bound, and R2 fail-closed changes.
 - `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 116 tests against the actual Worker routes.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
-- `npm audit --audit-level=high` exits successfully.  It still reports six Moderate development-tool findings in Vitest/esbuild/drizzle-kit; their proposed automatic fixes are breaking and were intentionally not forced into this security branch.
+- Vitest was upgraded to `4.1.11`, closing its Moderate mocker path-traversal advisory.  `npm audit --json` now reports four Moderate development-only findings from Drizzle Kit's legacy `@esbuild-kit` chain; npm's only suggested fix is a major downgrade of Drizzle Kit to `0.18.1`, so it was not applied automatically.
 
 ## Owner actions required before production
 
@@ -44,5 +44,5 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 ## Remaining limits
 
 - No actual 600/1,000-user load result exists yet; the k6 harness is prepared but deliberately not run against any environment.
-- The Moderate dev-dependency advisories remain for a dedicated dependency-upgrade branch with full regression testing.
+- Four Moderate development-only Drizzle Kit/esbuild advisories remain for a dedicated dependency-upgrade branch with full migration-tool regression testing; the reported npm fix is a major downgrade and is not a safe automatic remediation.
 - This delivery does not modify Cloudflare, Firebase, mail, OAuth, GitHub, production secrets, or remote databases.
