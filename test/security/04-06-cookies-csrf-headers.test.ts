@@ -89,6 +89,9 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
       expect(res.headers.get('Content-Security-Policy')).toContain("default-src 'self'");
       expect(res.headers.get('Content-Security-Policy')).toContain("object-src 'none'");
       expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+      expect(res.headers.get('Content-Security-Policy')).toContain("form-action 'self'");
+      expect(res.headers.get('Content-Security-Policy')).toContain('https://accounts.google.com');
+      expect(res.headers.get('Content-Security-Policy')).not.toContain('cdn.jsdelivr.net');
       expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
       expect(res.headers.get('X-Frame-Options')).toBe('DENY');
       expect(res.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
@@ -104,6 +107,12 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
       expect(res.headers.get('Content-Security-Policy')).toBeDefined();
     });
 
+    it('security.headers.spa: attaches the CSP to the served student SPA', async () => {
+      const res = await app.request('/', {}, ctx.bindings);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Security-Policy')).toContain("form-action 'self'");
+    });
+
     it('security.headers.hsts: attaches HSTS when DEBUG=false', async () => {
       const prodBindings = { ...ctx.bindings, DEBUG: 'false' };
       const res = await app.request('/health', {}, prodBindings);
@@ -111,4 +120,3 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
     });
   });
 });
-

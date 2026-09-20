@@ -24,6 +24,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `src/routes/questions.ts`, `src/routes/exams.ts`, and `src/routes/students.ts` require authenticated, scoped access rather than relying on the client UI.
 - Public registration always persists the `student` role and returns no access token or session cookie.  Existing unverified accounts cannot obtain a password/2FA/restored session until their email is verified.
 - When SMTP is configured, registration and resend create a single-use verification token and schedule delivery of a link to `GET /auth/verify-email`; that callback consumes the same token-validation path as `POST /auth/verify-email` and redirects to a success or failure state.
+- The CSP permits only the Google Identity script origin required by the SPA, removes the unused jsDelivr allowlist, and restricts form submissions to same-origin destinations.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
 - `src/routes/exams.ts` stores question/choice snapshots, prevents a second open attempt with database constraints, performs conditional answer/finish transitions, and replays only a finish request bearing its original idempotency key.
 - `migrations/0005_exam_integrity.sql`, `migrations/0006_durable_rate_limits.sql`, and `migrations/0007_exam_finish_idempotency.sql` are additive remote-D1 migrations.  They have not been applied remotely.
@@ -34,8 +35,8 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 
 - `npm run typecheck` passed after the final application changes.
 - `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 30 tests, including a verification-link callback that marks the user verified and returns the success redirect.
-- `npm test` passed: 40 files and 533 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, and verification-link changes.
-- `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 120 tests against the actual Worker routes.
+- `npm test` passed: 40 files and 534 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, and CSP-source changes.
+- `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 121 tests against the actual Worker routes.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
 - Vitest was upgraded to `4.1.11`, closing its Moderate mocker path-traversal advisory.  `npm audit --json` now reports four Moderate development-only findings from Drizzle Kit's legacy `@esbuild-kit` chain; npm's only suggested fix is a major downgrade of Drizzle Kit to `0.18.1`, so it was not applied automatically.
 
@@ -52,4 +53,5 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 
 - No actual 600/1,000-user load result exists yet; the k6 harness is prepared but deliberately not run against any environment.
 - Four Moderate development-only Drizzle Kit/esbuild advisories remain for a dedicated dependency-upgrade branch with full migration-tool regression testing; the reported npm fix is a major downgrade and is not a safe automatic remediation.
+- The served SPA documents still use inline scripts, inline event handlers, and inline styles.  CSP therefore still contains `'unsafe-inline'` for scripts/styles; removing it safely requires a dedicated UI migration to external modules and delegated event listeners, not a header-only switch.
 - This delivery does not modify Cloudflare, Firebase, mail, OAuth, GitHub, production secrets, or remote databases.
