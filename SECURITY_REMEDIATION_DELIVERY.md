@@ -34,8 +34,8 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 
 - `npm run typecheck` passed after the final application changes.
 - `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 30 tests, including a verification-link callback that marks the user verified and returns the success redirect.
-- `npm test` passed: 40 files and 532 tests after the final ownership, media, registration, rate-limit, D1-bound, and R2 fail-closed changes.
-- `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 116 tests against the actual Worker routes.
+- `npm test` passed: 40 files and 533 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, and verification-link changes.
+- `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 120 tests against the actual Worker routes.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
 - Vitest was upgraded to `4.1.11`, closing its Moderate mocker path-traversal advisory.  `npm audit --json` now reports four Moderate development-only findings from Drizzle Kit's legacy `@esbuild-kit` chain; npm's only suggested fix is a major downgrade of Drizzle Kit to `0.18.1`, so it was not applied automatically.
 
