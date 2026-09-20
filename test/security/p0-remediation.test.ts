@@ -476,6 +476,9 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(adminHtml).toContain("(c.is_correct ? '✓ ' : '• ') + esc(c.text)");
       expect(homeHtml).toContain('function jsArg(value)');
       expect(homeHtml).toContain('bsQuickStart(${jsArg(sub.id)}, ${jsArg(sub.name)})');
+      expect(homeHtml).toContain('openProfessor(${jsArg(p.id)})');
+      expect(homeHtml).toContain('recordRecentView(\'booklet\',${jsArg(b.id)})');
+      expect(homeHtml).not.toContain("startExam('${e.id}')");
       expect(homeHtml).not.toContain("body: JSON.stringify({ email, name, next: 'student' })");
       expect(adminHtml).toContain('function jsArg(value)');
       expect(adminHtml).toContain('deleteUniversity(${jsArg(u.id)}, ${jsArg(u.name)})');
