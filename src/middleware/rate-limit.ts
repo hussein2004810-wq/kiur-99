@@ -23,20 +23,26 @@ export function rateLimiter(options: RateLimitOptions): MiddlewareHandler<AppEnv
       c.req.header('x-forwarded-for')?.split(',')[0].trim() ||
       '127.0.0.1';
 
-    // D1 is shared by all Worker isolates.  This single UPSERT avoids the
-    // per-isolate Map bypass and atomically starts a fresh window when expired.
-    const key = `${keyPrefix}:${ip}`;
+    // D1 is shared by all Worker isolates.  Count both the originating IP and
+    // the authenticated account (when present): IP-only limits prevent bulk
+    // abuse from one source, while account limits prevent a user escaping the
+    // limit by changing IP addresses.  Unauthenticated routes use IP only.
+    const accountId = c.get('user')?.id;
+    const keys = [`${keyPrefix}:ip:${ip}`];
+    if (accountId) keys.push(`${keyPrefix}:account:${accountId}`);
     const newResetAt = now + windowSeconds * 1000;
-    const record = await c.env.DB.prepare(`
-      INSERT INTO rate_limit_windows (key, count, reset_at) VALUES (?, 1, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        count = CASE WHEN rate_limit_windows.reset_at <= ? THEN 1 ELSE rate_limit_windows.count + 1 END,
-        reset_at = CASE WHEN rate_limit_windows.reset_at <= ? THEN excluded.reset_at ELSE rate_limit_windows.reset_at END
-      RETURNING count, reset_at
-    `).bind(key, newResetAt, now, now).first<{ count: number; reset_at: number }>();
-    if (!record) return c.json({ detail: 'تعذر التحقق من حد الطلبات' }, 503);
-    const resetAt = Number(record.reset_at);
-    const count = Number(record.count);
+    const records = await Promise.all(keys.map((key) => c.env.DB.prepare(`
+        INSERT INTO rate_limit_windows (key, count, reset_at) VALUES (?, 1, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          count = CASE WHEN rate_limit_windows.reset_at <= ? THEN 1 ELSE rate_limit_windows.count + 1 END,
+          reset_at = CASE WHEN rate_limit_windows.reset_at <= ? THEN excluded.reset_at ELSE rate_limit_windows.reset_at END
+        RETURNING count, reset_at
+      `).bind(key, newResetAt, now, now).first<{ count: number; reset_at: number }>()));
+    if (records.some((record) => !record)) {
+      return c.json({ detail: 'تعذر التحقق من حد الطلبات' }, 503);
+    }
+    const count = Math.max(...records.map((record) => Number(record!.count)));
+    const resetAt = Math.max(...records.map((record) => Number(record!.reset_at)));
 
     const remaining = Math.max(0, max - count);
     const retryAfter = Math.max(1, Math.ceil((resetAt - now) / 1000));
@@ -50,7 +56,7 @@ export function rateLimiter(options: RateLimitOptions): MiddlewareHandler<AppEnv
         event: 'SECURITY_RATE_LIMITED',
         status: 'DENIED',
         ip,
-        details: { keyPrefix, limit: max, retryAfter, path: c.req.path },
+        details: { keyPrefix, limit: max, retryAfter, path: c.req.path, accountBound: Boolean(accountId) },
       });
       c.header('Retry-After', String(retryAfter));
       return c.json(

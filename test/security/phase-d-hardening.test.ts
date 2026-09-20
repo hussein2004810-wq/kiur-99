@@ -112,4 +112,23 @@ describe('Phase D Security & Operational Hardening: Dependencies, Rate Limiting 
     const data2 = await res2.json();
     expect(data2.detail).toContain('مستخدم بالفعل');
   });
+
+  it('D.5: Exam starts are limited by account even when the client changes IP address', async () => {
+    const student = ctx.fixtures.users.student;
+
+    for (let i = 0; i < 10; i += 1) {
+      const response = await apiRequest(app, 'POST', `/api/exams/${ctx.fixtures.examId}/start`, {
+        token: student.token,
+        headers: { 'cf-connecting-ip': '198.51.100.10' },
+      }, ctx);
+      expect(response.status).toBe(200);
+    }
+
+    const changedIp = await apiRequest(app, 'POST', `/api/exams/${ctx.fixtures.examId}/start`, {
+      token: student.token,
+      headers: { 'cf-connecting-ip': '198.51.100.11' },
+    }, ctx);
+    expect(changedIp.status).toBe(429);
+    expect(Number(changedIp.headers.get('Retry-After'))).toBeGreaterThan(0);
+  });
 });

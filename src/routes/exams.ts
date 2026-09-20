@@ -6,6 +6,7 @@ import { Hono, type Context } from 'hono';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
+import { examAttemptRateLimiter } from '../middleware/rate-limit';
 import { drizzle } from 'drizzle-orm/d1';
 import * as dbSchema from '../db/schema';
 import { canAccessSubject } from '../services/content-access';
@@ -503,7 +504,7 @@ examsRouter.post('/attempts/:attempt_id/answers', requireAuth, handleAttemptAnsw
 // ─────────────────────────────────────────────────────────────────────────────
 
 // POST /api/exams/:exam_id/start
-examsRouter.post('/:exam_id/start', requireAuth, async (c) => {
+examsRouter.post('/:exam_id/start', requireAuth, examAttemptRateLimiter, async (c) => {
   const user = c.get('user')!;
   const examId = c.req.param('exam_id');
   const idempotencyKey = c.req.header('Idempotency-Key')?.trim() || null;
