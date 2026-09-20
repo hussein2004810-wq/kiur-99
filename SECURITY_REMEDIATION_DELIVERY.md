@@ -25,9 +25,9 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `66e718b` pins development `esbuild` at `^0.28.2`, satisfying the installed Vite/Vitest requirement and removing the invalid root dependency tree.
 - `140877d` hardens admin media uploads and makes the streaming regression suite exercise the actual Worker authorization path.
 - `fbdeda4` canonicalizes new media names and response MIME types from verified file signatures.
-- This working tree also aligns direct Worker uploads at a verified 25 MB ceiling, including professor lecture videos; larger-video delivery remains an external architecture decision.
-- This working tree also redacts unexpected server, mail-provider, Firebase, and admin-mutation failures from production responses and logs.
-- This working tree also removes reseller self-minting: only an admin allocation may assign idle activation-code stock to a reseller.
+- `e410802` aligns direct Worker uploads at a verified 25 MB ceiling, including professor lecture videos; larger-video delivery remains an external architecture decision.
+- `9949443` redacts unexpected server, mail-provider, Firebase, and admin-mutation failures from production responses and logs.
+- `e033245` removes reseller self-minting: only an admin allocation may assign idle activation-code stock to a reseller.
 
 ## Implemented controls
 
