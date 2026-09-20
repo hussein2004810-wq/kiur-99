@@ -307,4 +307,41 @@ describe('Phase B Security & Privacy Remediation Suite (Section 4 Findings)', ()
       }
     });
   });
+
+  it('4.7: prevents a professor from writing or deleting another professor\'s generic content routes', async () => {
+    await ctx.db.prepare(
+      "INSERT INTO users (id, email, full_name, password_hash, role) VALUES ('usr_prof_other', 'other-prof@test.com', 'د. أستاذ آخر', 'hash', 'professor')"
+    ).run();
+    await ctx.db.prepare(
+      "INSERT INTO professor_profiles (id, user_id, title, subject_id) VALUES ('prof_other', 'usr_prof_other', 'أستاذ', ?)"
+    ).bind(ctx.fixtures.subjectIds.physiology).run();
+    await ctx.db.prepare(
+      "INSERT INTO questions (id, subject_id, professor_id, text) VALUES ('qst_other_owner', ?, 'prof_other', 'سؤال خاص بالأستاذ الآخر')"
+    ).bind(ctx.fixtures.subjectIds.physiology).run();
+    await ctx.db.prepare(
+      "INSERT INTO courses (id, subject_id, professor_id, title) VALUES ('crs_other_owner', ?, 'prof_other', 'كورس خاص بالأستاذ الآخر')"
+    ).bind(ctx.fixtures.subjectIds.physiology).run();
+
+    const professorA = ctx.fixtures.users.professor.token;
+    const forgeExam = await apiRequest(app, 'POST', '/api/professors/exams', {
+      token: professorA,
+      body: {
+        professor_id: 'prof_other',
+        subject_id: ctx.fixtures.subjectIds.physiology,
+        title: 'امتحان منتحل',
+      },
+    }, ctx);
+    expect(forgeExam.status).toBe(403);
+
+    const editQuestion = await apiRequest(app, 'PUT', '/api/professors/questions/qst_other_owner', {
+      token: professorA,
+      body: { text: 'تعديل غير مصرح' },
+    }, ctx);
+    expect(editQuestion.status).toBe(403);
+
+    const deleteCourse = await apiRequest(app, 'DELETE', '/api/professors/courses/crs_other_owner', {
+      token: professorA,
+    }, ctx);
+    expect(deleteCourse.status).toBe(403);
+  });
 });

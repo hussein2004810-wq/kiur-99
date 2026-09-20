@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, inArray, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import type { AppEnv } from '../types';
+import type { AppEnv, CurrentUser } from '../types';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { createStorageService, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
 
@@ -14,6 +14,11 @@ const MAX_VIDEO_BYTES = 150 * 1024 * 1024; // 150 MB
 const DOC_EXTS = [...PDF_EXTS, ...IMAGE_EXTS];
 
 export const professorsRouter = new Hono<AppEnv>();
+// Most professor self-service routes are declared further down this file.
+// Register authentication before them all so a newly added /me route cannot
+// accidentally rely on an unset context user.
+professorsRouter.use('/me', requireAuth);
+professorsRouter.use('/me/*', requireAuth);
 
 async function getProfessorOut(db: ReturnType<typeof drizzle>, profId: string) {
   const profile = await db.select().from(schema.professorProfiles).where(eq(schema.professorProfiles.id, profId)).get();
@@ -49,6 +54,38 @@ async function getProfessorOut(db: ReturnType<typeof drizzle>, profId: string) {
 async function getOwnProfile(db: ReturnType<typeof drizzle>, userId: string, role: string) {
   if (role !== 'professor') return null;
   return db.select().from(schema.professorProfiles).where(eq(schema.professorProfiles.user_id, userId)).get();
+}
+
+async function resolveWriteProfile(
+  db: ReturnType<typeof drizzle>,
+  user: CurrentUser,
+  requestedProfileId?: string | null,
+  requestedSubjectId?: string | null,
+): Promise<{ profileId: string; subjectId: string | null } | null> {
+  if (user.role === 'admin') {
+    if (!requestedProfileId) return null;
+    const profile = await db.select().from(schema.professorProfiles)
+      .where(eq(schema.professorProfiles.id, requestedProfileId)).get();
+    if (!profile) return null;
+    if (requestedSubjectId && profile.subject_id !== requestedSubjectId) return null;
+    return { profileId: profile.id, subjectId: profile.subject_id };
+  }
+
+  const ownProfile = await getOwnProfile(db, user.id, user.role);
+  if (!ownProfile) return null;
+  if (requestedProfileId && requestedProfileId !== ownProfile.id) return null;
+  if (requestedSubjectId && requestedSubjectId !== ownProfile.subject_id) return null;
+  return { profileId: ownProfile.id, subjectId: ownProfile.subject_id };
+}
+
+async function canManageProfile(
+  db: ReturnType<typeof drizzle>,
+  user: CurrentUser,
+  profileId: string | null | undefined,
+  subjectId?: string | null,
+): Promise<boolean> {
+  if (!profileId) return false;
+  return Boolean(await resolveWriteProfile(db, user, profileId, subjectId));
 }
 
 // GET /api/professors — public directory
@@ -108,14 +145,12 @@ professorsRouter.post('/booklets', requireAuth, requireRole('professor', 'admin'
   if (body.pages !== undefined && body.pages < 0) return c.json({ detail: 'عدد الصفحات غير صالح' }, 400);
 
   const user = c.get('user')!;
-  let profId = body.professor_id;
-  if (!profId && user.role === 'professor') {
-    const profile: any = await c.env.DB.prepare('SELECT id FROM professor_profiles WHERE user_id = ?').bind(user.id).first();
-    profId = profile?.id;
-  }
+  const db = drizzle(c.env.DB, { schema });
+  const managed = await resolveWriteProfile(db, user, body.professor_id);
+  if (!managed) return c.json({ detail: 'لا تملك صلاحية النشر باسم هذا الأستاذ' }, 403);
   const bId = 'bkl_' + Math.random().toString(36).substring(2, 10);
   await c.env.DB.prepare('INSERT INTO booklets (id, professor_id, title, pages, file_url) VALUES (?, ?, ?, ?, ?)')
-    .bind(bId, profId, body.title, body.pages ?? 0, body.file_url ?? '').run();
+    .bind(bId, managed.profileId, body.title, body.pages ?? 0, body.file_url ?? '').run();
   return c.json({ id: bId, title: body.title, pages: body.pages ?? 0 });
 });
 
@@ -123,8 +158,10 @@ professorsRouter.post('/booklets', requireAuth, requireRole('professor', 'admin'
 professorsRouter.put('/booklets/:id', requireAuth, requireRole('professor', 'admin'), async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json<{ title?: string; pages?: number }>().catch(() => ({} as any));
-  const b = await c.env.DB.prepare('SELECT id FROM booklets WHERE id = ?').bind(id).first();
+  const b: any = await c.env.DB.prepare('SELECT id, professor_id FROM booklets WHERE id = ?').bind(id).first();
   if (!b) return c.json({ detail: 'الملزمة غير موجودة' }, 404);
+  const db = drizzle(c.env.DB, { schema });
+  if (!await canManageProfile(db, c.get('user')!, b.professor_id)) return c.json({ detail: 'غير مصرح بتعديل هذه الملزمة' }, 403);
   await c.env.DB.prepare('UPDATE booklets SET title = ?, pages = ? WHERE id = ?').bind(body.title, body.pages ?? 0, id).run();
   return c.json({ message: 'تم تحديث الملزمة' });
 });
@@ -132,8 +169,10 @@ professorsRouter.put('/booklets/:id', requireAuth, requireRole('professor', 'adm
 // DELETE /api/professors/booklets/:id
 professorsRouter.delete('/booklets/:id', requireAuth, requireRole('professor', 'admin'), async (c) => {
   const id = c.req.param('id');
-  const b = await c.env.DB.prepare('SELECT id FROM booklets WHERE id = ?').bind(id).first();
+  const b: any = await c.env.DB.prepare('SELECT id, professor_id FROM booklets WHERE id = ?').bind(id).first();
   if (!b) return c.json({ detail: 'الملزمة غير موجودة' }, 404);
+  const db = drizzle(c.env.DB, { schema });
+  if (!await canManageProfile(db, c.get('user')!, b.professor_id)) return c.json({ detail: 'غير مصرح بحذف هذه الملزمة' }, 403);
   await c.env.DB.prepare('DELETE FROM booklets WHERE id = ?').bind(id).run();
   return c.json({ message: 'تم حذف الملزمة' });
 });
@@ -150,9 +189,12 @@ professorsRouter.post('/questions', requireAuth, requireRole('professor', 'admin
     return c.json({ detail: 'يجب تحديد إجابة صحيحة واحدة على الأقل' }, 400);
   }
 
+  const db = drizzle(c.env.DB, { schema });
+  const managed = await resolveWriteProfile(db, c.get('user')!, body.professor_id, body.subject_id);
+  if (!managed?.subjectId) return c.json({ detail: 'لا تملك صلاحية إضافة سؤال لهذه المادة' }, 403);
   const qId = 'qst_' + Math.random().toString(36).substring(2, 10);
   await c.env.DB.prepare('INSERT INTO questions (id, subject_id, professor_id, text, rationale, eyebrow) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(qId, body.subject_id, body.professor_id ?? null, body.text, body.rationale ?? '', body.eyebrow ?? '').run();
+    .bind(qId, managed.subjectId, managed.profileId, body.text, body.rationale ?? '', body.eyebrow ?? '').run();
 
   for (let i = 0; i < body.choices.length; i++) {
     const ch = body.choices[i];
@@ -167,8 +209,10 @@ professorsRouter.post('/questions', requireAuth, requireRole('professor', 'admin
 professorsRouter.put('/questions/:id', requireAuth, requireRole('professor', 'admin'), async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json<{ text?: string; rationale?: string }>().catch(() => ({} as any));
-  const q = await c.env.DB.prepare('SELECT id FROM questions WHERE id = ?').bind(id).first();
+  const q: any = await c.env.DB.prepare('SELECT id, professor_id, subject_id FROM questions WHERE id = ?').bind(id).first();
   if (!q) return c.json({ detail: 'السؤال غير موجود' }, 404);
+  const db = drizzle(c.env.DB, { schema });
+  if (!await canManageProfile(db, c.get('user')!, q.professor_id, q.subject_id)) return c.json({ detail: 'غير مصرح بتعديل هذا السؤال' }, 403);
   await c.env.DB.prepare('UPDATE questions SET text = ?, rationale = ? WHERE id = ?')
     .bind(body.text, body.rationale ?? '', id).run();
   return c.json({ message: 'تم تحديث السؤال' });
@@ -177,8 +221,10 @@ professorsRouter.put('/questions/:id', requireAuth, requireRole('professor', 'ad
 // DELETE /api/professors/questions/:id
 professorsRouter.delete('/questions/:id', requireAuth, requireRole('professor', 'admin'), async (c) => {
   const id = c.req.param('id');
-  const q = await c.env.DB.prepare('SELECT id FROM questions WHERE id = ?').bind(id).first();
+  const q: any = await c.env.DB.prepare('SELECT id, professor_id, subject_id FROM questions WHERE id = ?').bind(id).first();
   if (!q) return c.json({ detail: 'السؤال غير موجود' }, 404);
+  const db = drizzle(c.env.DB, { schema });
+  if (!await canManageProfile(db, c.get('user')!, q.professor_id, q.subject_id)) return c.json({ detail: 'غير مصرح بحذف هذا السؤال' }, 403);
   await c.env.DB.prepare('DELETE FROM choices WHERE question_id = ?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM questions WHERE id = ?').bind(id).run();
   return c.json({ message: 'تم حذف السؤال' });
@@ -191,9 +237,12 @@ professorsRouter.post('/exams', requireAuth, requireRole('professor', 'admin'), 
   if (body.duration_minutes !== undefined && body.duration_minutes <= 0) {
     return c.json({ detail: 'مدة الامتحان غير صالحة' }, 400);
   }
+  const db = drizzle(c.env.DB, { schema });
+  const managed = await resolveWriteProfile(db, c.get('user')!, body.professor_id, body.subject_id);
+  if (!managed?.subjectId) return c.json({ detail: 'لا تملك صلاحية إنشاء امتحان لهذه المادة' }, 403);
   const eId = 'exm_' + Math.random().toString(36).substring(2, 10);
   await c.env.DB.prepare('INSERT INTO exams (id, subject_id, professor_id, title, duration_minutes) VALUES (?, ?, ?, ?, ?)')
-    .bind(eId, body.subject_id, body.professor_id ?? null, body.title, body.duration_minutes ?? 30).run();
+    .bind(eId, managed.subjectId, managed.profileId, body.title, body.duration_minutes ?? 30).run();
   return c.json({ id: eId, title: body.title });
 });
 
@@ -201,17 +250,22 @@ professorsRouter.post('/exams', requireAuth, requireRole('professor', 'admin'), 
 professorsRouter.post('/courses', requireAuth, requireRole('professor', 'admin'), async (c) => {
   const body = await c.req.json<{ subject_id?: string; professor_id?: string; title?: string }>().catch(() => ({} as any));
   if (!body || !body.title) return c.json({ detail: 'عنوان الكورس مطلوب' }, 400);
+  const db = drizzle(c.env.DB, { schema });
+  const managed = await resolveWriteProfile(db, c.get('user')!, body.professor_id, body.subject_id);
+  if (!managed?.subjectId) return c.json({ detail: 'لا تملك صلاحية إنشاء كورس لهذه المادة' }, 403);
   const cId = 'crs_' + Math.random().toString(36).substring(2, 10);
   await c.env.DB.prepare('INSERT INTO courses (id, subject_id, professor_id, title) VALUES (?, ?, ?, ?)')
-    .bind(cId, body.subject_id, body.professor_id ?? null, body.title).run();
+    .bind(cId, managed.subjectId, managed.profileId, body.title).run();
   return c.json({ id: cId, title: body.title });
 });
 
 // DELETE /api/professors/courses/:id
 professorsRouter.delete('/courses/:id', requireAuth, requireRole('professor', 'admin'), async (c) => {
   const id = c.req.param('id');
-  const course = await c.env.DB.prepare('SELECT id FROM courses WHERE id = ?').bind(id).first();
+  const course: any = await c.env.DB.prepare('SELECT id, professor_id, subject_id FROM courses WHERE id = ?').bind(id).first();
   if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
+  const db = drizzle(c.env.DB, { schema });
+  if (!await canManageProfile(db, c.get('user')!, course.professor_id, course.subject_id)) return c.json({ detail: 'غير مصرح بحذف هذا الكورس' }, 403);
   await c.env.DB.prepare('DELETE FROM courses WHERE id = ?').bind(id).run();
   return c.json({ message: 'تم حذف الكورس' });
 });
@@ -219,8 +273,10 @@ professorsRouter.delete('/courses/:id', requireAuth, requireRole('professor', 'a
 // POST /api/professors/courses/:id/lectures
 professorsRouter.post('/courses/:id/lectures', requireAuth, requireRole('professor', 'admin'), async (c) => {
   const courseId = c.req.param('id');
-  const course = await c.env.DB.prepare('SELECT id FROM courses WHERE id = ?').bind(courseId).first();
+  const course: any = await c.env.DB.prepare('SELECT id, professor_id, subject_id FROM courses WHERE id = ?').bind(courseId).first();
   if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
+  const db = drizzle(c.env.DB, { schema });
+  if (!await canManageProfile(db, c.get('user')!, course.professor_id, course.subject_id)) return c.json({ detail: 'غير مصرح بإضافة محاضرة لهذا الكورس' }, 403);
   const body = await c.req.json<{ title?: string; duration_seconds?: number; order_index?: number; video_url?: string }>().catch(() => ({} as any));
   if (!body || !body.title) return c.json({ detail: 'عنوان المحاضرة مطلوب' }, 400);
   if (body.duration_seconds !== undefined && body.duration_seconds < 0) {
