@@ -8,9 +8,8 @@ import { eq, desc, inArray, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv, CurrentUser } from '../types';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { createStorageService, isStorageConfigured, safeUploadNameForDetectedType, mediaUrl, validateFileSignature, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
+import { createStorageService, isStorageConfigured, safeUploadNameForDetectedType, mediaUrl, validateFileSignature, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES, MAX_DIRECT_UPLOAD_BYTES } from '../services/storage';
 
-const MAX_VIDEO_BYTES = 150 * 1024 * 1024; // 150 MB
 const DOC_EXTS = [...PDF_EXTS, ...IMAGE_EXTS];
 
 export const professorsRouter = new Hono<AppEnv>();
@@ -731,7 +730,7 @@ professorsRouter.post('/me/lectures/:lecture_id/file', async (c) => {
   if (!file) return c.json({ detail: 'الملف مطلوب' }, 400);
 
   const contents = await file.arrayBuffer();
-  if (contents.byteLength > MAX_VIDEO_BYTES) return c.json({ detail: 'الملف أكبر من الحد المسموح (150 ميغابايت)' }, 400);
+  if (contents.byteLength > MAX_DIRECT_UPLOAD_BYTES) return c.json({ detail: 'الملف أكبر من الحد المسموح (25 ميغابايت)' }, 413);
 
   const sig = validateFileSignature(contents, VIDEO_EXTS);
   if (!sig.valid) {

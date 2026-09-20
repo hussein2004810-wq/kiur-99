@@ -1594,7 +1594,7 @@ export function createContractRouter(): Hono<{ Bindings: any; Variables: any }> 
       if (!file || file.size === 0) {
         return c.json({ detail: 'الملف فارغ أو غير صالح' }, 400);
       }
-      if (file.size > 50 * 1024 * 1024) {
+      if (file.size > 25 * 1024 * 1024) {
         return c.json({ detail: 'حجم الملف يتجاوز الحد المسموح' }, 413);
       }
       filename = file.name || filename;
@@ -1606,7 +1606,7 @@ export function createContractRouter(): Hono<{ Bindings: any; Variables: any }> 
       if (!body || body.byteLength === 0) {
         return c.json({ detail: 'الملف فارغ' }, 400);
       }
-      if (body.byteLength > 50 * 1024 * 1024) {
+      if (body.byteLength > 25 * 1024 * 1024) {
         return c.json({ detail: 'حجم الملف يتجاوز الحد المسموح' }, 413);
       }
       fileData = new Uint8Array(body);

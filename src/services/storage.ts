@@ -195,3 +195,7 @@ export const PDF_EXTS = ['pdf'];
 // Only formats recognized by detectFileType may be accepted for upload.
 export const VIDEO_EXTS = ['mp4', 'webm'];
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB
+// Direct Worker uploads buffer the request before it can be stored.  Keep this
+// deliberately below a large-video workflow; use signed/direct uploads plus a
+// video pipeline when larger media is required.
+export const MAX_DIRECT_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB

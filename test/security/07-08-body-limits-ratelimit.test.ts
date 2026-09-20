@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createTestContext, type TestContext } from '../harness/test-context';
 import { resetRateLimitStore } from '../../src/middleware/rate-limit';
+import { MAX_DIRECT_UPLOAD_BYTES } from '../../src/services/storage';
 import app from '../../src/index';
 
 describe('Stages 7 & 8: Request Body Limits and Rate Limiting', () => {
@@ -46,6 +47,32 @@ describe('Stages 7 & 8: Request Body Limits and Rate Limiting', () => {
       }, ctx.bindings);
 
       expect(res.status).toBe(200);
+    });
+
+    it('treats the professor lecture-file route as a 25 MB upload rather than a 100 KB JSON request', async () => {
+      const mp4 = new Uint8Array(128 * 1024);
+      mp4.set([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
+      const form = new FormData();
+      form.append('file', new File([mp4], 'lecture.mp4', { type: 'video/mp4' }));
+
+      const res = await app.request('/api/professors/me/lectures/lec_1/file', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ctx.fixtures.users.professor.token}` },
+        body: form,
+      }, ctx.bindings);
+
+      expect(res.status).toBe(200);
+      expect((await res.json()).video_url).toMatch(/^\/media-files\/lecture_[a-f0-9]{12}\.mp4$/);
+    });
+
+    it('rejects a lecture upload above the explicit direct-upload ceiling before authentication or body parsing', async () => {
+      const res = await app.request('/api/professors/me/lectures/lec_1/file', {
+        method: 'POST',
+        headers: { 'Content-Length': String(MAX_DIRECT_UPLOAD_BYTES + 1) },
+      }, ctx.bindings);
+
+      expect(res.status).toBe(413);
+      expect((await res.json()).detail).toContain('413 Payload Too Large');
     });
   });
 
@@ -106,4 +133,3 @@ describe('Stages 7 & 8: Request Body Limits and Rate Limiting', () => {
     });
   });
 });
-

@@ -36,12 +36,16 @@ describe('Tier 2: Boundary 4 - Resource Limits, Non-Existent Entities & State Ma
   });
 
   it('B4.5 should return 404 for non-existent question ID via GET /api/questions/:id', async () => {
-    const res = await apiRequest(app, 'GET', '/api/questions/qst_ghost', {}, ctx);
+    const res = await apiRequest(app, 'GET', '/api/questions/qst_ghost', {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(res.status).toBe(404);
   });
 
   it('B4.6 should return 404 for non-existent exam ID via GET /api/exams/:id', async () => {
-    const res = await apiRequest(app, 'GET', '/api/exams/exm_ghost', {}, ctx);
+    const res = await apiRequest(app, 'GET', '/api/exams/exm_ghost', {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(res.status).toBe(404);
   });
 
@@ -80,7 +84,9 @@ describe('Tier 2: Boundary 4 - Resource Limits, Non-Existent Entities & State Ma
   });
 
   it('B4.12 should return 404 for non-existent lecture ID via GET /api/lectures/:id', async () => {
-    const res = await apiRequest(app, 'GET', '/api/lectures/lec_ghost', {}, ctx);
+    const res = await apiRequest(app, 'GET', '/api/lectures/lec_ghost', {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(res.status).toBe(404);
   });
 
@@ -274,9 +280,9 @@ describe('Tier 2: Boundary 4 - Resource Limits, Non-Existent Entities & State Ma
     expect(res.status).toBe(400);
   });
 
-  it('B4.30 should return 413 Payload Too Large when uploading file exceeding 50MB limit', async () => {
+  it('B4.30 should return 413 Payload Too Large when uploading file exceeding 25MB direct-upload limit', async () => {
     // Simulate exceeding limit
-    const hugeBuf = new Uint8Array(55 * 1024 * 1024); // 55MB
+    const hugeBuf = new Uint8Array(26 * 1024 * 1024); // 26MB
     const res = await apiRequest(app, 'POST', '/api/admin/media/upload', {
       token: ctx.fixtures.users.admin.token,
       headers: { 'X-Filename': 'huge.iso' },

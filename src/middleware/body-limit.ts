@@ -1,6 +1,7 @@
 import { bodyLimit } from 'hono/body-limit';
 import type { MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../types';
+import { MAX_DIRECT_UPLOAD_BYTES } from '../services/storage';
 
 /**
  * Global Body Size Limit Middleware (Stage 7).
@@ -8,8 +9,9 @@ import type { AppEnv } from '../types';
  */
 export const bodySizeLimitMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   const path = c.req.path;
-  const isUpload = path.includes('/upload') || path.includes('/photo') || path.includes('/booklets');
-  const maxSize = isUpload ? 25 * 1024 * 1024 : 100 * 1024; // 25 MB for uploads, 100 KB for JSON
+  const isUpload = path.includes('/upload') || path.includes('/photo') || path.includes('/booklets') ||
+    /^\/api\/professors\/me\/lectures\/[^/]+\/file$/.test(path);
+  const maxSize = isUpload ? MAX_DIRECT_UPLOAD_BYTES : 100 * 1024;
 
   // Check Content-Length header if present before buffering
   const contentLength = c.req.header('Content-Length');
@@ -36,4 +38,3 @@ export const bodySizeLimitMiddleware: MiddlewareHandler<AppEnv> = async (c, next
 
   return limiter(c, next);
 };
-

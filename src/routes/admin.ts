@@ -9,7 +9,7 @@ import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAdmin, requireAuth } from '../middleware/auth';
 import { hashPassword } from '../services/crypto';
-import { createStorageService, safeUploadNameForDetectedType, mediaUrl, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES, validateFileSignature } from '../services/storage';
+import { createStorageService, safeUploadNameForDetectedType, mediaUrl, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES, MAX_DIRECT_UPLOAD_BYTES, validateFileSignature } from '../services/storage';
 import { recordAuditEvent } from '../services/audit';
 
 export const adminRouter = new Hono<AppEnv>();
@@ -2151,7 +2151,7 @@ adminRouter.post('/media/upload', async (c) => {
     if (!file || file.size === 0) {
       return c.json({ detail: 'الملف فارغ أو غير صالح' }, 400);
     }
-    if (file.size > 50 * 1024 * 1024) {
+    if (file.size > MAX_DIRECT_UPLOAD_BYTES) {
       return c.json({ detail: 'حجم الملف يتجاوز الحد المسموح' }, 413);
     }
     const buf = await file.arrayBuffer();
@@ -2161,7 +2161,7 @@ adminRouter.post('/media/upload', async (c) => {
     if (!body || body.byteLength === 0) {
       return c.json({ detail: 'الملف فارغ' }, 400);
     }
-    if (body.byteLength > 50 * 1024 * 1024) {
+    if (body.byteLength > MAX_DIRECT_UPLOAD_BYTES) {
       return c.json({ detail: 'حجم الملف يتجاوز الحد المسموح' }, 413);
     }
     fileData = new Uint8Array(body);

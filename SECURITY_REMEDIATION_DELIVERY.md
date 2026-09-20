@@ -25,6 +25,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `66e718b` pins development `esbuild` at `^0.28.2`, satisfying the installed Vite/Vitest requirement and removing the invalid root dependency tree.
 - `140877d` hardens admin media uploads and makes the streaming regression suite exercise the actual Worker authorization path.
 - `fbdeda4` canonicalizes new media names and response MIME types from verified file signatures.
+- This working tree also aligns direct Worker uploads at a verified 25 MB ceiling, including professor lecture videos; larger-video delivery remains an external architecture decision.
 
 ## Implemented controls
 
@@ -38,6 +39,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - The CSP permits only the Google Identity script origin required by the SPA, removes the unused jsDelivr allowlist, and restricts form submissions to same-origin destinations.
 - Admin media uploads now fail closed before body parsing when R2 is absent, verify magic bytes rather than trusting the declared filename or MIME type, generate server-owned object names, and remove the R2 object if media-record persistence fails.
 - Every new image, booklet, and lecture-video object now receives a server-generated filename with the extension detected from its verified bytes.  Media reads use a fixed extension-to-MIME allowlist and serve unrecognized legacy names as `application/octet-stream`.
+- The professor lecture-file endpoint is explicitly classified as an upload by the global body limiter.  It accepts the same 25 MB direct-upload ceiling it advertises, instead of being accidentally limited as 100 KB JSON.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
 - Dynamic user-controlled values that must be passed to legacy inline handlers are encoded as a single JavaScript argument rather than HTML-escaped inside a quoted handler literal, preventing quote-breakout from stored catalogue, account, or Google-profile data.
 - `src/routes/exams.ts` stores question/choice snapshots, prevents a second open attempt with database constraints, performs conditional answer/finish transitions, and replays only a finish request bearing its original idempotency key.
@@ -49,8 +51,8 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 
 - `npm run typecheck` passed after the final application changes.
 - `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 39 tests, including verification-link, verified/unverified Google OAuth callback, audience, access-token rejection, production-mail readiness, and admin-media upload hardening cases.
-- `npm test` passed: 40 files and 543 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, CSP-source, Google OAuth credential, mail-readiness, and admin-upload changes.
-- `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 130 tests against the actual Worker routes.
+- `npm test` passed: 40 files and 545 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, CSP-source, Google OAuth credential, mail-readiness, admin-upload, and direct-video-upload changes.
+- `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 132 tests against the actual Worker routes.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
 - Vitest was upgraded to `4.1.11`, closing its Moderate mocker path-traversal advisory.  `npm audit --json` now reports four Moderate development-only findings from Drizzle Kit's legacy `@esbuild-kit` chain; npm's only suggested fix is a major downgrade of Drizzle Kit to `0.18.1`, so it was not applied automatically.
 - A current `npm audit --omit=dev --json` reports zero runtime dependency vulnerabilities.  The full audit still reports only the four Drizzle Kit development-tool findings above.
