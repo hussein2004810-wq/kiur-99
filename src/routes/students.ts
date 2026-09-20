@@ -3,7 +3,7 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, inArray, like, and, desc, lte } from 'drizzle-orm';
+import { eq, inArray, like, and, desc, lte, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
@@ -35,6 +35,7 @@ studentsRouter.get('/', async (c) => {
   const q = (c.req.query('q') ?? '').trim();
   const limit = Math.min(Math.max(1, parseInt(c.req.query('limit') ?? '20')), 50);
   const offset = Math.max(0, parseInt(c.req.query('offset') ?? '0'));
+  const cursor = c.req.query('cursor')?.trim() || null;
 
   let all = await db
     .select({
@@ -43,29 +44,52 @@ studentsRouter.get('/', async (c) => {
       email: schema.users.email,
       photo_url: schema.users.photo_url,
       university_id: schema.users.university_id,
+      college_id: schema.users.college_id,
+      department_id: schema.users.department_id,
       stage_id: schema.users.stage_id,
     })
     .from(schema.users)
-    .where(eq(schema.users.role, 'student'));
+    .where(eq(schema.users.role, 'student'))
+    .orderBy(asc(schema.users.id));
 
-  const isPrivileged = currentUser.role === 'admin' || currentUser.role === 'professor';
+  // Directory access is scoped server-side.  Only platform administrators may
+  // view all students; professors see students in their assigned subject
+  // stages, and students see peers from exactly their own stage.
+  if (currentUser.role === 'professor') {
+    const profiles = await db.select({ subject_id: schema.professorProfiles.subject_id })
+      .from(schema.professorProfiles).where(eq(schema.professorProfiles.user_id, currentUser.id));
+    const subjectIds = profiles.map((p) => p.subject_id);
+    const subjects = subjectIds.length ? await db.select({ stage_id: schema.subjects.stage_id })
+      .from(schema.subjects).where(inArray(schema.subjects.id, subjectIds)) : [];
+    const allowedStages = new Set(subjects.map((s) => s.stage_id));
+        all = all.filter(
+          (student) => student.stage_id !== null && allowedStages.has(student.stage_id),
+        );
+  } else if (currentUser.role === 'student') {
+    all = currentUser.stage_id ? all.filter((student) => student.stage_id === currentUser.stage_id) : [];
+  } else if (currentUser.role !== 'admin') {
+    all = [];
+  }
 
   if (q) {
     const qLower = q.toLowerCase();
-    all = all.filter((s) =>
-      s.full_name.toLowerCase().includes(qLower) ||
-      (isPrivileged && s.email.toLowerCase().includes(qLower))
-    );
+    all = all.filter((s) => s.full_name.toLowerCase().includes(qLower));
   }
 
-  const paged = all.slice(offset, offset + limit);
+  const cursorIndex = cursor ? all.findIndex((student) => student.id === cursor) + 1 : offset;
+  const start = Math.max(0, cursorIndex);
+  const paged = all.slice(start, start + limit);
+  const next = all[start + limit];
+  if (next) c.header('X-Next-Cursor', next.id);
 
   return c.json(paged.map((s) => ({
     id: s.id,
     full_name: s.full_name,
-    email: isPrivileged ? s.email : undefined,
+    email: currentUser.role === 'admin' ? s.email : undefined,
     photo_url: s.photo_url,
     university_id: s.university_id,
+    college_id: s.college_id,
+    department_id: s.department_id,
     stage_id: s.stage_id,
   })));
 });

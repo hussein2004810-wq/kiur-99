@@ -16,7 +16,7 @@ describe('Tier 1: Feature 5 - Questions & Saved Bookmarks', () => {
   });
 
   it('5.1 should list questions for a subject via GET /api/questions?subject_id=...', async () => {
-    const res = await apiRequest(app, 'GET', `/api/questions?subject_id=${ctx.fixtures.subjectIds.anatomy}`, {}, ctx);
+    const res = await apiRequest(app, 'GET', `/api/questions?subject_id=${ctx.fixtures.subjectIds.anatomy}`, { token: ctx.fixtures.users.student.token }, ctx);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
@@ -25,7 +25,7 @@ describe('Tier 1: Feature 5 - Questions & Saved Bookmarks', () => {
 
   it('5.2 should retrieve single question with choices via GET /api/questions/:id without exposing is_correct', async () => {
     const qId = ctx.fixtures.questionIds[0];
-    const res = await apiRequest(app, 'GET', `/api/questions/${qId}`, {}, ctx);
+    const res = await apiRequest(app, 'GET', `/api/questions/${qId}`, { token: ctx.fixtures.users.student.token }, ctx);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.id).toBe(qId);
@@ -115,7 +115,7 @@ describe('Tier 1: Feature 5 - Questions & Saved Bookmarks', () => {
   });
 
   it('5.8 should search questions by keyword text via GET /api/questions?search=...', async () => {
-    const res = await apiRequest(app, 'GET', '/api/questions?search=رقم 1', {}, ctx);
+    const res = await apiRequest(app, 'GET', '/api/questions?search=رقم 1', { token: ctx.fixtures.users.student.token }, ctx);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
@@ -124,7 +124,7 @@ describe('Tier 1: Feature 5 - Questions & Saved Bookmarks', () => {
   });
 
   it('5.9 should return daily practice questions set via GET /api/questions/daily', async () => {
-    const res = await apiRequest(app, 'GET', '/api/questions/daily', {}, ctx);
+    const res = await apiRequest(app, 'GET', '/api/questions/daily', { token: ctx.fixtures.users.student.token }, ctx);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);

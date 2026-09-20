@@ -6,8 +6,12 @@ import { Hono, type Context } from 'hono';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
+import { drizzle } from 'drizzle-orm/d1';
+import * as dbSchema from '../db/schema';
+import { canAccessSubject } from '../services/content-access';
 
 export const examsRouter = new Hono<AppEnv>();
+examsRouter.use('*', requireAuth);
 
 function deadline(exam: any, attempt: any): Date | null {
   if (!exam || !exam.duration_minutes) return null;
@@ -115,6 +119,8 @@ function snapshotChoice(item: any, choiceId: string): any | null {
 
 // GET /api/exams
 examsRouter.get('/', async (c) => {
+  const user = c.get('user')!;
+  const db = drizzle(c.env.DB, { schema: dbSchema });
   const subjectId = c.req.query('subject_id');
   let res;
   if (subjectId) {
@@ -128,7 +134,10 @@ examsRouter.get('/', async (c) => {
       'SELECT * FROM exams'
     ).all();
   }
-  return c.json(res.results ?? []);
+  const visible = await Promise.all((res.results ?? []).map(async (exam: any) =>
+    (await canAccessSubject(db, user, exam.subject_id)) ? exam : null
+  ));
+  return c.json(visible.filter(Boolean));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -456,6 +465,10 @@ examsRouter.post('/:exam_id/start', requireAuth, async (c) => {
     .bind(examId)
     .first();
   if (!exam) return c.json({ detail: 'الامتحان غير موجود' }, 404);
+  const policyDb = drizzle(c.env.DB, { schema: dbSchema });
+  if (!await canAccessSubject(policyDb, user, String(exam.subject_id))) {
+    return c.json({ detail: 'غير مصرح بالوصول إلى هذا الامتحان' }, 403);
+  }
 
   // Check for existing open attempt
   let attempt = await c.env.DB.prepare(
@@ -579,6 +592,7 @@ examsRouter.get('/:id/leaderboard', async (c) => {
 
 // GET /api/exams/:id
 examsRouter.get('/:id', async (c) => {
+  const user = c.get('user')!;
   const id = c.req.param('id');
   const exam = await c.env.DB.prepare(
     'SELECT * FROM exams WHERE id = ?'
@@ -586,5 +600,9 @@ examsRouter.get('/:id', async (c) => {
     .bind(id)
     .first();
   if (!exam) return c.json({ detail: 'الامتحان غير موجود' }, 404);
+  const db = drizzle(c.env.DB, { schema: dbSchema });
+  if (!await canAccessSubject(db, user, String(exam.subject_id))) {
+    return c.json({ detail: 'غير مصرح بالوصول إلى هذا الامتحان' }, 403);
+  }
   return c.json(exam);
 });

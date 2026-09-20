@@ -7,15 +7,22 @@ import { eq, desc, and, inArray, like } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
+import { canAccessSubject } from '../services/content-access';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Questions Router (mounted at /api/questions)
 // ─────────────────────────────────────────────────────────────────────────────
 export const questionsRouter = new Hono<AppEnv>();
+questionsRouter.use('*', requireAuth);
+
+async function canReadQuestion(db: ReturnType<typeof drizzle>, user: any, question: any) {
+  return Boolean(question && await canAccessSubject(db, user, question.subject_id));
+}
 
 // GET /api/questions (supports ?subject_id=... and ?search=...)
 questionsRouter.get('/', async (c) => {
   const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
   const subjectId = c.req.query('subject_id');
   const search = c.req.query('search');
   const limit = Math.min(parseInt(c.req.query('limit') ?? '50'), 100);
@@ -25,9 +32,12 @@ questionsRouter.get('/', async (c) => {
   if (subjectId) conditions.push(eq(schema.questions.subject_id, subjectId));
   if (search) conditions.push(like(schema.questions.text, `%${search}%`));
 
-  const questions = conditions.length > 0
+  const candidates = conditions.length > 0
     ? await db.select().from(schema.questions).where(and(...conditions)).limit(limit).offset(offset)
     : await db.select().from(schema.questions).limit(limit).offset(offset);
+  const questions = (await Promise.all(candidates.map(async (q) =>
+    (await canReadQuestion(db, user, q)) ? q : null
+  ))).filter(Boolean) as typeof candidates;
 
   const questionIds = questions.map((q) => q.id);
   const choices =
@@ -51,7 +61,11 @@ questionsRouter.get('/', async (c) => {
 // GET /api/questions/daily
 questionsRouter.get('/daily', async (c) => {
   const db = drizzle(c.env.DB, { schema });
-  const questions = await db.select().from(schema.questions).limit(5);
+  const user = c.get('user')!;
+  const candidates = await db.select().from(schema.questions).limit(25);
+  const questions = (await Promise.all(candidates.map(async (q) =>
+    (await canReadQuestion(db, user, q)) ? q : null
+  ))).filter(Boolean).slice(0, 5) as typeof candidates;
   const questionIds = questions.map((q) => q.id);
   const choices =
     questionIds.length > 0
@@ -74,11 +88,13 @@ questionsRouter.get('/daily', async (c) => {
 // GET /api/questions/:id
 questionsRouter.get('/:id', async (c) => {
   const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
   const id = c.req.param('id');
   if (!id) return c.json({ detail: 'معرف السؤال مطلوب' }, 400);
 
   const q = await db.select().from(schema.questions).where(eq(schema.questions.id, id)).get();
   if (!q) return c.json({ detail: 'السؤال غير موجود' }, 404);
+  if (!await canReadQuestion(db, user, q)) return c.json({ detail: 'غير مصرح بالوصول إلى هذا السؤال' }, 403);
 
   const choices = await db.select().from(schema.choices).where(eq(schema.choices.question_id, id));
   const { rationale: _rationale, ...safeQ } = q;
@@ -97,6 +113,7 @@ questionsRouter.post('/:question_id/answer', requireAuth, async (c) => {
 
   const question = await db.select().from(schema.questions).where(eq(schema.questions.id, questionId)).get();
   if (!question) return c.json({ detail: 'السؤال غير موجود' }, 404);
+  if (!await canReadQuestion(db, user, question)) return c.json({ detail: 'غير مصرح بالوصول إلى هذا السؤال' }, 403);
 
   const questionChoices = await db.select().from(schema.choices).where(eq(schema.choices.question_id, questionId));
   const choice = questionChoices.find((ch) => ch.id === body.choice_id);
@@ -128,6 +145,7 @@ questionsRouter.post('/:question_id/save', requireAuth, async (c) => {
 
   const question = await db.select().from(schema.questions).where(eq(schema.questions.id, questionId)).get();
   if (!question) return c.json({ detail: 'السؤال غير موجود' }, 404);
+  if (!await canReadQuestion(db, user, question)) return c.json({ detail: 'غير مصرح بالوصول إلى هذا السؤال' }, 403);
 
   const existing = await db
     .select()
@@ -162,12 +180,15 @@ questionsRouter.delete('/:question_id/save', requireAuth, async (c) => {
 // 2. Subjects Questions Router (mounted at /api/subjects)
 // ─────────────────────────────────────────────────────────────────────────────
 export const subjectsQuestionsRouter = new Hono<AppEnv>();
+subjectsQuestionsRouter.use('*', requireAuth);
 
 // GET /api/subjects/:subject_id/questions
 subjectsQuestionsRouter.get('/:subject_id/questions', async (c) => {
   const db = drizzle(c.env.DB, { schema });
+  const user = c.get('user')!;
   const subjectId = c.req.param('subject_id');
   if (!subjectId) return c.json({ detail: 'معرف المادة مطلوب' }, 400);
+  if (!await canAccessSubject(db, user, subjectId)) return c.json({ detail: 'غير مصرح بالوصول إلى هذه المادة' }, 403);
 
   const limit = Math.min(parseInt(c.req.query('limit') ?? '20'), 100);
   const offset = parseInt(c.req.query('offset') ?? '0');
@@ -222,13 +243,14 @@ savedQuestionsRouter.get('/', async (c) => {
   const choices = await db.select().from(schema.choices).where(inArray(schema.choices.question_id, questionIds));
 
   const questionsMap: Record<string, any> = {};
-  questions.forEach((q) => {
+  for (const q of questions) {
+    if (!await canReadQuestion(db, user, q)) continue;
     const { rationale: _rationale, ...safeQ } = q;
     questionsMap[q.id] = {
       ...safeQ,
       choices: choices.filter((ch) => ch.question_id === q.id).map((ch) => ({ id: ch.id, text: ch.text, order_index: ch.order_index })),
     };
-  });
+  }
 
   return c.json(
     saved.map((s) => ({

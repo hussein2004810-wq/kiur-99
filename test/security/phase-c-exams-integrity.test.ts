@@ -220,4 +220,29 @@ describe('Phase C Security & Reliability: Exam Integrity, Concurrency & Scoring'
       .bind(ctx.fixtures.users.student.id).first('c');
     expect(Number(ansInDb)).toBeGreaterThanOrEqual(3);
   });
+
+  it('C.9: Rejects questions and exams outside the student academic scope', async () => {
+    await ctx.db.prepare(
+      "INSERT INTO stages (id, name, university_id) VALUES ('stg_3', 'المرحلة الثالثة', ?)"
+    ).bind(ctx.fixtures.universityId).run();
+    await ctx.db.prepare(
+      "INSERT INTO users (id, email, full_name, password_hash, role, university_id, stage_id, section_id) VALUES ('usr_other_stage', 'other-stage@test.com', 'طالب مرحلة أخرى', 'hash', 'student', ?, 'stg_3', ?)"
+    ).bind(ctx.fixtures.universityId, ctx.fixtures.sectionId).run();
+    const otherStudent = await ctx.createSession('usr_other_stage', 'Other Stage Phone');
+
+    const question = await apiRequest(app, 'GET', `/api/questions/${ctx.fixtures.questionIds[0]}`, {
+      token: otherStudent.token,
+    }, ctx);
+    expect(question.status).toBe(403);
+
+    const exam = await apiRequest(app, 'GET', `/api/exams/${ctx.fixtures.examId}`, {
+      token: otherStudent.token,
+    }, ctx);
+    expect(exam.status).toBe(403);
+
+    const start = await apiRequest(app, 'POST', `/api/exams/${ctx.fixtures.examId}/start`, {
+      token: otherStudent.token,
+    }, ctx);
+    expect(start.status).toBe(403);
+  });
 });
