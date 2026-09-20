@@ -30,6 +30,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `e033245` removes reseller self-minting: only an admin allocation may assign idle activation-code stock to a reseller.
 - `e20aeb7` allows dynamically rendered media only from KIUR's `/media-files/...` and `/api/media/...` paths, preventing stored URLs from becoming external, `data:`, or `javascript:` browser navigations.
 - `934007a` rejects arbitrary lecture video URLs at the server boundary, requires the verified video-upload flow, and limits a revoked banned session to its own appeal request only.
+- `54138a0` escapes values as well as labels in the reusable administrator modal's dynamic select options.
 
 ## Implemented controls
 
@@ -49,6 +50,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - Unexpected production failures now emit only structured event/category records.  Firebase and admin error responses no longer expose raw exception messages, and transactional-mail failure logs omit recipient/provider error details.
 - Resellers can sell only their assigned codes.  The administrator's allocation endpoint validates the target and requested count, writes each allocation in one D1 batch, and records the allocation; self-generation endpoints now reject with 403.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
+- The reusable administrator modal escapes both labels and values in dynamic `<option>` attributes, preventing a stored catalogue identifier from breaking its attribute boundary.
 - Both static SPA documents also allowlist dynamically rendered image, booklet, and lecture-video URLs to the Worker-owned media routes before placing them in `src` or `href`; unsafe or legacy external values render the existing safe fallback instead.
 - Dynamic user-controlled values that must be passed to legacy inline handlers are encoded as a single JavaScript argument rather than HTML-escaped inside a quoted handler literal, preventing quote-breakout from stored catalogue, account, or Google-profile data.
 - `src/routes/exams.ts` stores question/choice snapshots, prevents a second open attempt with database constraints, performs conditional answer/finish transitions, and replays only a finish request bearing its original idempotency key.
