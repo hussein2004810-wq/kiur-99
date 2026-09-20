@@ -16,7 +16,12 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `ac9fb15` makes every upload endpoint fail closed with a controlled 503 when R2 is not configured.
 - `b2ce237` closes the remaining public-registration privilege escalation, requires email verification before any password session, and fixes additional stored-text escaping in both served SPA files.
 - `d67f157` sends verification links through the configured mail provider during registration and resend flows.
-- The current working change exercises the browser-facing verification-link callback and shares its verification logic with the JSON API.
+- `d2ae344` shares the browser-facing verification-link callback with the JSON verification logic and tests the redirect path.
+- `23ad5b7` narrows CSP sources and applies the policy to the served SPA response.
+- `d1de359` encodes dynamic arguments sent to legacy inline event handlers, preventing stored-text quote breakout.
+- `f0b0f9e` requires a verified provider email in the Google OAuth callback.
+- `4dea90e` accepts only audience-bound Google ID credentials and removes the UI's untrusted Google fallback.
+- `38851d9` prevents production password registration unless transactional email is ready to deliver verification links.
 
 ## Implemented controls
 
