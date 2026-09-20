@@ -3,13 +3,43 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, inArray, like, and, desc, lte, asc } from 'drizzle-orm';
+import { eq, inArray, like, and, desc, lte, asc, gt } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import type { AppEnv } from '../types';
+import type { AppEnv, CurrentUser } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { peerIds, rankedPairs, rankOf, streakDays, accuracyPct } from '../services/ranking';
 
 export const studentsRouter = new Hono<AppEnv>();
+
+async function canViewStudentProfile(
+  db: ReturnType<typeof drizzle>,
+  currentUser: CurrentUser,
+  target: typeof schema.users.$inferSelect,
+): Promise<boolean> {
+  if (currentUser.role === 'admin' || currentUser.id === target.id) return true;
+  if (target.role !== 'student') return false;
+
+  if (currentUser.role === 'student') {
+    const scopeFields = ['university_id', 'college_id', 'department_id', 'stage_id', 'section_id'] as const;
+    return scopeFields.every((field) =>
+      Boolean(currentUser[field]) && currentUser[field] === target[field],
+    );
+  }
+
+  if (currentUser.role === 'professor' && target.stage_id) {
+    const profiles = await db.select({ subject_id: schema.professorProfiles.subject_id })
+      .from(schema.professorProfiles)
+      .where(eq(schema.professorProfiles.user_id, currentUser.id));
+    const subjectIds = profiles.map((profile) => profile.subject_id);
+    if (subjectIds.length === 0) return false;
+    const granted = await db.select({ stage_id: schema.subjects.stage_id })
+      .from(schema.subjects)
+      .where(inArray(schema.subjects.id, subjectIds));
+    return granted.some((subject) => subject.stage_id === target.stage_id);
+  }
+
+  return false;
+}
 
 // GET /api/students/leaderboard — public
 studentsRouter.get('/leaderboard', async (c) => {
@@ -32,12 +62,40 @@ studentsRouter.use('*', requireAuth);
 studentsRouter.get('/', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const currentUser = c.get('user')!;
-  const q = (c.req.query('q') ?? '').trim();
+  const q = (c.req.query('q') ?? '').trim().slice(0, 100);
   const limit = Math.min(Math.max(1, parseInt(c.req.query('limit') ?? '20')), 50);
   const offset = Math.max(0, parseInt(c.req.query('offset') ?? '0'));
   const cursor = c.req.query('cursor')?.trim() || null;
 
-  let all = await db
+  const conditions = [eq(schema.users.role, 'student')];
+
+  // Directory access is scoped server-side.  Only platform administrators may
+  // view all students; professors see students in their assigned subject
+  // stages, and students see peers from exactly their own stage.
+  if (currentUser.role === 'professor') {
+    const profiles = await db.select({ subject_id: schema.professorProfiles.subject_id })
+      .from(schema.professorProfiles).where(eq(schema.professorProfiles.user_id, currentUser.id));
+    const subjectIds = profiles.map((p) => p.subject_id);
+    const subjects = subjectIds.length ? await db.select({ stage_id: schema.subjects.stage_id })
+      .from(schema.subjects).where(inArray(schema.subjects.id, subjectIds)) : [];
+    const allowedStages = subjects
+      .map((subject) => subject.stage_id)
+      .filter((stageId): stageId is string => Boolean(stageId));
+    if (allowedStages.length === 0) return c.json([]);
+    conditions.push(inArray(schema.users.stage_id, allowedStages));
+  } else if (currentUser.role === 'student') {
+    if (!currentUser.stage_id) return c.json([]);
+    conditions.push(eq(schema.users.stage_id, currentUser.stage_id));
+  } else if (currentUser.role !== 'admin') {
+    return c.json([]);
+  }
+
+  if (q) {
+    conditions.push(like(schema.users.full_name, `%${q}%`));
+  }
+  if (cursor) conditions.push(gt(schema.users.id, cursor));
+
+  const rows = await db
     .select({
       id: schema.users.id,
       full_name: schema.users.full_name,
@@ -49,37 +107,13 @@ studentsRouter.get('/', async (c) => {
       stage_id: schema.users.stage_id,
     })
     .from(schema.users)
-    .where(eq(schema.users.role, 'student'))
-    .orderBy(asc(schema.users.id));
+    .where(and(...conditions))
+    .orderBy(asc(schema.users.id))
+    .limit(limit + 1)
+    .offset(cursor ? 0 : offset);
 
-  // Directory access is scoped server-side.  Only platform administrators may
-  // view all students; professors see students in their assigned subject
-  // stages, and students see peers from exactly their own stage.
-  if (currentUser.role === 'professor') {
-    const profiles = await db.select({ subject_id: schema.professorProfiles.subject_id })
-      .from(schema.professorProfiles).where(eq(schema.professorProfiles.user_id, currentUser.id));
-    const subjectIds = profiles.map((p) => p.subject_id);
-    const subjects = subjectIds.length ? await db.select({ stage_id: schema.subjects.stage_id })
-      .from(schema.subjects).where(inArray(schema.subjects.id, subjectIds)) : [];
-    const allowedStages = new Set(subjects.map((s) => s.stage_id));
-        all = all.filter(
-          (student) => student.stage_id !== null && allowedStages.has(student.stage_id),
-        );
-  } else if (currentUser.role === 'student') {
-    all = currentUser.stage_id ? all.filter((student) => student.stage_id === currentUser.stage_id) : [];
-  } else if (currentUser.role !== 'admin') {
-    all = [];
-  }
-
-  if (q) {
-    const qLower = q.toLowerCase();
-    all = all.filter((s) => s.full_name.toLowerCase().includes(qLower));
-  }
-
-  const cursorIndex = cursor ? all.findIndex((student) => student.id === cursor) + 1 : offset;
-  const start = Math.max(0, cursorIndex);
-  const paged = all.slice(start, start + limit);
-  const next = all[start + limit];
+  const paged = rows.slice(0, limit);
+  const next = rows[limit];
   if (next) c.header('X-Next-Cursor', next.id);
 
   return c.json(paged.map((s) => ({
@@ -187,6 +221,9 @@ studentsRouter.get('/:id/profile', async (c) => {
 
   const target = await db.select().from(schema.users).where(eq(schema.users.id, targetId)).get();
   if (!target) return c.json({ detail: 'الطالب غير موجود' }, 404);
+  if (!await canViewStudentProfile(db, currentUser, target)) {
+    return c.json({ detail: 'غير مصرح بالوصول إلى ملف هذا الطالب' }, 403);
+  }
 
   const answers = await db.select().from(schema.studentAnswers).where(eq(schema.studentAnswers.user_id, targetId));
   const correctCount = answers.filter((a) => a.is_correct).length;

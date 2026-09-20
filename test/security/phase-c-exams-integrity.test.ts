@@ -244,5 +244,10 @@ describe('Phase C Security & Reliability: Exam Integrity, Concurrency & Scoring'
       token: otherStudent.token,
     }, ctx);
     expect(start.status).toBe(403);
+
+    const profile = await apiRequest(app, 'GET', `/api/students/${ctx.fixtures.users.student.id}/profile`, {
+      token: otherStudent.token,
+    }, ctx);
+    expect(profile.status).toBe(403);
   });
 });

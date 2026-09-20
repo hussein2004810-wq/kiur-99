@@ -339,7 +339,7 @@ examsRouter.post('/attempts/:attempt_id/items/:item_id/answer', requireAuth, asy
 
   const isCorrect = Boolean(choice.is_correct);
 
-  await c.env.DB.prepare(
+  const answerUpdate = await c.env.DB.prepare(
     `UPDATE exam_attempt_questions SET choice_id = ?, is_correct = ?, answered_at = ?
      WHERE id = ? AND attempt_id = ? AND EXISTS (
        SELECT 1 FROM exam_attempts WHERE id = ? AND user_id = ? AND finished_at IS NULL
@@ -347,6 +347,10 @@ examsRouter.post('/attempts/:attempt_id/items/:item_id/answer', requireAuth, asy
   )
     .bind(choice.id, isCorrect ? 1 : 0, new Date().toISOString(), item_id, attempt_id, attempt_id, user.id)
     .run();
+
+  if (!answerUpdate.meta.changes) {
+    return c.json({ detail: 'تم إنهاء الامتحان بالفعل ولا يمكن تعديل الإجابات' }, 400);
+  }
 
   return c.json({ message: 'تم حفظ الإجابة بنجاح', ok: true, recorded: true });
 });
@@ -431,7 +435,7 @@ const handleAttemptAnswer = async (c: Context<AppEnv>) => {
 
   const isCorrect = Boolean(choice.is_correct);
 
-  await c.env.DB.prepare(
+  const answerUpdate = await c.env.DB.prepare(
     `UPDATE exam_attempt_questions SET choice_id = ?, is_correct = ?, answered_at = ?
      WHERE id = ? AND attempt_id = ? AND EXISTS (
        SELECT 1 FROM exam_attempts WHERE id = ? AND user_id = ? AND finished_at IS NULL
@@ -439,6 +443,10 @@ const handleAttemptAnswer = async (c: Context<AppEnv>) => {
   )
     .bind(choice.id, isCorrect ? 1 : 0, new Date().toISOString(), item.id, attempt_id, attempt_id, user.id)
     .run();
+
+  if (!answerUpdate.meta.changes) {
+    return c.json({ detail: 'تم إنهاء الامتحان بالفعل ولا يمكن تعديل الإجابات' }, 400);
+  }
 
   return c.json({ message: 'تم حفظ الإجابة بنجاح', recorded: true, ok: true });
 };
@@ -539,6 +547,9 @@ examsRouter.post('/:exam_id/start', requireAuth, async (c) => {
     // Execute atomic batch creation
     try {
       await c.env.DB.batch([attemptStmt, ...itemStmts]);
+      attempt = await c.env.DB.prepare('SELECT * FROM exam_attempts WHERE id = ?')
+        .bind(attemptId)
+        .first();
     } catch {
       // The partial unique index is the race-safe authority.  A concurrent
       // start returns its winner instead of producing a second attempt.
@@ -547,10 +558,6 @@ examsRouter.post('/:exam_id/start', requireAuth, async (c) => {
       ).bind(examId, user.id).first();
       if (!attempt) throw new Error('تعذر إنشاء محاولة الامتحان');
     }
-
-    attempt = await c.env.DB.prepare('SELECT * FROM exam_attempts WHERE id = ?')
-      .bind(attemptId)
-      .first();
   }
 
   if (!attempt) return c.json({ detail: 'خطأ في إنشاء المحاولة' }, 500);
