@@ -27,10 +27,6 @@ export function emailConfigured(config: MailerConfig): boolean {
  * Supports: Resend (smtpHost="resend"), Brevo (smtpHost="brevo"),
  * Mailgun (smtpHost="{domain}.mailgun.org"), or any compatible REST endpoint.
  */
-export function redactEmail(email: string): string {
-  return email.replace(/(?<=^.{2}).*?(?=@)/, '***');
-}
-
 export async function sendEmail(
   config: MailerConfig,
   to: string,
@@ -39,7 +35,7 @@ export async function sendEmail(
   htmlBody?: string
 ): Promise<boolean> {
   if (!emailConfigured(config)) {
-    console.warn(`[mailer] email service not configured — message skipped for ${redactEmail(to)}`);
+    console.warn('[mailer] transactional email is not configured; message skipped');
     return false;
   }
 
@@ -109,7 +105,8 @@ export async function sendEmail(
     console.warn(`[mailer] Unsupported or invalid SMTP_HOST configured. Use 'resend', 'brevo', or a valid provider domain.`);
     return false;
   } catch (err) {
-    console.error(`[mailer] Failed to send email to ${redactEmail(to)}:`, err instanceof Error ? err.message : 'Unknown error');
+    // Provider error details may include recipient data or authorization data.
+    console.error('[mailer] transactional email delivery failed');
     return false;
   }
 }

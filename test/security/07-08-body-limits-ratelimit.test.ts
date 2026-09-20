@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Hono } from 'hono';
 import { createTestContext, type TestContext } from '../harness/test-context';
 import { resetRateLimitStore } from '../../src/middleware/rate-limit';
 import { MAX_DIRECT_UPLOAD_BYTES } from '../../src/services/storage';
+import { errorHandler } from '../../src/middleware/error';
+import type { AppEnv } from '../../src/types';
 import app from '../../src/index';
 
 describe('Stages 7 & 8: Request Body Limits and Rate Limiting', () => {
@@ -13,6 +16,33 @@ describe('Stages 7 & 8: Request Body Limits and Rate Limiting', () => {
   });
 
   describe('Stage 7: Request Body Limits', () => {
+    it('security.errors: neither logs nor returns a raw unexpected exception', async () => {
+      const passwordLikeSecret = 'provider-token=super-secret-value';
+      const isolated = new Hono<AppEnv>();
+      isolated.onError(errorHandler);
+      isolated.get('/broken', () => {
+        throw new Error(passwordLikeSecret);
+      });
+      const logSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      try {
+        const res = await isolated.request('/broken', {}, {
+          ...ctx.bindings,
+          DEBUG: 'false',
+        });
+        expect(res.status).toBe(500);
+        const data = await res.json();
+        expect(data.detail).not.toContain(passwordLikeSecret);
+        expect(JSON.stringify(logSpy.mock.calls)).not.toContain(passwordLikeSecret);
+        expect(logSpy).toHaveBeenCalledWith(JSON.stringify({
+          event: 'UNHANDLED_APPLICATION_ERROR',
+          category: 'unexpected',
+        }));
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+
     it('security.http.oversized-json: rejects JSON bodies larger than 100 KB with 413', async () => {
       // Create a payload > 100 KB
       const largeString = 'A'.repeat(120 * 1024);

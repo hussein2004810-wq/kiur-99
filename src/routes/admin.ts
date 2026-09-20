@@ -1503,9 +1503,9 @@ adminRouter.delete('/academic/stages/:id', async (c) => {
     });
 
     return c.json({ ok: true });
-  } catch (err: any) {
-    console.error('Error deleting stage:', err);
-    return c.json({ detail: err.detail || err.message || 'تعذر حذف المرحلة الدراسية' }, 400);
+  } catch {
+    console.error(JSON.stringify({ event: 'ADMIN_ACADEMIC_STAGE_DELETE_FAILED', category: 'unexpected' }));
+    return c.json({ detail: 'تعذر حذف المرحلة الدراسية' }, 400);
   }
 });
 
@@ -1673,9 +1673,9 @@ adminRouter.put('/academic/subjects/:id', async (c) => {
 
     const updated = await db.select().from(schema.subjects).where(eq(schema.subjects.id, id)).get();
     return c.json(updated);
-  } catch (err: any) {
-    console.error('Error updating subject:', err);
-    return c.json({ detail: err.detail || err.message || 'تعذر تعديل بيانات المادة الدراسية' }, 400);
+  } catch {
+    console.error(JSON.stringify({ event: 'ADMIN_ACADEMIC_SUBJECT_UPDATE_FAILED', category: 'unexpected' }));
+    return c.json({ detail: 'تعذر تعديل بيانات المادة الدراسية' }, 400);
   }
 });
 
@@ -1700,9 +1700,9 @@ adminRouter.delete('/academic/subjects/:id', async (c) => {
     });
 
     return c.json({ ok: true, moved_to_trash: true });
-  } catch (err: any) {
-    console.error('Error deleting subject:', err);
-    return c.json({ detail: err.detail || err.message || 'تعذر حذف المادة الدراسية' }, 400);
+  } catch {
+    console.error(JSON.stringify({ event: 'ADMIN_ACADEMIC_SUBJECT_DELETE_FAILED', category: 'unexpected' }));
+    return c.json({ detail: 'تعذر حذف المادة الدراسية' }, 400);
   }
 });
 

@@ -429,7 +429,8 @@ authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
     if (err instanceof FirebaseAuthError) {
       return c.json({ detail: err.message, code: err.code }, err.statusCode as any);
     }
-    return c.json({ detail: 'فشل التحقق من هوية Google', error: String(err) }, 500);
+    console.error(JSON.stringify({ event: 'FIREBASE_IDENTITY_VERIFICATION_FAILED', category: 'unexpected' }));
+    return c.json({ detail: 'فشل التحقق من هوية Google' }, 500);
   }
 
   const db = drizzle(c.env.DB, { schema });

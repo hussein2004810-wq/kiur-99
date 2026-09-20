@@ -47,7 +47,14 @@ export const validate = <T extends keyof ValidationTargets>(
  * Guarantees that EVERY exception returns `{ "detail": string }` and attaches CORS headers.
  */
 export const errorHandler: ErrorHandler<AppEnv> = (err, c) => {
-  console.error('[Unhandled Error]', err);
+  // Do not send raw exception objects to platform logs: provider, database,
+  // and request errors can include identifiers, credentials, or query text.
+  const category = err instanceof HTTPException
+    ? `http_${err.status}`
+    : err instanceof ZodError
+      ? 'validation'
+      : 'unexpected';
+  console.error(JSON.stringify({ event: 'UNHANDLED_APPLICATION_ERROR', category }));
 
   // Ensure CORS headers are injected on error responses so browsers do not mask errors
   // Ensure CORS and Security headers are injected on error responses so browsers do not mask errors
