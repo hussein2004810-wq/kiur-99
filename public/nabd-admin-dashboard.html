@@ -1208,6 +1208,14 @@
     }[ch]));
   }
 
+  // Media paths originate from the application, not from arbitrary stored URLs.
+  // Escaping alone cannot make an attacker-controlled URL safe in src/href.
+  function safeMediaUrl(value){
+    const path = typeof value === 'string' ? value.trim() : '';
+    if (!/^\/(?:media-files|api\/media)\//.test(path)) return '';
+    return API_BASE_URL + path;
+  }
+
   // HTML escaping does not protect a value embedded in an inline JavaScript
   // handler: the browser decodes entities before compiling the handler.
   function jsArg(value){
@@ -3938,8 +3946,8 @@
     document.getElementById('pProfileTitle').value = d.professor.title || '';
     document.getElementById('pProfileBio').value = d.professor.bio || '';
     const photoWrap = document.getElementById('pProfilePhotoWrap');
-    photoWrap.innerHTML = d.professor.photo_url
-      ? `<img src="${API_BASE_URL}${esc(d.professor.photo_url)}" style="width:100%; height:100%; object-fit:cover;" />`
+    photoWrap.innerHTML = safeMediaUrl(d.professor.photo_url)
+      ? `<img src="${esc(safeMediaUrl(d.professor.photo_url))}" style="width:100%; height:100%; object-fit:cover;" />`
       : (d.professor.name || '').replace('د. ', '').split(' ').map(w => w[0]).slice(0, 2).join('');
     document.getElementById('pWelcomeText').textContent = `مرحباً ${esc(d.professor.name)} — ${esc(d.professor.title)} في ${esc(d.professor.subject)}. من هنا تقدر ترفع ملازم جديدة، تبني امتحانات، وتتابع مستوى طلابك.`;
   }
@@ -4012,7 +4020,7 @@
     document.getElementById('pBookletsBody').innerHTML = d.booklets.map(b => `
       <tr>
         <td><div class="cell-name">${esc(b.title)}</div></td><td>${b.pages}</td>
-        <td>${b.file_url ? `<a href="${API_BASE_URL}${esc(b.file_url)}" target="_blank" class="badge badge-active" style="text-decoration:none;">عرض الملف</a>` : '<span class="badge badge-disabled">لا يوجد ملف</span>'}</td>
+        <td>${safeMediaUrl(b.file_url) ? `<a href="${esc(safeMediaUrl(b.file_url))}" target="_blank" class="badge badge-active" style="text-decoration:none;">عرض الملف</a>` : '<span class="badge badge-disabled">لا يوجد ملف</span>'}</td>
         <td style="text-align:end;"><div style="display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">
           <button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="triggerBookletUpload('${b.id}')">${b.file_url ? 'تغيير الملف' : 'رفع ملف'}</button>
           <button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="promptEditBooklet('${b.id}')">تعديل</button>

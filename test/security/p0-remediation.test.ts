@@ -479,6 +479,16 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(homeHtml).not.toContain("body: JSON.stringify({ email, name, next: 'student' })");
       expect(adminHtml).toContain('function jsArg(value)');
       expect(adminHtml).toContain('deleteUniversity(${jsArg(u.id)}, ${jsArg(u.name)})');
+
+      // URL values need a separate allowlist: entity escaping does not stop
+      // javascript:, data:, or off-origin URLs when placed in src/href.
+      for (const html of [homeHtml, adminHtml]) {
+        expect(html).toContain('function safeMediaUrl(value)');
+        expect(html).toContain("if (!/^\\/(?:media-files|api\\/media)\\//.test(path)) return '';");
+      }
+      expect(homeHtml).toContain('esc(safeMediaUrl(currentUser.photo_url))');
+      expect(homeHtml).toContain('const videoUrl = safeMediaUrl(lec.videoUrl);');
+      expect(adminHtml).toContain('esc(safeMediaUrl(d.professor.photo_url))');
     });
 
     it('rejects skill input containing HTML or script tags with 400', async () => {

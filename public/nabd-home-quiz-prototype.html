@@ -3982,6 +3982,14 @@
     }[ch]));
   }
 
+  // Media paths originate from the application, not from arbitrary stored URLs.
+  // Escaping alone cannot make an attacker-controlled URL safe in src/href.
+  function safeMediaUrl(value){
+    const path = typeof value === 'string' ? value.trim() : '';
+    if (!/^\/(?:media-files|api\/media)\//.test(path)) return '';
+    return API_BASE_URL + path;
+  }
+
   // `esc()` is for visible HTML text only.  Values placed in inline event
   // handlers must remain a single JavaScript string literal after the HTML
   // parser decodes entities; otherwise a quote in stored data can escape it.
@@ -4594,8 +4602,8 @@
     if (!nameEl || !avatarEl) return;
     if (currentUser){
       nameEl.textContent = currentUser.full_name || t('navAccount');
-      avatarEl.innerHTML = currentUser.photo_url
-        ? `<img src="${API_BASE_URL}${esc(currentUser.photo_url)}" alt="${esc(currentUser.full_name)}" />`
+      avatarEl.innerHTML = safeMediaUrl(currentUser.photo_url)
+        ? `<img src="${esc(safeMediaUrl(currentUser.photo_url))}" alt="${esc(currentUser.full_name)}" />`
         : (currentUser.full_name || '').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('');
     } else {
       nameEl.textContent = t('navAccount');
@@ -4768,8 +4776,8 @@
       const b = await apiFetch('/api/professors/booklets/latest');
       if (!b){ showBlock('homeLatestBlock', false); return; }
       showBlock('homeLatestBlock', true);
-      const open = b.file_url
-        ? `<a class="btn btn-ghost item-action" href="${API_BASE_URL}${esc(b.file_url)}" target="_blank" rel="noopener" onclick="recordRecentView('booklet','${b.id}')">${t('open')}</a>`
+      const open = safeMediaUrl(b.file_url)
+        ? `<a class="btn btn-ghost item-action" href="${esc(safeMediaUrl(b.file_url))}" target="_blank" rel="noopener" onclick="recordRecentView('booklet','${b.id}')">${t('open')}</a>`
         : `<button class="btn btn-ghost item-action" onclick="showToast(t('noFileYet'))" style="opacity:.6;">${t('open')}</button>`;
       document.getElementById('homeLatestList').innerHTML = `
         <div class="item-card glass">
@@ -5251,7 +5259,7 @@
     const list = filter === 'all' ? all : all.filter(p => p.subject === filter);
     document.getElementById('profList').innerHTML = list.map(p => `
       <button class="prof-card glass" onclick="openProfessor('${p.id}')">
-        <div class="prof-avatar" style="background:linear-gradient(145deg, ${esc(p.color)}, var(--accent-2)); overflow:hidden;">${p.photoUrl ? `<img src="${API_BASE_URL}${esc(p.photoUrl)}" alt="${esc(p.name)}" style="width:100%; height:100%; object-fit:cover;" />` : initials(p.name)}</div>
+        <div class="prof-avatar" style="background:linear-gradient(145deg, ${esc(p.color)}, var(--accent-2)); overflow:hidden;">${safeMediaUrl(p.photoUrl) ? `<img src="${esc(safeMediaUrl(p.photoUrl))}" alt="${esc(p.name)}" style="width:100%; height:100%; object-fit:cover;" />` : initials(p.name)}</div>
         <div class="prof-info">
           <div class="prof-name">${esc(p.name)}</div>
           <div class="prof-meta">${esc(p.title)} · ${esc(p.subject)}${p.uni ? ' · ' + esc(p.uni) : ''}</div>
@@ -5268,8 +5276,8 @@
   function openProfessor(id){
     const p = activeProfessorsList().find(x => String(x.id) === String(id));
     if (!p) return;
-    const avatarInner = p.photoUrl
-      ? `<img src="${API_BASE_URL}${esc(p.photoUrl)}" alt="${esc(p.name)}" style="width:100%; height:100%; object-fit:cover; border-radius:inherit;" />`
+    const avatarInner = safeMediaUrl(p.photoUrl)
+      ? `<img src="${esc(safeMediaUrl(p.photoUrl))}" alt="${esc(p.name)}" style="width:100%; height:100%; object-fit:cover; border-radius:inherit;" />`
       : initials(p.name);
     document.getElementById('profHeader').innerHTML = `
       <div class="prof-header-avatar" style="background:linear-gradient(145deg, ${esc(p.color)}, var(--accent-2)); overflow:hidden;">${avatarInner}</div>
@@ -5292,7 +5300,7 @@
           <div class="item-title">${esc(b.t)}</div>
           <div class="item-meta">${b.p} صفحة · PDF</div>
         </div>
-        ${b.fileUrl ? `<a class="btn btn-ghost item-action" href="${API_BASE_URL}${esc(b.fileUrl)}" target="_blank" rel="noopener" onclick="recordRecentView('booklet','${b.id}')">${t('open')}</a>` : `<button class="btn btn-ghost item-action" onclick="showToast(t('noFileYet'))" style="opacity:.6;">${t('open')}</button>`}
+        ${safeMediaUrl(b.fileUrl) ? `<a class="btn btn-ghost item-action" href="${esc(safeMediaUrl(b.fileUrl))}" target="_blank" rel="noopener" onclick="recordRecentView('booklet','${b.id}')">${t('open')}</a>` : `<button class="btn btn-ghost item-action" onclick="showToast(t('noFileYet'))" style="opacity:.6;">${t('open')}</button>`}
       </div>
     `).join('') || `<div class="empty-row">${t('noBookletsYet')}</div>`;
     document.getElementById('examsList').innerHTML = exams.map(e => `
@@ -5819,12 +5827,13 @@
     document.getElementById('playerScreen').style.background = `linear-gradient(160deg, ${esc(currentCourse.color)}, var(--accent-2))`;
     document.getElementById('playerLectureTitle').textContent = lec.title;
     document.getElementById('playerSpeedPill').textContent = 'x' + speedOptions[playbackSpeedIdx];
-    document.getElementById('playerCenterBtn').style.display = lec.videoUrl ? '' : 'none';
-    document.getElementById('playBtnSmall').style.display = lec.videoUrl ? '' : 'none';
-    if (lec.videoUrl){
+    const videoUrl = safeMediaUrl(lec.videoUrl);
+    document.getElementById('playerCenterBtn').style.display = videoUrl ? '' : 'none';
+    document.getElementById('playBtnSmall').style.display = videoUrl ? '' : 'none';
+    if (videoUrl){
       placeholder.style.display = 'none';
       video.style.display = 'block';
-      const src = API_BASE_URL + lec.videoUrl;
+      const src = videoUrl;
       if (video.getAttribute('data-src') !== src){
         video.pause();
         video.src = src;
@@ -5945,7 +5954,7 @@
           <div class="item-title">${esc(b.title)}</div>
           <div class="item-meta">${b.pages} صفحة · PDF</div>
         </div>
-        ${b.file_url ? `<a class="btn btn-ghost item-action" href="${API_BASE_URL}${esc(b.file_url)}" target="_blank" rel="noopener" onclick="recordRecentView('booklet','${b.id}')">${t('open')}</a>` : `<button class="btn btn-ghost item-action" onclick="showToast(t('noFileYet'))" style="opacity:.6;">${t('open')}</button>`}
+        ${safeMediaUrl(b.file_url) ? `<a class="btn btn-ghost item-action" href="${esc(safeMediaUrl(b.file_url))}" target="_blank" rel="noopener" onclick="recordRecentView('booklet','${b.id}')">${t('open')}</a>` : `<button class="btn btn-ghost item-action" onclick="showToast(t('noFileYet'))" style="opacity:.6;">${t('open')}</button>`}
       </div>
     `).join('') || `<div class="empty-row">${t('noBookletsForCourse')}</div>`;
     quizzesEl.innerHTML = materials.exams.map(e => `
@@ -6113,8 +6122,8 @@
     if (nameEl) nameEl.textContent = u.full_name || '—';
     const editNameEl = document.getElementById('accEditName');
     if (editNameEl) editNameEl.textContent = u.full_name || '—';
-    const avatarHtml = u.photo_url
-      ? `<img src="${API_BASE_URL}${esc(u.photo_url)}" alt="${esc(u.full_name)}" style="width:100%; height:100%; object-fit:cover;" />`
+    const avatarHtml = safeMediaUrl(u.photo_url)
+      ? `<img src="${esc(safeMediaUrl(u.photo_url))}" alt="${esc(u.full_name)}" style="width:100%; height:100%; object-fit:cover;" />`
       : (u.full_name || '').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('');
     const avatarEl = document.getElementById('accAvatar');
     if (avatarEl) avatarEl.innerHTML = avatarHtml;
@@ -7786,7 +7795,7 @@
     container.innerHTML = `
       <div class="glimpseSpotlight ${fading ? 'isFading' : ''}">
         <div class="glimpseSpotlightVisual">
-          ${item.imageUrl ? `<img src="${esc(item.imageUrl)}" alt="${esc(item.title)}" loading="lazy" />` : `<div class="clinicalFlipIconPlaceholder">${heartPulseSvg}</div>`}
+          ${safeMediaUrl(item.imageUrl) ? `<img src="${esc(safeMediaUrl(item.imageUrl))}" alt="${esc(item.title)}" loading="lazy" />` : `<div class="clinicalFlipIconPlaceholder">${heartPulseSvg}</div>`}
           <span class="clinicalFlipDateBadge">${fmtGlimpseDate(item.publishedAt)}</span>
         </div>
         <div class="glimpseSpotlightCopy">
@@ -7945,7 +7954,7 @@
         <div class="clinicalFlipCardInner">
           <div class="clinicalFlipCardFace clinicalFlipCardFront">
             <div class="clinicalFlipVisual">
-              ${item.imageUrl ? `<img src="${esc(item.imageUrl)}" alt="${esc(item.title)}" loading="lazy" />` : `<div class="clinicalFlipIconPlaceholder">${heartPulseSvg}</div>`}
+              ${safeMediaUrl(item.imageUrl) ? `<img src="${esc(safeMediaUrl(item.imageUrl))}" alt="${esc(item.title)}" loading="lazy" />` : `<div class="clinicalFlipIconPlaceholder">${heartPulseSvg}</div>`}
               <span class="clinicalFlipDateBadge">${fmtGlimpseDate(item.publishedAt)}</span>
             </div>
             <div class="clinicalFlipContent">
@@ -8012,7 +8021,7 @@
     const dateStr = item.publishedAt ? fmtGlimpseDate(item.publishedAt) : 'لمحة سريرية';
 
     content.innerHTML = `
-      ${item.imageUrl ? `<img src="${esc(item.imageUrl)}" alt="${esc(item.title)}" style="width:100%; max-height:260px; object-fit:cover; border-radius:14px; margin-bottom:14px; border:1px solid var(--glass-border);" />` : ''}
+      ${safeMediaUrl(item.imageUrl) ? `<img src="${esc(safeMediaUrl(item.imageUrl))}" alt="${esc(item.title)}" style="width:100%; max-height:260px; object-fit:cover; border-radius:14px; margin-bottom:14px; border:1px solid var(--glass-border);" />` : ''}
       <div class="glimpseDetailBody">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <span class="badge badge-active" style="font-size:.72rem;">${esc(dateStr)}</span>
@@ -8249,7 +8258,7 @@
       const rows = await apiFetch('/auth/leaderboard');
       list.innerHTML = rows.map(r => `
         <div class="item-card glass" style="cursor:pointer; ${r.is_you ? 'border:1.5px solid var(--accent);' : ''}" onclick="openStudentProfile('${r.user_id}')">
-          <div class="item-icon" style="background:var(--accent-2); color:#fff; font-weight:700; overflow:hidden;">${r.photo_url ? `<img src="${API_BASE_URL}${esc(r.photo_url)}" style="width:100%; height:100%; object-fit:cover;" />` : '#' + r.rank}</div>
+          <div class="item-icon" style="background:var(--accent-2); color:#fff; font-weight:700; overflow:hidden;">${safeMediaUrl(r.photo_url) ? `<img src="${esc(safeMediaUrl(r.photo_url))}" style="width:100%; height:100%; object-fit:cover;" />` : '#' + r.rank}</div>
           <div class="item-body">
             <div class="item-title">${esc(r.full_name)}${r.is_you ? ' (أنت)' : ''}</div>
             <div class="item-meta">#${r.rank} · ${r.correct_count} إجابة صحيحة</div>
@@ -8283,7 +8292,7 @@
       const rows = await apiFetch('/api/students/search?q=' + encodeURIComponent(q));
       resultsEl.innerHTML = rows.map(s => `
         <div class="item-card glass" style="cursor:pointer;" onclick="openStudentProfile('${s.id}')">
-          <div class="item-icon" style="background:var(--accent-2); color:#fff; font-weight:700; overflow:hidden;">${s.photo_url ? `<img src="${API_BASE_URL}${esc(s.photo_url)}" style="width:100%; height:100%; object-fit:cover;" />` : (s.full_name||'').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('')}</div>
+          <div class="item-icon" style="background:var(--accent-2); color:#fff; font-weight:700; overflow:hidden;">${safeMediaUrl(s.photo_url) ? `<img src="${esc(safeMediaUrl(s.photo_url))}" style="width:100%; height:100%; object-fit:cover;" />` : (s.full_name||'').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('')}</div>
           <div class="item-body">
             <div class="item-title">${esc(s.full_name)}</div>
             ${s.caption ? `<div class="item-meta">${esc(s.caption)}</div>` : ''}
@@ -8305,8 +8314,8 @@
     document.getElementById('spSkills').innerHTML = '';
     try {
       const p = await apiFetch('/api/students/' + id + '/profile');
-      document.getElementById('spAvatar').innerHTML = p.photo_url
-        ? `<img src="${API_BASE_URL}${esc(p.photo_url)}" style="width:100%; height:100%; object-fit:cover;" />`
+      document.getElementById('spAvatar').innerHTML = safeMediaUrl(p.photo_url)
+        ? `<img src="${esc(safeMediaUrl(p.photo_url))}" style="width:100%; height:100%; object-fit:cover;" />`
         : (p.full_name || '').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('');
       document.getElementById('spName').textContent = p.full_name;
       document.getElementById('spCaption').textContent = p.caption || '';
