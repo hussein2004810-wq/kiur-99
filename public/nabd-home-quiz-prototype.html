@@ -7193,40 +7193,9 @@
   }
 
   async function selectGoogleAccount(email, name, color){
-    showToast('جارٍ تسجيل الدخول بحساب Google...');
-    try {
-      const res = await fetch(API_BASE_URL + '/auth/google/verify', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, next: 'student' }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.detail || 'تعذّر تسجيل الدخول بحساب Google');
-
-      if (data.requires_2fa) {
-        closeGoogleChooser();
-        dismissGoogleOneTap();
-        goToTotpVerify(data.pending_token);
-        return;
-      }
-
-      authToken = data.access_token;
-      currentUser = data.user;
-      closeGoogleChooser();
-      dismissGoogleOneTap();
-      proceedAfterAuth();
-      showToast(`مرحباً بك ${currentUser.full_name || ''}! تم تسجيل الدخول بنجاح عبر Google`);
-    } catch (err) {
-      showToast(err.message || 'تعذّر إكمال تسجيل الدخول عبر Google', 'error');
-      const nextBtn = document.getElementById('googleNextBtn');
-      if (nextBtn) { nextBtn.disabled = false; nextBtn.textContent = 'التالي'; }
-      const inputErr = document.getElementById('googleInputError');
-      if (inputErr) {
-        inputErr.style.display = 'block';
-        inputErr.textContent = err.message || 'فشل التحقق من الحساب';
-      }
-    }
+    // A remembered address is display-only; it is never proof of Google
+    // ownership.  The server accepts only a signed GIS ID credential.
+    await startGoogleSignIn();
   }
 
   function dismissGoogleOneTap(){
@@ -7255,33 +7224,8 @@
       }
     } catch (e) {}
 
-    // Fallback: If no official Google Client ID configured, show One Tap if accounts exist on this device!
-    if (!authToken) {
-      setTimeout(() => {
-        if (authToken) return;
-        const accounts = getGoogleSavedAccounts();
-        if (accounts.length > 0) {
-          const acc = accounts[0];
-          const oneTap = document.getElementById('googleNativeOneTap');
-          const body = document.getElementById('googleOneTapBody');
-          if (oneTap && body) {
-            body.innerHTML = `
-              <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
-                <div class="google-avatar-circle" style="background:${acc.color || '#1a73e8'}; width:40px; height:40px; font-size:16px;">${esc(acc.initial || acc.name[0] || 'G')}</div>
-                <div style="min-width:0; text-align:right;">
-                  <div style="font-weight:700; font-size:14px; color:#202124; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(acc.name)}</div>
-                  <div style="font-size:12px; color:#5f6368; direction:ltr; text-align:right;">${esc(acc.email)}</div>
-                </div>
-              </div>
-              <button type="button" class="google-onetap-btn" onclick="selectGoogleAccount(${jsArg(acc.email)}, ${jsArg(acc.name)}, ${jsArg(acc.color)})">
-                المتابعة باسم ${esc(acc.name.split(' ')[0])}
-              </button>
-            `;
-            oneTap.style.display = 'block';
-          }
-        }
-      }, 750);
-    }
+    // Do not offer a local-account fallback: only Google's signed response is
+    // valid evidence of ownership.
   }
 
   async function startGoogleSignIn(){
@@ -7296,26 +7240,16 @@
       } catch (e) {}
     }
 
-    if (googleClientId && window.google && window.google.accounts && window.google.accounts.oauth2) {
+    if (googleClientId && window.google && window.google.accounts && window.google.accounts.id) {
       try {
-        const tokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: googleClientId,
-          scope: 'openid email profile',
-          callback: async (tokenResponse) => {
-            if (tokenResponse && tokenResponse.access_token) {
-              await verifyGoogleAccessToken(tokenResponse.access_token);
-            }
-          },
-        });
-        tokenClient.requestAccessToken({ prompt: 'select_account' });
+        google.accounts.id.prompt();
         return;
       } catch (err) {
-        console.warn('OAuth2 popup client fallback:', err);
+        console.warn('Google Identity Services prompt failed:', err);
       }
     }
 
-    // 2. Seamless Global Google Native Account Chooser (100% Free, Zero-Config, Works globally including Iraq!)
-    openGoogleAccountChooser();
+    showToast('تسجيل Google غير مهيأ حالياً. أعد المحاولة بعد إعداد Google Identity Services.', 'error');
   }
 
   async function handleGoogleCredentialResponse(response){
@@ -7343,27 +7277,9 @@
   }
 
   async function verifyGoogleAccessToken(accessToken){
-    if (!accessToken) return;
-    try {
-      showToast('جارٍ تسجيل الدخول بحساب Google...');
-      const res = await fetch(API_BASE_URL + '/auth/google/verify', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_token: accessToken, next: 'student' }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.detail || 'فشل التحقق من حساب Google');
-      if (data.requires_2fa) {
-        goToTotpVerify(data.pending_token);
-        return;
-      }
-      authToken = data.access_token;
-      currentUser = data.user;
-      proceedAfterAuth();
-    } catch (err) {
-      showToast(err.message || 'تعذّر تسجيل الدخول عبر Google');
-    }
+    // Retained only for compatibility with an old event hook; access tokens
+    // are intentionally not accepted as application login credentials.
+    await startGoogleSignIn();
   }
 
   // ---------- Email + password sign-in / sign-up ----------

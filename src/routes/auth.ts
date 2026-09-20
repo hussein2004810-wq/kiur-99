@@ -177,11 +177,15 @@ authRouter.post('/google/login', async (c) => {
 authRouter.post('/google/verify', async (c) => {
   const body = await c.req.json<{ credential?: string; access_token?: string; next?: string }>().catch(() => ({} as any));
   const credential = body.credential;
-  const accessToken = body.access_token;
   const flow = body.next === 'admin' ? 'admin' : 'student';
 
-  if (!credential && !accessToken) {
-    return c.json({ detail: 'رمز مصادقة Google مفقود' }, 400);
+  if (!credential) {
+    return c.json({ detail: 'رمز Google ID الموقّع من Google Identity Services مفقود' }, 400);
+  }
+
+  const expectedAud = c.env.GOOGLE_CLIENT_ID?.trim();
+  if (!expectedAud || expectedAud.includes('your-client-id')) {
+    return c.json({ detail: 'خدمة المصادقة عبر Google غير مهيأة على الخادم' }, 503);
   }
 
   let email = '';
@@ -190,48 +194,27 @@ authRouter.post('/google/verify', async (c) => {
   let picture = '';
   let emailVerified = false;
 
-  if (credential) {
-    try {
-      const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-      if (!verifyRes.ok) {
-        return c.json({ detail: 'رمز مصادقة Google غير صالح أو مرفوض من Google' }, 401);
-      }
-      const info = await verifyRes.json<{ email: string; name: string; sub: string; picture: string; email_verified: string | boolean; iss?: string; aud?: string }>();
-      email = String(info.email || '').trim().toLowerCase();
-      name = String(info.name || '');
-      sub = String(info.sub || '');
-      picture = String(info.picture || '');
-      emailVerified = isVerifiedGoogleEmail(info.email_verified);
-
-      const validIssuers = ['accounts.google.com', 'https://accounts.google.com'];
-      if (info.iss && !validIssuers.includes(info.iss)) {
-        return c.json({ detail: 'مصدر رمز Google غير صالح' }, 401);
-      }
-
-      const expectedAud = c.env.GOOGLE_CLIENT_ID;
-      if (expectedAud && info.aud && info.aud !== expectedAud) {
-        return c.json({ detail: 'رمز Google غير مخصص لهذا التطبيق' }, 401);
-      }
-    } catch {
-      return c.json({ detail: 'تعذر التحقق من رمز Google حالياً' }, 503);
+  try {
+    const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    if (!verifyRes.ok) {
+      return c.json({ detail: 'رمز مصادقة Google غير صالح أو مرفوض من Google' }, 401);
     }
-  } else if (accessToken) {
-    try {
-      const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!userRes.ok) {
-        return c.json({ detail: 'فشل التحقق من رمز الوصول مع Google' }, 401);
-      }
-      const info = await userRes.json<{ email: string; name: string; sub: string; picture: string; email_verified?: string | boolean; verified_email?: string | boolean }>();
-      email = String(info.email || '').trim().toLowerCase();
-      name = String(info.name || '');
-      sub = String(info.sub || '');
-      picture = String(info.picture || '');
-      emailVerified = isVerifiedGoogleEmail(info.email_verified) || isVerifiedGoogleEmail(info.verified_email);
-    } catch {
-      return c.json({ detail: 'تعذر التحقق من رمز الوصول حالياً' }, 503);
+    const info = await verifyRes.json<{ email: string; name: string; sub: string; picture: string; email_verified: string | boolean; iss?: string; aud?: string }>();
+    email = String(info.email || '').trim().toLowerCase();
+    name = String(info.name || '');
+    sub = String(info.sub || '');
+    picture = String(info.picture || '');
+    emailVerified = isVerifiedGoogleEmail(info.email_verified);
+
+    const validIssuers = ['accounts.google.com', 'https://accounts.google.com'];
+    if (!info.iss || !validIssuers.includes(info.iss)) {
+      return c.json({ detail: 'مصدر رمز Google غير صالح' }, 401);
     }
+    if (info.aud !== expectedAud) {
+      return c.json({ detail: 'رمز Google غير مخصص لهذا التطبيق' }, 401);
+    }
+  } catch {
+    return c.json({ detail: 'تعذر التحقق من رمز Google حالياً' }, 503);
   }
 
   if (!email || !email.includes('@') || !emailVerified) {

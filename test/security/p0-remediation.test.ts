@@ -97,6 +97,46 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(user).toBeNull();
     });
 
+    it('rejects a Google access token because it is not an audience-bound ID credential', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch');
+      try {
+        const res = await apiRequest(app, 'POST', '/auth/google/verify', {
+          body: { access_token: 'google_access_token_from_another_client' },
+        }, ctx);
+
+        expect(res.status).toBe(400);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        fetchMock.mockRestore();
+      }
+    });
+
+    it('rejects a signed Google token issued for another OAuth client', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+        email: 'wrong-audience@nabd.app',
+        name: 'رمز لجمهور آخر',
+        sub: 'google_wrong_audience',
+        email_verified: true,
+        iss: 'https://accounts.google.com',
+        aud: 'other-client-id.apps.googleusercontent.com',
+      }), { status: 200 }));
+
+      try {
+        const res = await apiRequest(app, 'POST', '/auth/google/verify', {
+          body: { credential: 'signed-token-for-other-client' },
+        }, {
+          ...ctx,
+          bindings: { ...ctx.bindings, GOOGLE_CLIENT_ID: 'kiur-client-id.apps.googleusercontent.com' },
+        });
+
+        expect(res.status).toBe(401);
+        expect((await res.json()).detail).toContain('غير مخصص');
+        expect(await ctx.db.prepare('SELECT id FROM users WHERE email = ?').bind('wrong-audience@nabd.app').first()).toBeNull();
+      } finally {
+        fetchMock.mockRestore();
+      }
+    });
+
     it('rejects forged JWT with fake_signature on POST /auth/google/verify with 401 Unauthorized', async () => {
       const forgedPayload = {
         email: 'forged_admin@gmail.com',
@@ -406,6 +446,7 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(adminHtml).toContain("(c.is_correct ? '✓ ' : '• ') + esc(c.text)");
       expect(homeHtml).toContain('function jsArg(value)');
       expect(homeHtml).toContain('bsQuickStart(${jsArg(sub.id)}, ${jsArg(sub.name)})');
+      expect(homeHtml).not.toContain("body: JSON.stringify({ email, name, next: 'student' })");
       expect(adminHtml).toContain('function jsArg(value)');
       expect(adminHtml).toContain('deleteUniversity(${jsArg(u.id)}, ${jsArg(u.name)})');
     });
