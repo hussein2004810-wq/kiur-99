@@ -17,7 +17,9 @@ export interface MailerConfig {
 }
 
 export function emailConfigured(config: MailerConfig): boolean {
-  return Boolean(config.smtpHost && (config.smtpFrom || config.smtpUser));
+  const host = config.smtpHost?.trim().toLowerCase() ?? '';
+  const supportedProvider = host === 'resend' || host === 'brevo' || host === 'smtp-relay.brevo.com' || host.includes('mailgun');
+  return Boolean(supportedProvider && config.smtpPassword?.trim() && (config.smtpFrom?.trim() || config.smtpUser?.trim()));
 }
 
 /**

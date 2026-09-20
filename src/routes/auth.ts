@@ -594,6 +594,11 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
   if (!domainAllowed(email, c.env.ALLOWED_UNIVERSITY_DOMAINS ?? '')) return c.json({ detail: 'الرجاء التسجيل ببريدك الجامعي الرسمي' }, 403);
   if (password.length < 6) return c.json({ detail: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, 400);
 
+  const mailerConfig = { smtpHost: c.env.SMTP_HOST, smtpUser: c.env.SMTP_USER, smtpPassword: c.env.SMTP_PASSWORD, smtpFrom: c.env.SMTP_FROM, smtpFromName: c.env.SMTP_FROM_NAME };
+  if ((c.env.DEBUG ?? 'true') !== 'true' && !emailConfigured(mailerConfig)) {
+    return c.json({ detail: 'التسجيل غير متاح مؤقتاً لأن خدمة توثيق البريد غير مهيأة' }, 503);
+  }
+
   const existing = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
   if (existing) return c.json({ detail: 'البريد الإلكتروني مسجل بالفعل' }, 400);
 
@@ -636,7 +641,6 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
     token_hash: verificationHash,
     expires_at: verifExpires,
   });
-  const mailerConfig = { smtpHost: c.env.SMTP_HOST, smtpUser: c.env.SMTP_USER, smtpPassword: c.env.SMTP_PASSWORD, smtpFrom: c.env.SMTP_FROM, smtpFromName: c.env.SMTP_FROM_NAME };
   if (emailConfigured(mailerConfig)) c.executionCtx.waitUntil(sendEmailVerification(mailerConfig, email, `${new URL(c.req.url).origin}/auth/verify-email?token=${encodeURIComponent(rawVerificationToken)}`));
 
   await recordAccountEvent(db, {

@@ -26,6 +26,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - Every Google entry point now requires a provider-asserted verified email before it creates, verifies, or signs in a local user; a verified Google callback may safely mark an existing local password account verified.
 - The Google GIS endpoint accepts only a signed ID credential whose issuer and audience exactly match the configured KIUR Google client; general OAuth access tokens and local remembered-account fallbacks cannot establish a session.
 - When SMTP is configured, registration and resend create a single-use verification token and schedule delivery of a link to `GET /auth/verify-email`; that callback consumes the same token-validation path as `POST /auth/verify-email` and redirects to a success or failure state.
+- A production password-registration request now fails before creating a user unless a supported transactional-mail provider, sender identity, and provider secret are present; local debug mode remains usable for development and test workflows.
 - The CSP permits only the Google Identity script origin required by the SPA, removes the unused jsDelivr allowlist, and restricts form submissions to same-origin destinations.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
 - Dynamic user-controlled values that must be passed to legacy inline handlers are encoded as a single JavaScript argument rather than HTML-escaped inside a quoted handler literal, preventing quote-breakout from stored catalogue, account, or Google-profile data.
@@ -37,9 +38,9 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 ## Verification performed locally
 
 - `npm run typecheck` passed after the final application changes.
-- `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 34 tests, including verification-link, verified/unverified Google OAuth callback, audience, and access-token rejection cases.
-- `npm test` passed: 40 files and 538 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, CSP-source, and Google OAuth credential changes.
-- `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 125 tests against the actual Worker routes.
+- `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 36 tests, including verification-link, verified/unverified Google OAuth callback, audience, access-token rejection, and production-mail readiness cases.
+- `npm test` passed: 40 files and 540 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, CSP-source, Google OAuth credential, and mail-readiness changes.
+- `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 127 tests against the actual Worker routes.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
 - Vitest was upgraded to `4.1.11`, closing its Moderate mocker path-traversal advisory.  `npm audit --json` now reports four Moderate development-only findings from Drizzle Kit's legacy `@esbuild-kit` chain; npm's only suggested fix is a major downgrade of Drizzle Kit to `0.18.1`, so it was not applied automatically.
 

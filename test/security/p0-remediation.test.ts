@@ -4,6 +4,7 @@ import { createTestContext, TestContext } from '../harness/test-context';
 import { apiRequest } from '../harness/app';
 import mainApp from '../../src/index';
 import { hashResetToken } from '../../src/services/crypto';
+import { emailConfigured } from '../../src/services/mailer';
 
 describe('P0 Security Vulnerability Remediation Suite', () => {
   let ctx: TestContext;
@@ -60,6 +61,35 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
         body: { email: 'role-escalation@nabd.app', password: 'Password123!' },
       }, ctx);
       expect(login.status).toBe(403);
+    });
+
+    it('does not create an unactivatable password account in production when mail is unavailable', async () => {
+      const res = await apiRequest(app, 'POST', '/auth/register', {
+        body: {
+          email: 'mail-unavailable@nabd.app',
+          full_name: 'طالب بلا بريد',
+          password: 'Password123!',
+        },
+      }, {
+        ...ctx,
+        bindings: {
+          ...ctx.bindings,
+          DEBUG: 'false',
+          JWT_SECRET: 'valid-secure-production-secret-with-at-least-32-characters!',
+          CORS_ORIGINS: 'https://app.kiur.edu.iq',
+          SMTP_HOST: '',
+          SMTP_PASSWORD: '',
+        },
+      });
+
+      expect(res.status).toBe(503);
+      expect(await ctx.db.prepare('SELECT id FROM users WHERE email = ?').bind('mail-unavailable@nabd.app').first()).toBeNull();
+    });
+
+    it('requires a supported mail provider and secret before treating email delivery as configured', () => {
+      expect(emailConfigured({ smtpHost: 'resend', smtpFrom: 'no-reply@kiur.edu', smtpPassword: '' })).toBe(false);
+      expect(emailConfigured({ smtpHost: 'smtp.example.test', smtpFrom: 'no-reply@kiur.edu', smtpPassword: 'key' })).toBe(false);
+      expect(emailConfigured({ smtpHost: 'resend', smtpFrom: 'no-reply@kiur.edu', smtpPassword: 'key' })).toBe(true);
     });
 
     it('rejects unauthenticated email login via POST /auth/google/login with 405 Method Not Allowed', async () => {
