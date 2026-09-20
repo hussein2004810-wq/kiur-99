@@ -381,7 +381,8 @@ CREATE TABLE IF NOT EXISTS exam_attempts (
     score INTEGER NOT NULL DEFAULT 0,
     total INTEGER NOT NULL DEFAULT 0,
     revision INTEGER NOT NULL DEFAULT 1,
-    start_idempotency_key TEXT
+    start_idempotency_key TEXT,
+    finish_idempotency_key TEXT
 );
 CREATE INDEX IF NOT EXISTS exam_attempts_exam_id_idx ON exam_attempts(exam_id);
 CREATE INDEX IF NOT EXISTS exam_attempts_user_id_idx ON exam_attempts(user_id);

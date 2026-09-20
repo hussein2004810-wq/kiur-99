@@ -570,6 +570,7 @@ export const examAttempts = sqliteTable('exam_attempts', {
   total: integer('total').notNull().default(0),
   revision: integer('revision').notNull().default(1),
   start_idempotency_key: text('start_idempotency_key'),
+  finish_idempotency_key: text('finish_idempotency_key'),
 }, (table) => ({
   exam_id_idx: index('exam_attempts_exam_id_idx').on(table.exam_id),
   user_id_idx: index('exam_attempts_user_id_idx').on(table.user_id),

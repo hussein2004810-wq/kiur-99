@@ -168,6 +168,28 @@ describe('Phase C Security & Reliability: Exam Integrity, Concurrency & Scoring'
     expect(data2.detail).toContain('تم إنهاء الامتحان مسبقاً');
   });
 
+  it('C.6b: Replays a finish response only for the same idempotency key', async () => {
+    const startRes = await apiRequest(app, 'POST', `/api/exams/${ctx.fixtures.examId}/start`, {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
+    const { attempt_id } = await startRes.json();
+    const headers = { 'Idempotency-Key': 'finish-retry-key-0001' };
+
+    const first = await apiRequest(app, 'POST', `/api/exams/attempts/${attempt_id}/finish`, {
+      token: ctx.fixtures.users.student.token,
+      headers,
+    }, ctx);
+    expect(first.status).toBe(200);
+    const firstBody = await first.json();
+
+    const replay = await apiRequest(app, 'POST', `/api/exams/attempts/${attempt_id}/finish`, {
+      token: ctx.fixtures.users.student.token,
+      headers,
+    }, ctx);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(firstBody);
+  });
+
   it('C.7: Rejects choice not belonging to the question', async () => {
     const startRes = await apiRequest(app, 'POST', `/api/exams/${ctx.fixtures.examId}/start`, {
       token: ctx.fixtures.users.student.token,

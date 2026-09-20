@@ -113,6 +113,18 @@ function snapshotChoice(item: any, choiceId: string): any | null {
   return Array.isArray(choices) ? choices.find((choice) => choice?.id === choiceId) ?? null : null;
 }
 
+function finishPayload(attemptId: string, attempt: any) {
+  const score = Number(attempt?.score ?? 0);
+  const total = Number(attempt?.total ?? 0);
+  return {
+    attempt_id: attemptId,
+    score,
+    total,
+    percentage: total > 0 ? Math.round((score / total) * 100) : 0,
+    finished_at: attempt?.finished_at ?? null,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public Routes: Listing & Leaderboard
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,7 +176,7 @@ examsRouter.get('/attempts/mine', requireAuth, async (c) => {
 // GET /api/exams/attempts/:attempt_id/review
 examsRouter.get('/attempts/:attempt_id/review', requireAuth, async (c) => {
   const user = c.get('user')!;
-  const attemptId = c.req.param('attempt_id');
+  const attemptId = c.req.param('attempt_id') ?? '';
 
   const attempt = await c.env.DB.prepare('SELECT * FROM exam_attempts WHERE id = ?')
     .bind(attemptId)
@@ -220,7 +232,11 @@ examsRouter.get('/attempts/:attempt_id/result', requireAuth, async (c) => {
 // POST /api/exams/attempts/:attempt_id/finish
 examsRouter.post('/attempts/:attempt_id/finish', requireAuth, async (c) => {
   const user = c.get('user')!;
-  const attemptId = c.req.param('attempt_id');
+  const attemptId = c.req.param('attempt_id') ?? '';
+  const idempotencyKey = c.req.header('Idempotency-Key')?.trim() || null;
+  if (idempotencyKey && !/^[A-Za-z0-9_-]{16,128}$/.test(idempotencyKey)) {
+    return c.json({ detail: 'مفتاح idempotency غير صالح' }, 400);
+  }
 
   const attempt = await c.env.DB.prepare('SELECT * FROM exam_attempts WHERE id = ?')
     .bind(attemptId)
@@ -235,6 +251,9 @@ examsRouter.post('/attempts/:attempt_id/finish', requireAuth, async (c) => {
     return c.json({ detail: 'محاولة الامتحان غير موجودة' }, 404);
   }
   if (attempt.finished_at) {
+    if (idempotencyKey && attempt.finish_idempotency_key === idempotencyKey) {
+      return c.json(finishPayload(attemptId, attempt));
+    }
     return c.json({ detail: 'تم إنهاء الامتحان مسبقاً' }, 400);
   }
 
@@ -247,21 +266,25 @@ examsRouter.post('/attempts/:attempt_id/finish', requireAuth, async (c) => {
     `UPDATE exam_attempts
        SET score = (SELECT COUNT(*) FROM exam_attempt_questions WHERE attempt_id = ? AND is_correct = 1),
            total = (SELECT COUNT(*) FROM exam_attempt_questions WHERE attempt_id = ?),
-           finished_at = ?
+           finished_at = ?,
+           finish_idempotency_key = ?
      WHERE id = ? AND user_id = ? AND finished_at IS NULL`
   )
-    .bind(attemptId, attemptId, finishedAt, attemptId, user.id)
+    .bind(attemptId, attemptId, finishedAt, idempotencyKey, attemptId, user.id)
     .run();
 
   if (!updateRes.meta.changes) {
+    const current = await c.env.DB.prepare(
+      'SELECT score, total, finished_at, finish_idempotency_key FROM exam_attempts WHERE id = ? AND user_id = ?'
+    ).bind(attemptId, user.id).first();
+    if (current?.finished_at && idempotencyKey && current.finish_idempotency_key === idempotencyKey) {
+      return c.json(finishPayload(attemptId, current));
+    }
     return c.json({ detail: 'تم إنهاء الامتحان مسبقاً' }, 400);
   }
 
-  const finished = await c.env.DB.prepare('SELECT score, total FROM exam_attempts WHERE id = ?')
+  const finished = await c.env.DB.prepare('SELECT score, total, finished_at FROM exam_attempts WHERE id = ?')
     .bind(attemptId).first<any>();
-  const score = Number(finished?.score ?? 0);
-  const total = Number(finished?.total ?? 0);
-  const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
 
   // Copy answered questions to student_answers for student analytics & profile stats
   const answers = await c.env.DB.prepare(
@@ -280,13 +303,7 @@ examsRouter.post('/attempts/:attempt_id/finish', requireAuth, async (c) => {
     await c.env.DB.batch(saStmts);
   }
 
-  return c.json({
-    attempt_id: attemptId,
-    score,
-    total,
-    percentage,
-    finished_at: finishedAt,
-  });
+  return c.json(finishPayload(attemptId, finished));
 });
 
 // POST /api/exams/attempts/:attempt_id/items/:item_id/answer
