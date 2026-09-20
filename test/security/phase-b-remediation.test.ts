@@ -210,13 +210,12 @@ describe('Phase B Security & Privacy Remediation Suite (Section 4 Findings)', ()
       ).run();
       const tokenB = ctx.createAuthToken('usr_res_b', 'reseller', 'ses_res_b');
 
-      // Reseller B generates a code
-      const genRes = await apiRequest(app, 'POST', '/api/reseller/generate', {
-        token: tokenB,
-        body: { count: 1 },
+      // Only an admin can allocate inventory to Reseller B.
+      const allocationRes = await apiRequest(app, 'POST', '/api/admin/resellers/usr_res_b/codes?count=1', {
+        token: ctx.fixtures.users.admin.token,
       }, ctx);
-      expect(genRes.status).toBe(200);
-      const { codes } = await genRes.json();
+      expect(allocationRes.status).toBe(200);
+      const { codes } = await allocationRes.json();
       const codeRecord = await ctx.db.prepare('SELECT id FROM activation_codes WHERE code = ?').bind(codes[0]).first();
 
       // Reseller A attempts to mark Reseller B's code as sold -> 404 / Forbidden
@@ -234,7 +233,7 @@ describe('Phase B Security & Privacy Remediation Suite (Section 4 Findings)', ()
       expect(sellOwnRes.status).toBe(200);
     });
 
-    it('blocks generating more codes when reseller exceeds idle stock quota', async () => {
+    it('prevents a reseller from minting activation-code inventory directly', async () => {
       const hash = '$2a$10$abcdefghijklmnopqrstuu';
       await ctx.db.prepare(
         "INSERT INTO users (id, email, full_name, password_hash, role) VALUES ('usr_res_quota', 'quota@nabd.app', 'مندوب الرصيد', ?, 'reseller')"
@@ -244,21 +243,14 @@ describe('Phase B Security & Privacy Remediation Suite (Section 4 Findings)', ()
       ).run();
       const token = ctx.createAuthToken('usr_res_quota', 'reseller', 'ses_quota');
 
-      // Insert 200 idle codes for this reseller directly into DB
-      for (let i = 0; i < 200; i++) {
-        await ctx.db.prepare(
-          "INSERT INTO activation_codes (id, code, status, reseller_id) VALUES (?, ?, 'idle', 'usr_res_quota')"
-        ).bind(`code_q_${i}`, `NBD-QUOTA-${i}`).run();
-      }
-
-      // Reseller attempts to generate another batch -> 429 Quota Exceeded
+      // Reseller attempts to mint a batch rather than receiving admin stock.
       const res = await apiRequest(app, 'POST', '/api/reseller/generate', {
         token,
         body: { count: 5 },
       }, ctx);
-      expect(res.status).toBe(429);
+      expect(res.status).toBe(403);
       const data = await res.json();
-      expect(data.detail).toContain('تجاوزت الحد المسموح للأكواد غير المفعلة');
+      expect(data.detail).toContain('تُخصّص حصراً من إدارة المنصة');
     });
   });
 

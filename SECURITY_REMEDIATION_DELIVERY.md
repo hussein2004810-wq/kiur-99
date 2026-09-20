@@ -27,6 +27,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `fbdeda4` canonicalizes new media names and response MIME types from verified file signatures.
 - This working tree also aligns direct Worker uploads at a verified 25 MB ceiling, including professor lecture videos; larger-video delivery remains an external architecture decision.
 - This working tree also redacts unexpected server, mail-provider, Firebase, and admin-mutation failures from production responses and logs.
+- This working tree also removes reseller self-minting: only an admin allocation may assign idle activation-code stock to a reseller.
 
 ## Implemented controls
 
@@ -42,6 +43,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - Every new image, booklet, and lecture-video object now receives a server-generated filename with the extension detected from its verified bytes.  Media reads use a fixed extension-to-MIME allowlist and serve unrecognized legacy names as `application/octet-stream`.
 - The professor lecture-file endpoint is explicitly classified as an upload by the global body limiter.  It accepts the same 25 MB direct-upload ceiling it advertises, instead of being accidentally limited as 100 KB JSON.
 - Unexpected production failures now emit only structured event/category records.  Firebase and admin error responses no longer expose raw exception messages, and transactional-mail failure logs omit recipient/provider error details.
+- Resellers can sell only their assigned codes.  The administrator's allocation endpoint validates the target and requested count, writes each allocation in one D1 batch, and records the allocation; self-generation endpoints now reject with 403.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
 - Dynamic user-controlled values that must be passed to legacy inline handlers are encoded as a single JavaScript argument rather than HTML-escaped inside a quoted handler literal, preventing quote-breakout from stored catalogue, account, or Google-profile data.
 - `src/routes/exams.ts` stores question/choice snapshots, prevents a second open attempt with database constraints, performs conditional answer/finish transitions, and replays only a finish request bearing its original idempotency key.

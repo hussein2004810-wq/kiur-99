@@ -108,126 +108,20 @@ resellerRouter.get('/codes', async (c) => {
   return c.json(result);
 });
 
-// POST /api/reseller/generate
-resellerRouter.post('/generate', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
+// Code stock is allocated by an administrator.  A reseller can sell only the
+// codes already assigned to their account; they must never mint new value.
+function allocationRequired(c: any) {
   const user = c.get('user')!;
-  if (user.role !== 'reseller' && user.role !== 'admin') {
-    return c.json({ detail: 'هذه الواجهة مخصصة للمندوبين فقط' }, 403);
-  }
-
-  const body = await c.req.json<{ count?: number; subject_id?: string }>().catch(() => ({} as { count?: number; subject_id?: string }));
-  const count = body.count ?? 5;
-  const subjectId = body.subject_id ?? null;
-
-  if (count < 1 || count > 100) return c.json({ detail: 'العدد يجب أن يكون بين 1 و100' }, 400);
-
-  // Quota protection for resellers: max 200 idle/unactivated codes in stock
-  if (user.role !== 'admin') {
-    const idleCodes = await db
-      .select({ id: schema.activationCodes.id })
-      .from(schema.activationCodes)
-      .where(and(
-        eq(schema.activationCodes.reseller_id, user.id),
-        eq(schema.activationCodes.status, 'idle')
-      ));
-
-    if (idleCodes.length + count > 200) {
-      return c.json({ detail: 'تجاوزت الحد المسموح للأكواد غير المفعلة في المخزون (200 كود)' }, 429);
-    }
-  }
-
-  if (subjectId) {
-    const subject = await db.select().from(schema.subjects).where(eq(schema.subjects.id, subjectId)).get();
-    if (!subject) return c.json({ detail: 'المادة غير موجودة' }, 404);
-  }
-
-  const codes: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const randomHex = Array.from(crypto.getRandomValues(new Uint8Array(4)))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('')
-      .toUpperCase();
-    const codeStr = `NBD-${randomHex.slice(0, 4)}-${randomHex.slice(4, 8)}`;
-    await db.insert(schema.activationCodes).values({
-      id: schema.genId(),
-      code: codeStr,
-      subject_id: subjectId,
-      status: 'idle',
-      reseller_id: user.id,
-    });
-    codes.push(codeStr);
-  }
-
   recordAuditEvent({
-    event: 'RESELLER_CODES_GENERATED',
-    status: 'SUCCESS',
+    event: 'RESELLER_CODE_MINT_DENIED',
+    status: 'DENIED',
     actorId: user.id,
-    details: { count: codes.length, subject_id: subjectId },
   });
+  return c.json({ detail: 'الأكواد تُخصّص حصراً من إدارة المنصة لحساب المندوب' }, 403);
+}
 
-  return c.json({ generated_count: codes.length, codes });
-});
-
-// POST /api/reseller/codes
-resellerRouter.post('/codes', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
-  const user = c.get('user')!;
-  if (user.role !== 'reseller' && user.role !== 'admin') {
-    return c.json({ detail: 'هذه الواجهة مخصصة للمندوبين فقط' }, 403);
-  }
-
-  const count = parseInt(c.req.query('count') ?? '1');
-  const subjectId = c.req.query('subject_id') ?? null;
-
-  if (count < 1 || count > 100) return c.json({ detail: 'العدد يجب أن يكون بين 1 و100' }, 400);
-
-  // Quota protection for resellers: max 200 idle/unactivated codes in stock
-  if (user.role !== 'admin') {
-    const idleCodes = await db
-      .select({ id: schema.activationCodes.id })
-      .from(schema.activationCodes)
-      .where(and(
-        eq(schema.activationCodes.reseller_id, user.id),
-        eq(schema.activationCodes.status, 'idle')
-      ));
-
-    if (idleCodes.length + count > 200) {
-      return c.json({ detail: 'تجاوزت الحد المسموح للأكواد غير المفعلة في المخزون (200 كود)' }, 429);
-    }
-  }
-
-  if (subjectId) {
-    const subject = await db.select().from(schema.subjects).where(eq(schema.subjects.id, subjectId)).get();
-    if (!subject) return c.json({ detail: 'المادة غير موجودة' }, 404);
-  }
-
-  const codes: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const randomHex = Array.from(crypto.getRandomValues(new Uint8Array(4)))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('')
-      .toUpperCase();
-    const codeStr = `NBD-${randomHex.slice(0, 4)}-${randomHex.slice(4, 8)}`;
-    await db.insert(schema.activationCodes).values({
-      id: schema.genId(),
-      code: codeStr,
-      subject_id: subjectId,
-      status: 'idle',
-      reseller_id: user.id,
-    });
-    codes.push(codeStr);
-  }
-
-  recordAuditEvent({
-    event: 'RESELLER_CODES_GENERATED',
-    status: 'SUCCESS',
-    actorId: user.id,
-    details: { count: codes.length, subject_id: subjectId },
-  });
-
-  return c.json({ codes });
-});
+resellerRouter.post('/generate', allocationRequired);
+resellerRouter.post('/codes', allocationRequired);
 
 // POST /api/reseller/codes/:id/sell
 resellerRouter.post('/codes/:id/sell', async (c) => {

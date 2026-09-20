@@ -464,10 +464,9 @@ describe('Tier 3: Cross-Feature Combinations & Sequential Interactions', () => {
   });
 
   it('C3.21 [Reseller Generation -> Sold -> Redeemed]: Complete reseller distribution pipeline', async () => {
-    // 1. Reseller generates codes
-    const genRes = await apiRequest(app, 'POST', '/api/reseller/generate', {
-      token: ctx.fixtures.users.reseller.token,
-      body: { count: 1, subject_id: ctx.fixtures.subjectIds.anatomy },
+    // 1. Admin allocates a subject-scoped code to the reseller.
+    const genRes = await apiRequest(app, 'POST', `/api/admin/resellers/${ctx.fixtures.users.reseller.id}/codes?count=1&subject_id=${ctx.fixtures.subjectIds.anatomy}`, {
+      token: ctx.fixtures.users.admin.token,
     }, ctx);
     const { codes } = await genRes.json();
     const codeStr = codes[0];

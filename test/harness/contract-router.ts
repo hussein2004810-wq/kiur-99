@@ -1226,18 +1226,30 @@ export function createContractRouter(): Hono<{ Bindings: any; Variables: any }> 
   });
 
   app.post('/api/reseller/generate', authMiddleware, requireRole('reseller', 'admin'), async (c) => {
-    const user = c.get('user');
-    const body = await parseJson(c);
-    const count = body?.count ?? 5;
+    return c.json({ detail: 'الأكواد تُخصّص حصراً من إدارة المنصة لحساب المندوب' }, 403);
+  });
+
+  app.post('/api/reseller/codes', authMiddleware, requireRole('reseller', 'admin'), async (c) => {
+    return c.json({ detail: 'الأكواد تُخصّص حصراً من إدارة المنصة لحساب المندوب' }, 403);
+  });
+
+  app.post('/api/admin/resellers/:resellerId/codes', authMiddleware, requireRole('admin'), async (c) => {
+    const resellerId = c.req.param('resellerId');
+    const count = Number(c.req.query('count') ?? '1');
+    const subjectId = c.req.query('subject_id') ?? null;
+    const reseller = await c.env.DB.prepare("SELECT id FROM users WHERE id = ? AND role = 'reseller'").bind(resellerId).first();
+    if (!reseller) return c.json({ detail: 'المندوب غير موجود' }, 404);
+    if (!Number.isInteger(count) || count < 1 || count > 100) return c.json({ detail: 'العدد يجب أن يكون بين 1 و100' }, 400);
+
     const codes = [];
     for (let i = 0; i < count; i++) {
       const codeStr = 'NBD-' + Math.random().toString(36).substring(2, 6).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
       const codeId = 'act_' + Math.random().toString(36).substring(2, 10);
       await c.env.DB.prepare("INSERT INTO activation_codes (id, code, subject_id, status, reseller_id) VALUES (?, ?, ?, 'idle', ?)")
-        .bind(codeId, codeStr, body?.subject_id ?? null, user.id).run();
+        .bind(codeId, codeStr, subjectId, resellerId).run();
       codes.push(codeStr);
     }
-    return c.json({ generated_count: codes.length, codes });
+    return c.json({ codes });
   });
 
   app.post('/api/reseller/codes/:id/sell', authMiddleware, requireRole('reseller'), async (c) => {

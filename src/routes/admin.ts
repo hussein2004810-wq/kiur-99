@@ -234,13 +234,33 @@ adminRouter.post('/resellers/:reseller_id/codes', async (c) => {
     if (!sub) return c.json({ detail: 'المادة غير موجودة' }, 404);
   }
 
-  const codes: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const hex = Array.from(crypto.getRandomValues(new Uint8Array(3))).map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-    const code = `NBD-${hex}`;
-    await db.insert(schema.activationCodes).values({ id: schema.genId(), code, subject_id: subjectId, status: 'idle', reseller_id: resellerId });
-    codes.push(code);
+  // Create the entire allocation as one D1 batch so an interrupted request
+  // never leaves a reseller with only a partial grant.  Eight random bytes
+  // keep code collisions impractically rare; a conflict rolls back the batch.
+  const codes = Array.from({ length: count }, () => {
+    const hex = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+      .toUpperCase();
+    return `NBD-${hex.slice(0, 8)}-${hex.slice(8)}`;
+  });
+  const statements = codes.map((code) => c.env.DB.prepare(
+    "INSERT INTO activation_codes (id, code, subject_id, status, reseller_id) VALUES (?, ?, ?, 'idle', ?)"
+  ).bind(schema.genId(), code, subjectId, resellerId));
+  try {
+    await c.env.DB.batch(statements);
+  } catch {
+    console.error(JSON.stringify({ event: 'ADMIN_RESELLER_CODE_ALLOCATION_FAILED', category: 'unexpected' }));
+    return c.json({ detail: 'تعذر تخصيص الأكواد حالياً؛ حاول مرة أخرى' }, 503);
   }
+
+  recordAuditEvent({
+    event: 'ADMIN_RESELLER_CODES_ALLOCATED',
+    status: 'SUCCESS',
+    actorId: c.get('user')?.id,
+    targetId: resellerId,
+    details: { count, subject_id: subjectId },
+  });
   return c.json({ codes });
 });
 

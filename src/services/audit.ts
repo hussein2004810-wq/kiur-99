@@ -48,6 +48,8 @@ export type AuditEventType =
   | 'SECURITY_CSRF_DENIAL'
   | 'SECURITY_RATE_LIMITED'
   | 'RESELLER_CODES_GENERATED'
+  | 'ADMIN_RESELLER_CODES_ALLOCATED'
+  | 'RESELLER_CODE_MINT_DENIED'
   | 'RESELLER_CODE_SOLD'
   | 'ACTIVATION_CODE_REDEEMED'
   | 'ACTIVATION_CODE_FAILED';
@@ -138,4 +140,3 @@ export function getAuditLogs(): readonly AuditLogEntry[] {
 export function clearAuditLogs(): void {
   auditLogBuffer.length = 0;
 }
-

@@ -36,25 +36,23 @@ describe('Tier 1: Feature 12 - Reseller Inventory & Activation Redemption', () =
     expect(data.active_codes).toBeDefined();
   });
 
-  it('12.3 should generate a batch of activation codes via POST /api/reseller/generate', async () => {
+  it('12.3 should reject a reseller attempt to mint activation codes', async () => {
     const res = await apiRequest(app, 'POST', '/api/reseller/generate', {
       token: ctx.fixtures.users.reseller.token,
       body: { count: 3 },
     }, ctx);
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
     const data = await res.json();
-    expect(data.generated_count).toBe(3);
-    expect(Array.isArray(data.codes)).toBe(true);
-    expect(data.codes.length).toBe(3);
+    expect(data.detail).toContain('تُخصّص حصراً من إدارة المنصة');
   });
 
-  it('12.4 should mark code as sold to customer via POST /api/reseller/codes/:id/sell', async () => {
-    const genRes = await apiRequest(app, 'POST', '/api/reseller/generate', {
-      token: ctx.fixtures.users.reseller.token,
-      body: { count: 1 },
+  it('12.4 should mark an administrator-allocated code as sold to customer', async () => {
+    const allocationRes = await apiRequest(app, 'POST', `/api/admin/resellers/${ctx.fixtures.users.reseller.id}/codes?count=1`, {
+      token: ctx.fixtures.users.admin.token,
     }, ctx);
-    const { codes } = await genRes.json();
+    expect(allocationRes.status).toBe(200);
+    const { codes } = await allocationRes.json();
     const codeRecord = await ctx.db.prepare('SELECT id FROM activation_codes WHERE code = ?').bind(codes[0]).first();
 
     const sellRes = await apiRequest(app, 'POST', `/api/reseller/codes/${codeRecord.id}/sell`, {

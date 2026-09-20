@@ -945,7 +945,7 @@
       <!-- ===== RESELLER: Codes (self-service) ===== -->
       <section class="dash-section" id="sec-r-codes">
         <div class="dash-card glass">
-          <button class="btn" style="margin-bottom:12px;" onclick="promptTakeCode()">+ أخذ كود</button>
+          <button class="btn" style="margin-bottom:12px;" onclick="promptTakeCode()">طلب تخصيص أكواد</button>
           <div class="dash-card-head"><span class="dash-card-title">الأكواد</span></div>
           <div class="table-wrap">
             <table class="dash-table">
@@ -4664,39 +4664,14 @@
           <td><span class="badge ${c.status==='idle'?'badge-idle':(c.status==='active'?'badge-active':'badge-disabled')}">${statusLabel[c.status] || c.status}</span></td>
           <td>${c.sold_at ? fmtDate(c.sold_at) : '—'}</td>
         </tr>
-      `).join('') || `<tr><td colspan="4" class="empty-row">لا توجد أكواد بعد — اضغط "أخذ كود"</td></tr>`;
+      `).join('') || `<tr><td colspan="4" class="empty-row">لا توجد أكواد مخصصة بعد — تواصل مع إدارة المنصة</td></tr>`;
     } catch (e) {
       document.getElementById('rCodesFullBody').innerHTML = `<tr><td colspan="4" class="empty-row">${esc(e.detail || 'تعذّر تحميل الأكواد')}</td></tr>`;
     }
   }
 
   async function promptTakeCode(){
-    if (!liveMode){ showToast('سجّل دخول حقيقي أولاً (وضع المعاينة بدون اتصال لا يدعم هذا الإجراء)'); return; }
-    const subjectOptions = [{value: '', label: 'VIP — جميع المواد'}];
-    try {
-      const tree = await apiFetch('/api/catalog/tree');
-      for (const section of tree){
-        for (const uni of section.universities || []){
-          for (const stage of uni.stages || []){
-            for (const subj of stage.subjects || []){
-              subjectOptions.push({value: subj.id, label: `${esc(subj.name)} — ${esc(uni.name)} / ${esc(stage.name)}`});
-            }
-          }
-        }
-      }
-    } catch (e) {}
-    openGenericModal('أخذ كود', [
-      {id: 'count', label: 'الكمية', type: 'number', value: 1},
-      {id: 'subjectId', label: 'الخدمة', type: 'select', value: '', options: subjectOptions},
-    ], async (v) => {
-      const count = parseInt(v.count, 10);
-      if (!count || count < 1) throw {detail: 'عدد غير صالح'};
-      const params = new URLSearchParams({count});
-      if (v.subjectId) params.set('subject_id', v.subjectId);
-      const res = await apiFetch('/api/reseller/codes?' + params.toString(), {method: 'POST'});
-      showToast(`تم أخذ ${res.codes.length} كود بنجاح`);
-      loadResellerCodes();
-    });
+    showToast('الأكواد تُخصّص من إدارة المنصة لحسابك. تواصل مع الإدارة لطلب رصيد جديد.', 'info');
   }
 
   // ===== ADMIN: store =====
