@@ -29,6 +29,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `9949443` redacts unexpected server, mail-provider, Firebase, and admin-mutation failures from production responses and logs.
 - `e033245` removes reseller self-minting: only an admin allocation may assign idle activation-code stock to a reseller.
 - `e20aeb7` allows dynamically rendered media only from KIUR's `/media-files/...` and `/api/media/...` paths, preventing stored URLs from becoming external, `data:`, or `javascript:` browser navigations.
+- `934007a` rejects arbitrary lecture video URLs at the server boundary, requires the verified video-upload flow, and limits a revoked banned session to its own appeal request only.
 
 ## Implemented controls
 
@@ -43,6 +44,8 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - Admin media uploads now fail closed before body parsing when R2 is absent, verify magic bytes rather than trusting the declared filename or MIME type, generate server-owned object names, and remove the R2 object if media-record persistence fails.
 - Every new image, booklet, and lecture-video object now receives a server-generated filename with the extension detected from its verified bytes.  Media reads use a fixed extension-to-MIME allowlist and serve unrecognized legacy names as `application/octet-stream`.
 - The professor lecture-file endpoint is explicitly classified as an upload by the global body limiter.  It accepts the same 25 MB direct-upload ceiling it advertises, instead of being accidentally limited as 100 KB JSON.
+- A professor may create a lecture without a video, but cannot attach an arbitrary URL through the legacy creation route; only the verified lecture-file upload flow can create its media record and Worker-owned URL.
+- Banning still immediately deactivates all sessions.  A valid token for one of those revoked sessions is accepted only for `POST /api/bans/appeal` for its own banned account; it cannot access any other protected route and remains invalid after unban until a fresh login.
 - Unexpected production failures now emit only structured event/category records.  Firebase and admin error responses no longer expose raw exception messages, and transactional-mail failure logs omit recipient/provider error details.
 - Resellers can sell only their assigned codes.  The administrator's allocation endpoint validates the target and requested count, writes each allocation in one D1 batch, and records the allocation; self-generation endpoints now reject with 403.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
@@ -56,8 +59,9 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 ## Verification performed locally
 
 - `npm run typecheck` passed after the final application changes.
-- `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 39 tests, including verification-link, verified/unverified Google OAuth callback, audience, access-token rejection, production-mail readiness, and admin-media upload hardening cases.
-- `npm test` passed: 40 files and 546 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, CSP-source, Google OAuth credential, mail-readiness, admin-upload, direct-video-upload, and error-redaction changes.
+- `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 40 tests, including verification-link, verified/unverified Google OAuth callback, audience, access-token rejection, production-mail readiness, admin-media upload hardening, and arbitrary-lecture-URL rejection cases.
+- `TEST_TARGET=src npm test` passed: 40 files and 548 tests against the actual Worker, including Tier 3 and Tier 4 media, entitlement, session-revocation, and ban-appeal flows.
+- `npm test` passed: 40 files and 548 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, CSP-source, Google OAuth credential, mail-readiness, admin-upload, direct-video-upload, error-redaction, and ban-appeal changes.
 - `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 133 tests against the actual Worker routes.
 - The scripts embedded in both served SPA documents were parsed after the URL-allowlist change; dynamic media URL regressions are covered by the P0 source-level test.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
