@@ -24,6 +24,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `38851d9` prevents production password registration unless transactional email is ready to deliver verification links.
 - `66e718b` pins development `esbuild` at `^0.28.2`, satisfying the installed Vite/Vitest requirement and removing the invalid root dependency tree.
 - `140877d` hardens admin media uploads and makes the streaming regression suite exercise the actual Worker authorization path.
+- `fbdeda4` canonicalizes new media names and response MIME types from verified file signatures.
 
 ## Implemented controls
 
