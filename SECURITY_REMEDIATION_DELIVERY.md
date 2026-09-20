@@ -23,6 +23,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `src/services/content-access.ts` is the shared server-side entitlement policy used by media, courses, questions, and exams.
 - `src/routes/questions.ts`, `src/routes/exams.ts`, and `src/routes/students.ts` require authenticated, scoped access rather than relying on the client UI.
 - Public registration always persists the `student` role and returns no access token or session cookie.  Existing unverified accounts cannot obtain a password/2FA/restored session until their email is verified.
+- Every Google entry point now requires a provider-asserted verified email before it creates, verifies, or signs in a local user; a verified Google callback may safely mark an existing local password account verified.
 - When SMTP is configured, registration and resend create a single-use verification token and schedule delivery of a link to `GET /auth/verify-email`; that callback consumes the same token-validation path as `POST /auth/verify-email` and redirects to a success or failure state.
 - The CSP permits only the Google Identity script origin required by the SPA, removes the unused jsDelivr allowlist, and restricts form submissions to same-origin destinations.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
@@ -35,9 +36,9 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 ## Verification performed locally
 
 - `npm run typecheck` passed after the final application changes.
-- `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 30 tests, including a verification-link callback that marks the user verified and returns the success redirect.
-- `npm test` passed: 40 files and 534 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, and CSP-source changes.
-- `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 121 tests against the actual Worker routes.
+- `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 32 tests, including a verification-link callback and verified/unverified Google OAuth callback cases.
+- `npm test` passed: 40 files and 536 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, CSP-source, and Google OAuth verification changes.
+- `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 123 tests against the actual Worker routes.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
 - Vitest was upgraded to `4.1.11`, closing its Moderate mocker path-traversal advisory.  `npm audit --json` now reports four Moderate development-only findings from Drizzle Kit's legacy `@esbuild-kit` chain; npm's only suggested fix is a major downgrade of Drizzle Kit to `0.18.1`, so it was not applied automatically.
 

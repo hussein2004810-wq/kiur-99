@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { createTestContext, TestContext } from '../harness/test-context';
 import { apiRequest } from '../harness/app';
@@ -142,6 +142,67 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(res.status).toBe(403);
       const data = await res.json();
       expect(data.detail).toContain('CSRF Detected');
+    });
+
+    it('does not create or sign in a user when the OAuth userinfo email is unverified', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'google_access_token' }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          email: 'unverified-oauth@nabd.app',
+          name: 'طالب غير موثق عبر Google',
+          sub: 'google_unverified_oauth',
+          email_verified: false,
+        }), { status: 200 }));
+
+      try {
+        const res = await apiRequest(app, 'GET', '/auth/google/callback?code=valid_code&state=student:valid_nonce', {
+          headers: { Cookie: 'oauth_state=student:valid_nonce' },
+        }, {
+          ...ctx,
+          bindings: {
+            ...ctx.bindings,
+            GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
+            GOOGLE_CLIENT_SECRET: 'test-client-secret',
+          },
+        });
+
+        expect(res.status).toBe(302);
+        expect(res.headers.get('location')).toContain('#google_error=email_unverified');
+        expect(await ctx.db.prepare('SELECT id FROM users WHERE email = ?').bind('unverified-oauth@nabd.app').first()).toBeNull();
+      } finally {
+        fetchMock.mockRestore();
+      }
+    });
+
+    it('marks an existing password account verified only after a verified OAuth callback', async () => {
+      await ctx.db.prepare("INSERT INTO users (id, email, full_name, password_hash, role) VALUES ('usr_oauth_upgrade', 'oauth-upgrade@nabd.app', 'طالب OAuth', 'hash', 'student')").run();
+      const fetchMock = vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'google_access_token' }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          email: 'oauth-upgrade@nabd.app',
+          name: 'طالب OAuth',
+          sub: 'google_verified_upgrade',
+          email_verified: true,
+        }), { status: 200 }));
+
+      try {
+        const res = await apiRequest(app, 'GET', '/auth/google/callback?code=valid_code&state=student:verified_nonce', {
+          headers: { Cookie: 'oauth_state=student:verified_nonce' },
+        }, {
+          ...ctx,
+          bindings: {
+            ...ctx.bindings,
+            GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
+            GOOGLE_CLIENT_SECRET: 'test-client-secret',
+          },
+        });
+
+        expect(res.status).toBe(302);
+        expect(res.headers.get('location')).toContain('#access_token=');
+        expect(await ctx.db.prepare("SELECT email_verified_at FROM users WHERE id = 'usr_oauth_upgrade'").first('email_verified_at')).toBeTruthy();
+      } finally {
+        fetchMock.mockRestore();
+      }
     });
   });
 

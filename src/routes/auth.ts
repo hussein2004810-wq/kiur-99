@@ -61,6 +61,10 @@ function domainAllowed(email: string, allowedDomains: string): boolean {
   return domains.some((d) => email.toLowerCase().endsWith('@' + d));
 }
 
+function isVerifiedGoogleEmail(value: unknown): boolean {
+  return value === true || value === 'true';
+}
+
 type EmailVerificationResult =
   | { ok: true; alreadyVerified: boolean }
   | { ok: false; detail: string };
@@ -197,7 +201,7 @@ authRouter.post('/google/verify', async (c) => {
       name = String(info.name || '');
       sub = String(info.sub || '');
       picture = String(info.picture || '');
-      emailVerified = info.email_verified === true || info.email_verified === 'true';
+      emailVerified = isVerifiedGoogleEmail(info.email_verified);
 
       const validIssuers = ['accounts.google.com', 'https://accounts.google.com'];
       if (info.iss && !validIssuers.includes(info.iss)) {
@@ -219,12 +223,12 @@ authRouter.post('/google/verify', async (c) => {
       if (!userRes.ok) {
         return c.json({ detail: 'فشل التحقق من رمز الوصول مع Google' }, 401);
       }
-      const info = await userRes.json<{ email: string; name: string; sub: string; picture: string; email_verified?: boolean }>();
+      const info = await userRes.json<{ email: string; name: string; sub: string; picture: string; email_verified?: string | boolean; verified_email?: string | boolean }>();
       email = String(info.email || '').trim().toLowerCase();
       name = String(info.name || '');
       sub = String(info.sub || '');
       picture = String(info.picture || '');
-      emailVerified = info.email_verified !== false;
+      emailVerified = isVerifiedGoogleEmail(info.email_verified) || isVerifiedGoogleEmail(info.verified_email);
     } catch {
       return c.json({ detail: 'تعذر التحقق من رمز الوصول حالياً' }, 503);
     }
@@ -305,6 +309,9 @@ authRouter.get('/google/callback', async (c) => {
   const redirectUri = c.env.GOOGLE_REDIRECT_URI || `${origin}/auth/google/callback`;
   const code = c.req.query('code');
   const state = c.req.query('state') ?? '';
+  const isAdminFlow = state === 'admin' || state.startsWith('admin:');
+  const base = new URL(c.req.url).origin;
+  const redirectBase = isAdminFlow ? (c.env.ADMIN_FRONTEND_URL || `${base}/admin`) : (c.env.FRONTEND_URL || base);
 
   if (!code) return c.json({ detail: 'كود التفويض مفقود' }, 400);
   if (!clientId || !clientSecret) return c.json({ detail: 'إعدادات Google OAuth غير مهيأة' }, 500);
@@ -338,13 +345,13 @@ authRouter.get('/google/callback', async (c) => {
     headers: { Authorization: `Bearer ${tokenData.access_token}` },
   });
   if (!userInfoRes.ok) return c.json({ detail: 'فشل الحصول على بيانات المستخدم' }, 502);
-  const userInfo = await userInfoRes.json<{ email: string; name: string; sub: string }>();
+  const userInfo = await userInfoRes.json<{ email: string; name: string; sub: string; email_verified?: string | boolean; verified_email?: string | boolean }>();
 
   const { email, name, sub } = userInfo;
-  const isAdminFlow = state === 'admin' || state.startsWith('admin:');
+  if (!isVerifiedGoogleEmail(userInfo.email_verified) && !isVerifiedGoogleEmail(userInfo.verified_email)) {
+    return c.redirect(`${redirectBase}#google_error=email_unverified`);
+  }
   if (!domainAllowed(email, c.env.ALLOWED_UNIVERSITY_DOMAINS ?? '')) {
-    const base = new URL(c.req.url).origin;
-    const redirectBase = isAdminFlow ? `${base}/admin` : base;
     return c.redirect(`${redirectBase}#google_error=domain`);
   }
 
@@ -353,22 +360,21 @@ authRouter.get('/google/callback', async (c) => {
   // Find or create user
   let user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
   if (user) {
-    if (!user.google_sub) {
-      await db.update(schema.users).set({ google_sub: sub }).where(eq(schema.users.id, user.id));
+    const patch: Partial<typeof schema.users.$inferInsert> = {};
+    if (!user.google_sub) patch.google_sub = sub;
+    if (!user.email_verified_at) patch.email_verified_at = new Date().toISOString();
+    if (Object.keys(patch).length > 0) {
+      await db.update(schema.users).set(patch).where(eq(schema.users.id, user.id));
+      user = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).get();
     }
   } else {
     const role = 'student';
     const id = schema.genId();
-    await db.insert(schema.users).values({ id, email, full_name: name, google_sub: sub, role });
+    await db.insert(schema.users).values({ id, email, full_name: name, google_sub: sub, role, email_verified_at: new Date().toISOString() });
     user = await db.select().from(schema.users).where(eq(schema.users.id, id)).get();
   }
 
   if (!user) return c.json({ detail: 'خطأ في إنشاء المستخدم' }, 500);
-
-  const base = new URL(c.req.url).origin;
-  const adminBase = c.env.ADMIN_FRONTEND_URL || `${base}/admin`;
-  const studentBase = c.env.FRONTEND_URL || base;
-  const redirectBase = isAdminFlow ? adminBase : studentBase;
 
   if (isAdminFlow && !ADMIN_DASHBOARD_ROLES.has(user.role ?? '')) {
     return c.redirect(`${redirectBase}#google_error=role`);
