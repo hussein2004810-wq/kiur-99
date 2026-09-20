@@ -343,6 +343,10 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(homeHtml).toContain("p.uni ? ' · ' + esc(p.uni) : ''");
       expect(adminHtml).toContain('<div class="item-title">${esc(name)}</div>');
       expect(adminHtml).toContain("(c.is_correct ? '✓ ' : '• ') + esc(c.text)");
+      expect(homeHtml).toContain('function jsArg(value)');
+      expect(homeHtml).toContain('bsQuickStart(${jsArg(sub.id)}, ${jsArg(sub.name)})');
+      expect(adminHtml).toContain('function jsArg(value)');
+      expect(adminHtml).toContain('deleteUniversity(${jsArg(u.id)}, ${jsArg(u.name)})');
     });
 
     it('rejects skill input containing HTML or script tags with 400', async () => {

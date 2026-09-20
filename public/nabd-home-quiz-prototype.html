@@ -3982,6 +3982,16 @@
     }[ch]));
   }
 
+  // `esc()` is for visible HTML text only.  Values placed in inline event
+  // handlers must remain a single JavaScript string literal after the HTML
+  // parser decodes entities; otherwise a quote in stored data can escape it.
+  function jsArg(value){
+    return JSON.stringify(String(value ?? '')).replace(/["&<>\u2028\u2029]/g, ch => ({
+      '"': '&quot;', '&': '\\u0026', '<': '\\u003c', '>': '\\u003e',
+      '\u2028': '\\u2028', '\u2029': '\\u2029',
+    }[ch]));
+  }
+
   async function apiFetch(path, options = {}){
     const res = await fetch(API_BASE_URL + path, {
       ...options,
@@ -4990,7 +5000,7 @@
       grid.innerHTML = '<div style="color:var(--ink-soft);font-size:13px;grid-column:1/-1;text-align:center;padding:12px 0;">لا توجد مواد في مرحلتك حالياً</div>';
     } else {
       grid.innerHTML = smartSubjects.map(sub => `
-        <button onclick="bsQuickStart('${sub.id}', '${esc(sub.name)}')"
+        <button onclick="bsQuickStart(${jsArg(sub.id)}, ${jsArg(sub.name)})"
           class="bs-subject-btn">
           ${esc(sub.name)}
         </button>`).join('');
@@ -7094,13 +7104,13 @@
     document.getElementById('googleChooserViewInput').style.display = 'none';
 
     listEl.innerHTML = accounts.map(acc => `
-      <div class="google-acc-item" onclick="selectGoogleAccount('${esc(acc.email)}', '${esc(acc.name)}', '${acc.color}')">
+      <div class="google-acc-item" onclick="selectGoogleAccount(${jsArg(acc.email)}, ${jsArg(acc.name)}, ${jsArg(acc.color)})">
         <div class="google-avatar-circle" style="background:${acc.color || '#1a73e8'};">${esc(acc.initial || (acc.name && acc.name[0]) || 'G')}</div>
         <div class="google-acc-info">
           <div class="google-acc-name">${esc(acc.name)}</div>
           <div class="google-acc-email">${esc(acc.email)}</div>
         </div>
-        <button type="button" class="google-acc-remove" onclick="removeGoogleSavedAccount('${esc(acc.email)}', event)" title="إزالة من هذا الجهاز" aria-label="إزالة">×</button>
+        <button type="button" class="google-acc-remove" onclick="removeGoogleSavedAccount(${jsArg(acc.email)}, event)" title="إزالة من هذا الجهاز" aria-label="إزالة">×</button>
       </div>
     `).join('');
   }
@@ -7263,7 +7273,7 @@
                   <div style="font-size:12px; color:#5f6368; direction:ltr; text-align:right;">${esc(acc.email)}</div>
                 </div>
               </div>
-              <button type="button" class="google-onetap-btn" onclick="selectGoogleAccount('${esc(acc.email)}', '${esc(acc.name)}', '${acc.color}')">
+              <button type="button" class="google-onetap-btn" onclick="selectGoogleAccount(${jsArg(acc.email)}, ${jsArg(acc.name)}, ${jsArg(acc.color)})">
                 المتابعة باسم ${esc(acc.name.split(' ')[0])}
               </button>
             `;

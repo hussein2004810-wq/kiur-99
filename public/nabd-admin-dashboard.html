@@ -1208,6 +1208,15 @@
     }[ch]));
   }
 
+  // HTML escaping does not protect a value embedded in an inline JavaScript
+  // handler: the browser decodes entities before compiling the handler.
+  function jsArg(value){
+    return JSON.stringify(String(value ?? '')).replace(/["&<>\u2028\u2029]/g, ch => ({
+      '"': '&quot;', '&': '\\u0026', '<': '\\u003c', '>': '\\u003e',
+      '\u2028': '\\u2028', '\u2029': '\\u2029',
+    }[ch]));
+  }
+
   async function apiFetch(path, options = {}){
     const res = await fetch(API_BASE_URL + path, {
       ...options,
@@ -2039,7 +2048,7 @@
                 <div class="item-title mono">${esc(c.code)}</div>
                 <div class="item-meta">${esc(c.subject_name)}</div>
               </div>
-              <button class="btn btn-ghost item-action" onclick="copyResellerCode('${esc(c.code)}', this)">نسخ</button>
+              <button class="btn btn-ghost item-action" onclick="copyResellerCode(${jsArg(c.code)}, this)">نسخ</button>
             </div>
           `).join('')}
         ` : '<div class="empty-row">لا توجد أكواد متاحة (غير مباعة) حالياً — ولّدي أكواد جديدة أولاً</div>'}
@@ -2389,7 +2398,7 @@
               <button class="icon-btn" style="width:28px;height:28px;" onclick="openEditUniversityModal('${u.id}')" title="تعديل الجامعة" aria-label="تعديل الجامعة">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
               </button>
-              <button class="icon-btn" style="width:28px;height:28px;" onclick="deleteUniversity('${u.id}', '${esc(u.name)}')" title="حذف الجامعة" aria-label="حذف الجامعة">
+              <button class="icon-btn" style="width:28px;height:28px;" onclick="deleteUniversity(${jsArg(u.id)}, ${jsArg(u.name)})" title="حذف الجامعة" aria-label="حذف الجامعة">
                 <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
               </button>
               <span style="display:inline-block; transition:transform .2s; transform:${isExpanded ? 'rotate(180deg)' : 'none'}; margin-inline-start:6px; color:var(--ink-faint);">▼</span>
@@ -2422,13 +2431,13 @@
                       <span style="font-size:.7rem; color:var(--ink-faint); margin-inline-start:4px;">${isProgExpanded ? '▲' : '▼'}</span>
                     </div>
                     <div style="display:flex; align-items:center; gap:6px;">
-                      <button class="btn btn-ghost" style="padding:4px 10px; font-size:.72rem; gap:4px;" onclick="openAddDepartmentModal('${p.college_id}', '${esc(p.college_name)}')" title="إضافة قسم طبي لهذه الكلية">
+                      <button class="btn btn-ghost" style="padding:4px 10px; font-size:.72rem; gap:4px;" onclick="openAddDepartmentModal(${jsArg(p.college_id)}, ${jsArg(p.college_name)})" title="إضافة قسم طبي لهذه الكلية">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M12 5v14M5 12h14"/></svg>+ قسم طبي
                       </button>
-                      <button class="btn btn-ghost" style="padding:4px 10px; font-size:.72rem; gap:4px;" onclick="openAddStageModal('${p.id}', '${esc(p.college_name)}', '', '${p.college_id}')" title="إضافة مرحلة للكلية">
+                      <button class="btn btn-ghost" style="padding:4px 10px; font-size:.72rem; gap:4px;" onclick="openAddStageModal(${jsArg(p.id)}, ${jsArg(p.college_name)}, '', ${jsArg(p.college_id)})" title="إضافة مرحلة للكلية">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M12 5v14M5 12h14"/></svg>+ مرحلة
                       </button>
-                      <button class="icon-btn" style="width:26px;height:26px;" onclick="deleteProgram('${p.id}', '${esc(p.college_name)}')" title="فك ارتباط الكلية" aria-label="فك ارتباط الكلية">
+                      <button class="icon-btn" style="width:26px;height:26px;" onclick="deleteProgram(${jsArg(p.id)}, ${jsArg(p.college_name)})" title="فك ارتباط الكلية" aria-label="فك ارتباط الكلية">
                         <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
                       </button>
                     </div>
@@ -2450,8 +2459,8 @@
                               <span style="font-size:.7rem; color:var(--ink-faint);">(${dept.stages.length} مراحل)</span>
                             </div>
                             <div style="display:flex; align-items:center; gap:4px;">
-                              <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem; gap:3px;" onclick="openAddStageModal('${p.id}', '${esc(p.college_name)}', '${dept.id}', '${p.college_id}')" title="إضافة مرحلة لهذا القسم">+ مرحلة للقسم</button>
-                              <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteDepartment('${dept.id}', '${esc(dept.name)}')" title="حذف القسم">
+                              <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem; gap:3px;" onclick="openAddStageModal(${jsArg(p.id)}, ${jsArg(p.college_name)}, ${jsArg(dept.id)}, ${jsArg(p.college_id)})" title="إضافة مرحلة لهذا القسم">+ مرحلة للقسم</button>
+                              <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteDepartment(${jsArg(dept.id)}, ${jsArg(dept.name)})" title="حذف القسم">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="width:11px;height:11px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
                               </button>
                             </div>
@@ -2724,13 +2733,13 @@
             <span style="font-size:.7rem; color:var(--ink-faint); font-weight:normal;">(${subjects.length} مادة | ${sections.length} شعب)</span>
           </div>
           <div style="display:flex; align-items:center; gap:4px;">
-            <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem; gap:3px;" onclick="openAddStudySectionModal('${st.id}', '${esc(st.name)}')" title="إضافة شعبة دراسية لهذه المرحلة">
+            <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem; gap:3px;" onclick="openAddStudySectionModal(${jsArg(st.id)}, ${jsArg(st.name)})" title="إضافة شعبة دراسية لهذه المرحلة">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>+ شعبة
             </button>
-            <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem; gap:3px;" onclick="openAddSubjectModal('${st.id}', '${esc(st.name)}')">
+            <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem; gap:3px;" onclick="openAddSubjectModal(${jsArg(st.id)}, ${jsArg(st.name)})">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M12 5v14M5 12h14"/></svg>+ مادة
             </button>
-            <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteStage('${st.id}', '${esc(st.name)}')" title="حذف المرحلة">
+            <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteStage(${jsArg(st.id)}, ${jsArg(st.name)})" title="حذف المرحلة">
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
             </button>
           </div>
@@ -2743,7 +2752,7 @@
             ${sections.map(sec => `
               <span class="badge" style="background:var(--track); color:var(--ink); font-size:.7rem; display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px;">
                 👥 ${esc(sec.name)} ${sec.code ? `<span class="mono" style="opacity:0.7;">(${esc(sec.code)})</span>` : ''}
-                <button onclick="deleteStudySection('${sec.id}', '${esc(sec.name)}')" style="background:none; border:none; color:var(--danger); cursor:pointer; padding:0 2px; font-size:.75rem; line-height:1;" title="حذف الشعبة">&times;</button>
+                <button onclick="deleteStudySection(${jsArg(sec.id)}, ${jsArg(sec.name)})" style="background:none; border:none; color:var(--danger); cursor:pointer; padding:0 2px; font-size:.75rem; line-height:1;" title="حذف الشعبة">&times;</button>
               </span>
             `).join('')}
           </div>
@@ -2776,7 +2785,7 @@
                 <button class="icon-btn" style="width:24px;height:24px;" onclick="openEditSubjectModal('${sub.id}')" title="تعديل المادة">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                 </button>
-                <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteSubject('${sub.id}', '${esc(sub.name)}')" title="حذف المادة">
+                <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteSubject(${jsArg(sub.id)}, ${jsArg(sub.name)})" title="حذف المادة">
                   <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
                 </button>
               </div>
@@ -3110,11 +3119,11 @@
             </div>
           </div>
           <div style="display:flex; gap:8px; flex:none;">
-            <button class="btn btn-ghost" onclick="restoreSubjectFromTrash('${s.id}', '${esc(s.name)}')" style="padding:6px 12px; font-size:.75rem; color:var(--accent); border-color:var(--glass-border);" title="استرجاع المادة بكل أسئلتها">
+            <button class="btn btn-ghost" onclick="restoreSubjectFromTrash(${jsArg(s.id)}, ${jsArg(s.name)})" style="padding:6px 12px; font-size:.75rem; color:var(--accent); border-color:var(--glass-border);" title="استرجاع المادة بكل أسئلتها">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
               <span>استرجاع</span>
             </button>
-            <button class="btn btn-ghost" onclick="purgeSubjectFromTrash('${s.id}', '${esc(s.name)}')" style="padding:6px 12px; font-size:.75rem; color:var(--danger); border-color:rgba(239, 68, 68, 0.25);" title="حذف نهائي لا يمكن الرجوع عنه">
+            <button class="btn btn-ghost" onclick="purgeSubjectFromTrash(${jsArg(s.id)}, ${jsArg(s.name)})" style="padding:6px 12px; font-size:.75rem; color:var(--danger); border-color:rgba(239, 68, 68, 0.25);" title="حذف نهائي لا يمكن الرجوع عنه">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16"/></svg>
               <span>حذف نهائي</span>
             </button>
@@ -3280,11 +3289,11 @@
       <div class="hier-row" style="padding-inline-start:${r.level*22 + 8}px;">
         <span class="hier-icon">${ICONS[typeIcon[r.type]]}</span>
         ${r.type === 'subject' && r.id
-          ? `<span class="hier-name" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;" onclick="openQuestionBank('${r.id}')">${esc(r.name)}</span>`
+          ? `<span class="hier-name" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;" onclick="openQuestionBank(${jsArg(r.id)})">${esc(r.name)}</span>`
           : `<span class="hier-name">${esc(r.name)}</span>`}
         <span class="hier-meta">${esc(r.meta)}</span>
-        ${noun && r.id ? `<button class="btn btn-ghost hier-add" onclick="promptAddCatalogChild('${r.type}', '${r.id}')" title="إضافة ${noun} داخل ${esc(r.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>${noun}</button>` : ''}
-        ${r.id && r.type !== 'subject' ? `<button class="icon-btn" aria-label="نسخ مع كل ما تحته" style="width:24px;height:24px;" title="نسخ ${esc(r.name)} مع كل ما تحته" onclick="promptDuplicateCatalog('${r.type}', '${r.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg></button>` : ''}
+        ${noun && r.id ? `<button class="btn btn-ghost hier-add" onclick="promptAddCatalogChild(${jsArg(r.type)}, ${jsArg(r.id)})" title="إضافة ${noun} داخل ${esc(r.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>${noun}</button>` : ''}
+        ${r.id && r.type !== 'subject' ? `<button class="icon-btn" aria-label="نسخ مع كل ما تحته" style="width:24px;height:24px;" title="نسخ ${esc(r.name)} مع كل ما تحته" onclick="promptDuplicateCatalog(${jsArg(r.type)}, ${jsArg(r.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg></button>` : ''}
         ${r.id ? `
           <button class="icon-btn" aria-label="تعديل الاسم" style="width:24px;height:24px;" title="تعديل الاسم" onclick="promptRenameCatalog('${r.type}', '${r.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
           <button class="icon-btn" aria-label="حذف" style="width:24px;height:24px;" title="حذف" onclick="deleteCatalogNode('${r.type}', '${r.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>` : ''}
@@ -3719,7 +3728,7 @@
         <td><div class="cell-name">${esc(b.user_name || '—')}</div></td>
         <td><span class="badge badge-disabled">${esc(b.reason)}</span></td>
         <td>${fmtDate(b.created_at)}</td>
-        <td><button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="liftBan('${esc(b.user_id)}')">رفع الحظر</button></td>
+        <td><button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="liftBan(${jsArg(b.user_id)})">رفع الحظر</button></td>
       </tr>
     `).join('') || `<tr><td colspan="4" class="empty-row">لا توجد حالات حظر نشطة</td></tr>`;
 
