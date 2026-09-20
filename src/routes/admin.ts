@@ -17,6 +17,7 @@ adminRouter.use('*', requireAdmin);
 
 const MAX_VIDEO_BYTES = 150 * 1024 * 1024;
 const ALL_EXTS = [...IMAGE_EXTS, ...PDF_EXTS, ...VIDEO_EXTS];
+const VALIDATED_ADMIN_MEDIA_EXTS = [...IMAGE_EXTS, ...PDF_EXTS, 'mp4', 'webm'];
 const VALID_ROLES = new Set(['student', 'professor', 'reseller', 'admin']);
 
 // Helper: daily counts for last N days
@@ -2136,11 +2137,14 @@ adminRouter.get('/students', async (c) => {
 
 // ─────────────────────── Media upload ────────────────────────────────────────
 adminRouter.post('/media/upload', async (c) => {
+  if (!c.env.R2_BUCKET) {
+    return c.json({ detail: 'خدمة التخزين غير مهيأة حالياً' }, 503);
+  }
+
   const adminUser = c.get('user')!;
   const contentType = c.req.header('Content-Type') || '';
   let filename = 'file_' + Date.now();
   let fileData: Uint8Array;
-  let mimeType = 'application/octet-stream';
 
   if (contentType.includes('multipart/form-data')) {
     const form = await c.req.formData();
@@ -2152,7 +2156,6 @@ adminRouter.post('/media/upload', async (c) => {
       return c.json({ detail: 'حجم الملف يتجاوز الحد المسموح' }, 413);
     }
     filename = file.name || filename;
-    mimeType = file.type || mimeType;
     const buf = await file.arrayBuffer();
     fileData = new Uint8Array(buf);
   } else {
@@ -2166,35 +2169,50 @@ adminRouter.post('/media/upload', async (c) => {
     fileData = new Uint8Array(body);
     const nameHeader = c.req.header('X-Filename');
     if (nameHeader) filename = nameHeader;
-    if (filename.endsWith('.pdf')) mimeType = 'application/pdf';
-    else if (filename.endsWith('.png')) mimeType = 'image/png';
-    else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) mimeType = 'image/jpeg';
-    else if (filename.endsWith('.mp4')) mimeType = 'video/mp4';
   }
 
-  if (!c.env.R2_BUCKET) {
-    return c.json({ detail: 'خدمة التخزين غير متوفرة' }, 500);
+  const signature = validateFileSignature(fileData, VALIDATED_ADMIN_MEDIA_EXTS);
+  if (!signature.valid || !signature.detectedExt) {
+    return c.json({ detail: 'توقيع الملف أو نوعه الداخلي غير صالح' }, 400);
   }
 
-  await c.env.R2_BUCKET.put(filename, fileData, {
-    httpMetadata: { contentType: mimeType },
-  });
+  const mimeType = signature.detectedExt === 'pdf'
+    ? 'application/pdf'
+    : signature.detectedExt === 'jpeg'
+      ? 'image/jpeg'
+      : signature.detectedExt === 'png'
+        ? 'image/png'
+        : signature.detectedExt === 'gif'
+          ? 'image/gif'
+          : signature.detectedExt === 'webp'
+            ? 'image/webp'
+            : signature.detectedExt === 'webm'
+              ? 'video/webm'
+              : 'video/mp4';
 
-  const mfId = 'mf_' + Math.random().toString(36).substring(2, 10);
-  const fileUrl = `/media-files/${filename}`;
+  const storedName = safeUploadName(filename, VALIDATED_ADMIN_MEDIA_EXTS, 'admin_media');
+  const storage = createStorageService(c.env.R2_BUCKET);
+  await storage.save(storedName, fileData, mimeType);
 
-  await c.env.DB.prepare(`
-    INSERT INTO media_files (id, filename, url, content_type, size_bytes, uploaded_by)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).bind(mfId, filename, fileUrl, mimeType, fileData.byteLength, adminUser.id).run();
+  const mfId = schema.genId();
+  const fileUrl = mediaUrl(storedName);
+  try {
+    await c.env.DB.prepare(`
+      INSERT INTO media_files (id, filename, url, content_type, size_bytes, uploaded_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(mfId, storedName, fileUrl, mimeType, fileData.byteLength, adminUser.id).run();
+  } catch (error) {
+    await storage.delete(storedName).catch(() => undefined);
+    throw error;
+  }
 
   return c.json({
     id: mfId,
-    filename,
+    filename: storedName,
     url: fileUrl,
     size_bytes: fileData.byteLength,
     content_type: mimeType,
-    stored_name: filename,
+    stored_name: storedName,
   });
 });
 

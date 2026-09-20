@@ -525,6 +525,54 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // P0-7: Admin media uploads must be content-validated and non-overwriting
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('P0-7: Admin Media Upload Hardening', () => {
+    it('rejects a forged file before it reaches R2 even when its filename is allowed', async () => {
+      const admin = ctx.fixtures.users.admin;
+      const res = await apiRequest(app, 'POST', '/api/admin/media/upload', {
+        token: admin.token,
+        headers: { 'X-Filename': 'looks-valid.pdf', 'Content-Type': 'application/octet-stream' },
+        body: new Uint8Array([0x3c, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74]),
+      }, ctx);
+
+      expect(res.status).toBe(400);
+      expect((await ctx.r2.list()).objects).toHaveLength(0);
+    });
+
+    it('stores a valid upload under a random server filename rather than the requested path', async () => {
+      const admin = ctx.fixtures.users.admin;
+      const pngHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const res = await apiRequest(app, 'POST', '/api/admin/media/upload', {
+        token: admin.token,
+        headers: { 'X-Filename': '../../admin-photo.png', 'Content-Type': 'application/octet-stream' },
+        body: pngHeader,
+      }, ctx);
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.filename).toMatch(/^admin_media_[a-f0-9]{12}\.png$/);
+      expect(data.filename).not.toContain('..');
+      expect(data.content_type).toBe('image/png');
+      expect(await ctx.r2.head(data.filename)).not.toBeNull();
+    });
+
+    it('fails closed before reading an admin upload when R2 is unavailable', async () => {
+      const admin = ctx.fixtures.users.admin;
+      const res = await apiRequest(app, 'POST', '/api/admin/media/upload', {
+        token: admin.token,
+        headers: { 'X-Filename': 'file.png', 'Content-Type': 'application/octet-stream' },
+        body: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+      }, {
+        ...ctx,
+        bindings: { ...ctx.bindings, R2_BUCKET: undefined },
+      });
+
+      expect(res.status).toBe(503);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // P0-6: Correct Answer & Rationale Leakage Prevention
   // ──────────────────────────────────────────────────────────────────────────
   describe('P0-6: Correct Answer & Rationale Leakage Prevention', () => {
