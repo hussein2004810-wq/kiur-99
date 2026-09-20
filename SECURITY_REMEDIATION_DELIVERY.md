@@ -13,6 +13,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `fbe5b1a` applies durable limits to both account and IP and attaches the exam-start limiter.
 - `ae4ede3` prevents cross-professor content creation, mutation, and deletion through generic professor routes.
 - `7dc0ea4` removes raw booklet URLs from public professor metadata.
+- `ac9fb15` makes every upload endpoint fail closed with a controlled 503 when R2 is not configured.
 
 ## Implemented controls
 
@@ -26,7 +27,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 ## Verification performed locally
 
 - `npm run typecheck` passed after the final application changes.
-- `npm test` passed: 40 files and 529 tests after the final ownership, media, rate-limit, and D1-bound changes.
+- `npm test` passed: 40 files and 530 tests after the final ownership, media, rate-limit, D1-bound, and R2 fail-closed changes.
 - `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 116 tests against the actual Worker routes.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
 - `npm audit --audit-level=high` exits successfully.  It still reports six Moderate development-tool findings in Vitest/esbuild/drizzle-kit; their proposed automatic fixes are breaking and were intentionally not forced into this security branch.
