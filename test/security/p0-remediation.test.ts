@@ -532,6 +532,18 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
   // ──────────────────────────────────────────────────────────────────────────
   // P0-8: Active Content Execution Prevention & Strict Magic Bytes Validation
   // ──────────────────────────────────────────────────────────────────────────
+  it('P0-7: does not expose raw booklet URLs from public professor metadata', async () => {
+    const professor = await apiRequest(app, 'GET', `/api/professors/${ctx.fixtures.users.professor.profileId}`, {}, ctx);
+    expect(professor.status).toBe(200);
+    const professorData = await professor.json();
+    expect(professorData.booklets).toHaveLength(1);
+    expect(professorData.booklets[0].file_url).toBeUndefined();
+
+    const latest = await apiRequest(app, 'GET', '/api/professors/booklets/latest', {}, ctx);
+    expect(latest.status).toBe(200);
+    expect((await latest.json()).file_url).toBeUndefined();
+  });
+
   describe('P0-8: Active Content Upload & Magic Bytes Validation Hardening', () => {
     it('rejects HTML or script payload disguised as image in /auth/me/photo with 400', async () => {
       const student = ctx.fixtures.users.student;
@@ -584,4 +596,3 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
     });
   });
 });
-

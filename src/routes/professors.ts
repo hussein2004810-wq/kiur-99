@@ -113,7 +113,7 @@ professorsRouter.get('/booklets/latest', async (c) => {
       subjectName = subject?.name ?? '';
     }
   }
-  return c.json({ id: booklet.id, title: booklet.title, pages: booklet.pages, file_url: booklet.file_url ?? null, subject_name: subjectName, professor_id: booklet.professor_id });
+  return c.json({ id: booklet.id, title: booklet.title, pages: booklet.pages, subject_name: subjectName, professor_id: booklet.professor_id });
 });
 
 // GET /api/professors/me
@@ -295,7 +295,13 @@ professorsRouter.get('/:professor_id', async (c) => {
   const prof = await c.env.DB.prepare('SELECT * FROM professor_profiles WHERE id = ?').bind(id).first();
   if (!prof) return c.json({ detail: 'الأستاذ غير موجود' }, 404);
   const booklets = await c.env.DB.prepare('SELECT * FROM booklets WHERE professor_id = ?').bind(id).all();
-  return c.json({ ...prof, booklets: booklets.results ?? [] });
+  const publicBooklets = (booklets.results ?? []).map((booklet: any) => ({
+    id: booklet.id,
+    title: booklet.title,
+    pages: booklet.pages,
+    created_at: booklet.created_at,
+  }));
+  return c.json({ ...prof, booklets: publicBooklets });
 });
 
 // PUT /api/professors/me/profile
