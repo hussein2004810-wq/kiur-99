@@ -53,7 +53,9 @@ describe('Tier 1: Feature 9 - Courses & Video Lectures', () => {
 
   it('9.5 should retrieve single lecture metadata via GET /api/lectures/:id', async () => {
     const lecId = ctx.fixtures.lectureIds[0];
-    const res = await apiRequest(app, 'GET', `/api/lectures/${lecId}`, {}, ctx);
+    const res = await apiRequest(app, 'GET', `/api/lectures/${lecId}`, {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.id).toBe(lecId);

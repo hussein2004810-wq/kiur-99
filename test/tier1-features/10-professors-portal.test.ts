@@ -202,14 +202,13 @@ describe('Tier 1: Feature 10 - Professor Portal & Content Authoring', () => {
     expect(data.title).toBe('كورس تشريح الأطراف العلوية والسفلية');
   });
 
-  it('10.13 should add a lecture to a course via POST /api/professors/courses/:id/lectures', async () => {
+  it('10.13 should add a lecture before its video is uploaded via POST /api/professors/courses/:id/lectures', async () => {
     const res = await apiRequest(app, 'POST', `/api/professors/courses/${ctx.fixtures.courseId}/lectures`, {
       token: ctx.fixtures.users.professor.token,
       body: {
         title: 'المحاضرة الرابعة: تشريح الطرف السفلي',
         duration_seconds: 1500,
         order_index: 3,
-        video_url: 'https://storage.nabd.app/lec_4.mp4',
       },
     }, ctx);
 
@@ -217,6 +216,16 @@ describe('Tier 1: Feature 10 - Professor Portal & Content Authoring', () => {
     const data = await res.json();
     expect(data.id).toBeDefined();
     expect(data.title).toContain('الطرف السفلي');
+  });
+
+  it('10.13b should reject an arbitrary video URL and require the upload route', async () => {
+    const res = await apiRequest(app, 'POST', `/api/professors/courses/${ctx.fixtures.courseId}/lectures`, {
+      token: ctx.fixtures.users.professor.token,
+      body: { title: 'محاضرة برابط خارجي', video_url: 'https://example.test/video.mp4' },
+    }, ctx);
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).detail).toContain('رفع الفيديو');
   });
 
   it('10.14 should retrieve professor content metrics via GET /api/professors/me/stats', async () => {

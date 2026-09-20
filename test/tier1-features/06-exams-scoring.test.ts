@@ -16,7 +16,9 @@ describe('Tier 1: Feature 6 - Exams, Attempts & Scoring Engine', () => {
   });
 
   it('6.1 should list all available exams via GET /api/exams', async () => {
-    const res = await apiRequest(app, 'GET', '/api/exams', {}, ctx);
+    const res = await apiRequest(app, 'GET', '/api/exams', {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
@@ -25,14 +27,18 @@ describe('Tier 1: Feature 6 - Exams, Attempts & Scoring Engine', () => {
   });
 
   it('6.2 should filter exams by subject_id query param', async () => {
-    const res = await apiRequest(app, 'GET', `/api/exams?subject_id=${ctx.fixtures.subjectIds.anatomy}`, {}, ctx);
+    const res = await apiRequest(app, 'GET', `/api/exams?subject_id=${ctx.fixtures.subjectIds.anatomy}`, {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.every((e: any) => e.subject_id === ctx.fixtures.subjectIds.anatomy)).toBe(true);
   });
 
   it('6.3 should return single exam details via GET /api/exams/:id', async () => {
-    const res = await apiRequest(app, 'GET', `/api/exams/${ctx.fixtures.examId}`, {}, ctx);
+    const res = await apiRequest(app, 'GET', `/api/exams/${ctx.fixtures.examId}`, {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.id).toBe(ctx.fixtures.examId);
@@ -180,7 +186,9 @@ describe('Tier 1: Feature 6 - Exams, Attempts & Scoring Engine', () => {
     await ctx.db.prepare("UPDATE exam_attempts SET score = 4, total = 5, finished_at = ? WHERE id = ?")
       .bind(new Date().toISOString(), attempt_id).run();
 
-    const res = await apiRequest(app, 'GET', `/api/exams/${ctx.fixtures.examId}/leaderboard`, {}, ctx);
+    const res = await apiRequest(app, 'GET', `/api/exams/${ctx.fixtures.examId}/leaderboard`, {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
@@ -195,7 +203,9 @@ describe('Tier 1: Feature 6 - Exams, Attempts & Scoring Engine', () => {
     await ctx.db.prepare("INSERT INTO exam_attempts (id, exam_id, user_id, score, total, finished_at) VALUES ('att_top', ?, ?, 5, 5, ?)")
       .bind(ctx.fixtures.examId, ctx.fixtures.users.admin.id, new Date().toISOString()).run();
 
-    const res = await apiRequest(app, 'GET', `/api/exams/${ctx.fixtures.examId}/leaderboard`, {}, ctx);
+    const res = await apiRequest(app, 'GET', `/api/exams/${ctx.fixtures.examId}/leaderboard`, {
+      token: s2.token,
+    }, ctx);
     const data = await res.json();
     expect(data[0].score).toBe(5);
     expect(data[0].rank).toBe(1);

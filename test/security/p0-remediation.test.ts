@@ -779,6 +779,16 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(enrolledData.entitled).toBe(true);
       expect(enrolledData.lectures[0].video_url).toBeTruthy();
     });
+
+    it('requires the checked upload route instead of accepting arbitrary lecture video URLs', async () => {
+      const response = await apiRequest(app, 'POST', `/api/professors/courses/${ctx.fixtures.courseId}/lectures`, {
+        token: ctx.fixtures.users.professor.token,
+        body: { title: 'محاضرة برابط خارجي', video_url: 'https://example.test/video.mp4' },
+      }, ctx);
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).detail).toContain('رفع الفيديو');
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────

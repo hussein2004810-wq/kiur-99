@@ -262,7 +262,9 @@ describe('Tier 3: Cross-Feature Combinations & Sequential Interactions', () => {
     await ctx.db.prepare("UPDATE exam_attempts SET score = 5, total = 5, finished_at = ? WHERE id = ?")
       .bind(new Date().toISOString(), attempt_id).run();
 
-    const leaderRes = await apiRequest(app, 'GET', `/api/exams/${ctx.fixtures.examId}/leaderboard`, {}, ctx);
+    const leaderRes = await apiRequest(app, 'GET', `/api/exams/${ctx.fixtures.examId}/leaderboard`, {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(leaderRes.status).toBe(200);
     const list = await leaderRes.json();
     const myEntry = list.find((e: any) => e.id === attempt_id);
@@ -312,7 +314,7 @@ describe('Tier 3: Cross-Feature Combinations & Sequential Interactions', () => {
   it('C3.13 [Professor Course + Syllabus Creation]: Professor creates course and adds 3 ordered lectures', async () => {
     const courseRes = await apiRequest(app, 'POST', '/api/professors/courses', {
       token: ctx.fixtures.users.professor.token,
-      body: { subject_id: ctx.fixtures.subjectIds.physiology, title: 'كورس فسلجة القلب' },
+      body: { subject_id: ctx.fixtures.subjectIds.anatomy, title: 'كورس فسلجة القلب' },
     }, ctx);
     const { id: courseId } = await courseRes.json();
 
@@ -551,7 +553,9 @@ describe('Tier 3: Cross-Feature Combinations & Sequential Interactions', () => {
     expect(bklRes.status).toBe(200);
 
     // Verify media accessible
-    const getMedia = await apiRequest(app, 'GET', url, {}, ctx);
+    const getMedia = await apiRequest(app, 'GET', url, {
+      token: ctx.fixtures.users.admin.token,
+    }, ctx);
     expect(getMedia.status).toBe(200);
   });
 
@@ -560,8 +564,20 @@ describe('Tier 3: Cross-Feature Combinations & Sequential Interactions', () => {
     await ctx.r2.put('cardio_lecture.mp4', dummyVideo, {
       httpMetadata: { contentType: 'video/mp4' },
     });
+    await ctx.db.prepare(`
+      INSERT INTO media_files (id, filename, url, content_type, size_bytes, uploaded_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      'mf_c3_cardio_lecture',
+      'cardio_lecture.mp4',
+      '/media-files/cardio_lecture.mp4',
+      'video/mp4',
+      dummyVideo.byteLength,
+      ctx.fixtures.users.admin.id,
+    ).run();
 
     const streamRes = await apiRequest(app, 'GET', '/media-files/cardio_lecture.mp4', {
+      token: ctx.fixtures.users.admin.token,
       headers: { Range: 'bytes=0-500' },
     }, ctx);
     expect(streamRes.status).toBe(206);

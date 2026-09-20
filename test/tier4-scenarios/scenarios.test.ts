@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestContext, TestContext } from '../harness/test-context';
-import { createTestApp, apiRequest } from '../harness/app';
+import { apiRequest } from '../harness/app';
 import { generateTotpCode, signJwt } from '../harness/crypto-helpers';
+import mainApp from '../../src/index';
 
 describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
   let ctx: TestContext;
@@ -9,7 +10,10 @@ describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
 
   beforeEach(async () => {
     ctx = await createTestContext();
-    app = await createTestApp(ctx);
+    // These end-to-end scenarios must exercise the Worker controls for media,
+    // entitlement, session revocation, and ban appeals rather than the legacy
+    // contract-router approximation.
+    app = mainApp;
   });
 
   afterEach(() => {
@@ -226,7 +230,9 @@ describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
     expect(targetBooklet.title).toBeDefined();
 
     // 6. Practice Questions for Subject
-    const qListRes = await apiRequest(app, 'GET', `/api/questions?subject_id=${anatomy.id}`, {}, ctx);
+    const qListRes = await apiRequest(app, 'GET', `/api/questions?subject_id=${anatomy.id}`, {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(qListRes.status).toBe(200);
     const questions = await qListRes.json();
     expect(questions.length).toBeGreaterThanOrEqual(2);
@@ -235,7 +241,9 @@ describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
     expect(questionToPractice.text).toBeDefined();
 
     // Fetch individual question details with choices
-    const singleQRes = await apiRequest(app, 'GET', `/api/questions/${questionToPractice.id}`, {}, ctx);
+    const singleQRes = await apiRequest(app, 'GET', `/api/questions/${questionToPractice.id}`, {
+      token: ctx.fixtures.users.student.token,
+    }, ctx);
     expect(singleQRes.status).toBe(200);
     const singleQ = await singleQRes.json();
     expect(singleQ.text).toBe(questionToPractice.text);
@@ -408,7 +416,6 @@ describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
         title: 'المحاضرة الأولى: مبادئ التشريح الجراحي',
         duration_seconds: 1800,
         order_index: 0,
-        video_url: '/media-files/surgery_principles.mp4',
       },
     }, ctx);
     expect(lec1Res.status).toBe(200);
@@ -420,17 +427,25 @@ describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
         title: 'المحاضرة الثانية: تشريح الجدار البطني',
         duration_seconds: 2400,
         order_index: 1,
-        video_url: '/media-files/abdominal_wall.mp4',
       },
     }, ctx);
     expect(lec2Res.status).toBe(200);
 
-    // 3. Upload Lecture Video Data to R2
+    // 3. Upload a checked lecture video.  This creates both the R2 object and
+    // the media authorization record, rather than treating an object key as a
+    // public URL.
     const videoData = new Uint8Array(16384); // 16 KB mock MP4
     for (let i = 0; i < videoData.length; i++) videoData[i] = i % 256;
-    await ctx.r2.put('surgery_principles.mp4', videoData, {
-      httpMetadata: { contentType: 'video/mp4' },
-    });
+    videoData.set([0x66, 0x74, 0x79, 0x70], 4); // MP4 ftyp signature
+    const videoForm = new FormData();
+    videoForm.append('file', new File([videoData], 'surgery_principles.mp4', { type: 'video/mp4' }));
+    const uploadRes = await apiRequest(app, 'POST', `/api/professors/me/lectures/${lec1Id}/file`, {
+      token: profToken,
+      body: videoForm,
+    }, ctx);
+    expect(uploadRes.status).toBe(200);
+    const uploadedLecture = await uploadRes.json();
+    expect(uploadedLecture.video_url).toMatch(/^\/media-files\/lecture_[a-f0-9]{12}\.mp4$/);
 
     // 4. Student Discovers and Accesses Course
     const studentCourseRes = await apiRequest(app, 'GET', `/api/courses/${newCourseId}`, {
@@ -451,7 +466,7 @@ describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
 
     // 5. Student Streams Video using HTTP Range Requests (206 Partial Content)
     // Chunk 1: first 1000 bytes
-    const streamRes1 = await apiRequest(app, 'GET', '/media-files/surgery_principles.mp4', {
+    const streamRes1 = await apiRequest(app, 'GET', uploadedLecture.video_url, {
       token: studentToken,
       headers: { Range: 'bytes=0-999' },
     }, ctx);
@@ -461,7 +476,7 @@ describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
     expect(streamRes1.headers.get('Accept-Ranges')).toBe('bytes');
 
     // Chunk 2: next 1000 bytes
-    const streamRes2 = await apiRequest(app, 'GET', '/media-files/surgery_principles.mp4', {
+    const streamRes2 = await apiRequest(app, 'GET', uploadedLecture.video_url, {
       token: studentToken,
       headers: { Range: 'bytes=1000-1999' },
     }, ctx);
@@ -622,25 +637,23 @@ describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
     }, ctx);
     expect([401, 403]).toContain(meRes.status);
 
-    // Direct token without session ID hits 403 Forbidden on protected user routes
+    // A token without a server session cannot reach a protected route.
     const bannedDirectToken = signJwt({ sub: targetStudentId, role: 'student' }, ctx.bindings.JWT_SECRET);
     const forbiddenRes = await apiRequest(app, 'GET', '/auth/me', {
       token: bannedDirectToken,
     }, ctx);
-    expect(forbiddenRes.status).toBe(403);
-    const banError = await forbiddenRes.json();
-    expect(banError.detail).toContain('محظور');
+    expect(forbiddenRes.status).toBe(401);
 
     // Banned user cannot access student workspace either
     const studentProfileRes = await apiRequest(app, 'GET', '/api/students/profile', {
       token: bannedDirectToken,
     }, ctx);
-    expect(studentProfileRes.status).toBe(403);
+    expect(studentProfileRes.status).toBe(401);
 
-    // 5. Banned User Submits Appeal via /api/bans/appeal
+    // 5. A revoked session may submit only its owner's ban appeal.
     const appealMessage = 'أعتذر بشدة عن استخدام جهاز المكتب الجامعي وأرجو قبول اعتذاري ورفع الحظر';
     const appealRes = await apiRequest(app, 'POST', '/api/bans/appeal', {
-      token: bannedDirectToken,
+      token: targetStudentToken,
       body: { appeal_message: appealMessage },
     }, ctx);
     expect(appealRes.status).toBe(200);
@@ -671,10 +684,20 @@ describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
     const unbannedUser = await ctx.db.prepare('SELECT is_banned FROM users WHERE id = ?').bind(targetStudentId).first();
     expect(unbannedUser.is_banned).toBe(0);
 
-    // 7. Student Access is Restored Immediately
-    const restoredDirectToken = signJwt({ sub: targetStudentId, role: 'student' }, ctx.bindings.JWT_SECRET);
+    // 7. The evicted token remains invalid after unban; the student logs in
+    // again to obtain a fresh active session.
+    const staleTokenRes = await apiRequest(app, 'GET', '/auth/me', {
+      token: targetStudentToken,
+    }, ctx);
+    expect(staleTokenRes.status).toBe(401);
+
+    const reloginRes = await apiRequest(app, 'POST', '/auth/login', {
+      body: { email: ctx.fixtures.users.student.email, password: 'Nabd@2026' },
+    }, ctx);
+    expect(reloginRes.status).toBe(200);
+    const { access_token: restoredToken } = await reloginRes.json();
     const restoredMeRes = await apiRequest(app, 'GET', '/auth/me', {
-      token: restoredDirectToken,
+      token: restoredToken,
     }, ctx);
     expect(restoredMeRes.status).toBe(200);
     const restoredData = await restoredMeRes.json();

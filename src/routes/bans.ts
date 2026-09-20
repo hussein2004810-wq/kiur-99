@@ -21,6 +21,7 @@ async function requireAuthAllowBanned(c: any, next: any) {
   if (!payload || !payload.sub) return c.json({ detail: 'انتهت صلاحية الجلسة' }, 401);
 
   const db = drizzle(c.env.DB, { schema });
+  const isAppealPost = c.req.method === 'POST' && c.req.path.endsWith('/appeal');
   if (payload.sid) {
     const session = await db
       .select()
@@ -28,12 +29,19 @@ async function requireAuthAllowBanned(c: any, next: any) {
       .where(
         and(
           eq(schema.userSessions.id, payload.sid),
-          eq(schema.userSessions.user_id, payload.sub),
-          eq(schema.userSessions.is_active, true)
+          eq(schema.userSessions.user_id, payload.sub)
         )
       )
       .get();
-    if (!session || !session.is_active) return c.json({ detail: 'تم تسجيل الدخول من جهاز آخر' }, 401);
+    if (!session) return c.json({ detail: 'تم تسجيل الدخول من جهاز آخر' }, 401);
+
+    // Banning immediately deactivates every session. Preserve that eviction
+    // for all application access, while allowing the owner of that revoked
+    // session to submit only their own appeal. The downstream appeal handler
+    // still requires the account to be banned and an active ban record.
+    if (!session.is_active && !isAppealPost) {
+      return c.json({ detail: 'تم تسجيل الدخول من جهاز آخر' }, 401);
+    }
   }
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();

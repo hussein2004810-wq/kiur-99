@@ -1100,10 +1100,13 @@ export function createContractRouter(): Hono<{ Bindings: any; Variables: any }> 
     if (body.duration_seconds !== undefined && body.duration_seconds < 0) {
       return c.json({ detail: 'مدة المحاضرة غير صالحة' }, 400);
     }
+    if (typeof body.video_url === 'string' && body.video_url.trim()) {
+      return c.json({ detail: 'ارفع الفيديو من زر رفع الفيديو بعد إنشاء المحاضرة' }, 400);
+    }
 
     const lId = 'lec_' + Math.random().toString(36).substring(2, 10);
     await c.env.DB.prepare('INSERT INTO lectures (id, course_id, title, duration_seconds, order_index, video_url) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(lId, courseId, body.title, body.duration_seconds ?? 0, body.order_index ?? 0, body.video_url ?? '').run();
+      .bind(lId, courseId, body.title, body.duration_seconds ?? 0, body.order_index ?? 0, '').run();
     return c.json({ id: lId, title: body.title });
   });
 
