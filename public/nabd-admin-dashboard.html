@@ -1277,7 +1277,7 @@
     document.getElementById('genericModalFields').innerHTML = fields.map(f => {
       const labelHtml = `<label style="font-size:.75rem; color:var(--ink-faint); display:block; margin-bottom:5px;">${esc(f.label)}</label>`;
       if (f.type === 'select'){
-        const opts = f.options.map(o => `<option value="${o.value}" ${String(o.value) === String(f.value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
+        const opts = f.options.map(o => `<option value="${esc(o.value)}" ${String(o.value) === String(f.value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
         return `<div class="form-field">${labelHtml}<select id="gm_${f.id}">${opts}</select></div>`;
       }
       if (f.type === 'textarea'){
