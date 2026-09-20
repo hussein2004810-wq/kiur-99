@@ -22,7 +22,8 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `f0b0f9e` requires a verified provider email in the Google OAuth callback.
 - `4dea90e` accepts only audience-bound Google ID credentials and removes the UI's untrusted Google fallback.
 - `38851d9` prevents production password registration unless transactional email is ready to deliver verification links.
-- The current dependency update pins development `esbuild` at `^0.28.2`, satisfying the installed Vite/Vitest requirement and removing the invalid root dependency tree.
+- `66e718b` pins development `esbuild` at `^0.28.2`, satisfying the installed Vite/Vitest requirement and removing the invalid root dependency tree.
+- `140877d` hardens admin media uploads and makes the streaming regression suite exercise the actual Worker authorization path.
 
 ## Implemented controls
 
@@ -35,6 +36,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - A production password-registration request now fails before creating a user unless a supported transactional-mail provider, sender identity, and provider secret are present; local debug mode remains usable for development and test workflows.
 - The CSP permits only the Google Identity script origin required by the SPA, removes the unused jsDelivr allowlist, and restricts form submissions to same-origin destinations.
 - Admin media uploads now fail closed before body parsing when R2 is absent, verify magic bytes rather than trusting the declared filename or MIME type, generate server-owned object names, and remove the R2 object if media-record persistence fails.
+- Every new image, booklet, and lecture-video object now receives a server-generated filename with the extension detected from its verified bytes.  Media reads use a fixed extension-to-MIME allowlist and serve unrecognized legacy names as `application/octet-stream`.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
 - Dynamic user-controlled values that must be passed to legacy inline handlers are encoded as a single JavaScript argument rather than HTML-escaped inside a quoted handler literal, preventing quote-breakout from stored catalogue, account, or Google-profile data.
 - `src/routes/exams.ts` stores question/choice snapshots, prevents a second open attempt with database constraints, performs conditional answer/finish transitions, and replays only a finish request bearing its original idempotency key.

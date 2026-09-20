@@ -30,7 +30,7 @@ import {
   SESSION_COOKIE_NAME,
 } from '../services/jwt';
 import { emailConfigured, sendEmailVerification, sendPasswordReset } from '../services/mailer';
-import { createStorageService, isStorageConfigured, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
+import { createStorageService, isStorageConfigured, safeUploadNameForDetectedType, mediaUrl, validateFileSignature, IMAGE_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
 import { peerIds, rankedPairs, rankOf, streakDays, accuracyPct } from '../services/ranking';
 import {
   loginRateLimiter,
@@ -1249,7 +1249,7 @@ authRouter.post('/me/photo', requireAuth, async (c) => {
   const mimeType = `image/${detectedExt}`;
 
   const storage = createStorageService(c.env.R2_BUCKET);
-  const storedName = safeUploadName(file.name, IMAGE_EXTS, 'photo');
+  const storedName = safeUploadNameForDetectedType(sig.detectedExt, IMAGE_EXTS, 'photo');
   await storage.save(storedName, contents, mimeType);
 
   const photoUrl = mediaUrl(storedName);

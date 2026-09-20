@@ -9,6 +9,17 @@ import type { AppEnv } from '../types';
 
 export const mediaRouter = new Hono<AppEnv>();
 
+const SAFE_MEDIA_CONTENT_TYPES: Record<string, string> = {
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+};
+
 mediaRouter.get('/:name', async (c) => {
   const name = c.req.param('name');
 
@@ -74,13 +85,11 @@ mediaRouter.get('/:name', async (c) => {
   responseHeaders.set('X-Content-Type-Options', 'nosniff');
   responseHeaders.set('Content-Security-Policy', "default-src 'none'; sandbox");
 
-  // Determine correct content-type
-  let contentType = mediaRecord?.content_type || responseHeaders.get('Content-Type') || 'application/octet-stream';
-  if (name.endsWith('.mp4')) contentType = 'video/mp4';
-  else if (name.endsWith('.pdf')) contentType = 'application/pdf';
-  else if (name.endsWith('.png')) contentType = 'image/png';
-  else if (name.endsWith('.jpg') || name.endsWith('.jpeg')) contentType = 'image/jpeg';
-  else if (name.endsWith('.webp')) contentType = 'image/webp';
+  // Stored filenames are server-generated from verified signatures.  Never
+  // replay a legacy database/R2 MIME value that could make active content
+  // render in a browser; unknown extensions are served as downloads.
+  const extension = objectKey.split('.').pop()?.toLowerCase() ?? '';
+  const contentType = SAFE_MEDIA_CONTENT_TYPES[extension] ?? 'application/octet-stream';
 
   responseHeaders.set('Content-Type', contentType);
   responseHeaders.set('Accept-Ranges', 'bytes');

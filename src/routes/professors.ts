@@ -8,7 +8,7 @@ import { eq, desc, inArray, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv, CurrentUser } from '../types';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { createStorageService, isStorageConfigured, safeUploadName, mediaUrl, validateFileSignature, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
+import { createStorageService, isStorageConfigured, safeUploadNameForDetectedType, mediaUrl, validateFileSignature, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES } from '../services/storage';
 
 const MAX_VIDEO_BYTES = 150 * 1024 * 1024; // 150 MB
 const DOC_EXTS = [...PDF_EXTS, ...IMAGE_EXTS];
@@ -347,7 +347,7 @@ professorsRouter.post('/me/photo', async (c) => {
   const mimeType = `image/${detectedExt}`;
 
   const storage = createStorageService(c.env.R2_BUCKET);
-  const storedName = safeUploadName(file.name, IMAGE_EXTS, 'photo');
+  const storedName = safeUploadNameForDetectedType(sig.detectedExt, IMAGE_EXTS, 'photo');
   await storage.save(storedName, contents, mimeType);
 
   const photoUrl = mediaUrl(storedName);
@@ -523,7 +523,7 @@ professorsRouter.post('/me/booklets/:booklet_id/file', async (c) => {
   const mimeType = detectedExt === 'pdf' ? 'application/pdf' : `image/${detectedExt}`;
 
   const storage = createStorageService(c.env.R2_BUCKET);
-  const storedName = safeUploadName(file.name, DOC_EXTS, 'booklet');
+  const storedName = safeUploadNameForDetectedType(sig.detectedExt, DOC_EXTS, 'booklet');
   await storage.save(storedName, contents, mimeType);
 
   const fileUrl = mediaUrl(storedName);
@@ -741,7 +741,7 @@ professorsRouter.post('/me/lectures/:lecture_id/file', async (c) => {
   const mimeType = sig.detectedExt === 'webm' ? 'video/webm' : 'video/mp4';
 
   const storage = createStorageService(c.env.R2_BUCKET);
-  const storedName = safeUploadName(file.name, VIDEO_EXTS, 'lecture');
+  const storedName = safeUploadNameForDetectedType(sig.detectedExt, VIDEO_EXTS, 'lecture');
   await storage.save(storedName, contents, mimeType);
 
   const videoUrl = mediaUrl(storedName);

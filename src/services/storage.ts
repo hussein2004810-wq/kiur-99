@@ -103,6 +103,23 @@ export function safeUploadName(
   return `${prefix}_${id}.${ext}`;
 }
 
+/**
+ * Create a server-controlled name whose extension reflects the verified file
+ * signature, rather than a client-supplied filename.  This keeps URL suffixes,
+ * stored MIME metadata, and the bytes in R2 consistent.
+ */
+export function safeUploadNameForDetectedType(
+  detectedExt: string | null,
+  allowedExts: string[],
+  prefix: string
+): string {
+  if (!detectedExt) {
+    throw new Error('لا يمكن تسمية ملف لم يتم التحقق من نوعه');
+  }
+  const canonicalExt = detectedExt === 'jpeg' ? 'jpg' : detectedExt;
+  return safeUploadName(`upload.${canonicalExt}`, allowedExts, prefix);
+}
+
 export function mediaUrl(name: string): string {
   return `/media-files/${name}`;
 }
@@ -175,5 +192,6 @@ export function validateFileSignature(
 
 export const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 export const PDF_EXTS = ['pdf'];
-export const VIDEO_EXTS = ['mp4', 'webm', 'mov', 'avi'];
+// Only formats recognized by detectFileType may be accepted for upload.
+export const VIDEO_EXTS = ['mp4', 'webm'];
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB

@@ -9,7 +9,7 @@ import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAdmin, requireAuth } from '../middleware/auth';
 import { hashPassword } from '../services/crypto';
-import { createStorageService, safeUploadName, mediaUrl, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES, validateFileSignature } from '../services/storage';
+import { createStorageService, safeUploadNameForDetectedType, mediaUrl, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES, validateFileSignature } from '../services/storage';
 import { recordAuditEvent } from '../services/audit';
 
 export const adminRouter = new Hono<AppEnv>();
@@ -2143,7 +2143,6 @@ adminRouter.post('/media/upload', async (c) => {
 
   const adminUser = c.get('user')!;
   const contentType = c.req.header('Content-Type') || '';
-  let filename = 'file_' + Date.now();
   let fileData: Uint8Array;
 
   if (contentType.includes('multipart/form-data')) {
@@ -2155,7 +2154,6 @@ adminRouter.post('/media/upload', async (c) => {
     if (file.size > 50 * 1024 * 1024) {
       return c.json({ detail: 'حجم الملف يتجاوز الحد المسموح' }, 413);
     }
-    filename = file.name || filename;
     const buf = await file.arrayBuffer();
     fileData = new Uint8Array(buf);
   } else {
@@ -2167,8 +2165,6 @@ adminRouter.post('/media/upload', async (c) => {
       return c.json({ detail: 'حجم الملف يتجاوز الحد المسموح' }, 413);
     }
     fileData = new Uint8Array(body);
-    const nameHeader = c.req.header('X-Filename');
-    if (nameHeader) filename = nameHeader;
   }
 
   const signature = validateFileSignature(fileData, VALIDATED_ADMIN_MEDIA_EXTS);
@@ -2190,7 +2186,7 @@ adminRouter.post('/media/upload', async (c) => {
               ? 'video/webm'
               : 'video/mp4';
 
-  const storedName = safeUploadName(filename, VALIDATED_ADMIN_MEDIA_EXTS, 'admin_media');
+  const storedName = safeUploadNameForDetectedType(signature.detectedExt, VALIDATED_ADMIN_MEDIA_EXTS, 'admin_media');
   const storage = createStorageService(c.env.R2_BUCKET);
   await storage.save(storedName, fileData, mimeType);
 

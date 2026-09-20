@@ -545,7 +545,7 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       const pngHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
       const res = await apiRequest(app, 'POST', '/api/admin/media/upload', {
         token: admin.token,
-        headers: { 'X-Filename': '../../admin-photo.png', 'Content-Type': 'application/octet-stream' },
+        headers: { 'X-Filename': '../../admin-photo.jpg', 'Content-Type': 'application/octet-stream' },
         body: pngHeader,
       }, ctx);
 
