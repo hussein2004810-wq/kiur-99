@@ -568,9 +568,13 @@ export const examAttempts = sqliteTable('exam_attempts', {
   finished_at: text('finished_at'),
   score: integer('score').notNull().default(0),
   total: integer('total').notNull().default(0),
+  revision: integer('revision').notNull().default(1),
+  start_idempotency_key: text('start_idempotency_key'),
 }, (table) => ({
   exam_id_idx: index('exam_attempts_exam_id_idx').on(table.exam_id),
   user_id_idx: index('exam_attempts_user_id_idx').on(table.user_id),
+  open_attempt_idx: uniqueIndex('exam_attempts_one_open_user_exam_idx').on(table.exam_id, table.user_id).where(sql`finished_at IS NULL`),
+  start_idempotency_idx: uniqueIndex('exam_attempts_start_idempotency_idx').on(table.user_id, table.exam_id, table.start_idempotency_key).where(sql`start_idempotency_key IS NOT NULL`),
 }));
 
 export type ExamAttempt = InferSelectModel<typeof examAttempts>;
@@ -587,9 +591,13 @@ export const examAttemptQuestions = sqliteTable('exam_attempt_questions', {
   choice_id: text('choice_id').references(() => choices.id),
   is_correct: integer('is_correct', { mode: 'boolean' }),
   answered_at: text('answered_at'),
+  question_snapshot: text('question_snapshot'),
+  choices_snapshot: text('choices_snapshot'),
 }, (table) => ({
   attempt_id_idx: index('exam_attempt_questions_attempt_id_idx').on(table.attempt_id),
   question_id_idx: index('exam_attempt_questions_question_id_idx').on(table.question_id),
+  attempt_question_idx: uniqueIndex('exam_attempt_questions_attempt_question_idx').on(table.attempt_id, table.question_id),
+  attempt_order_idx: uniqueIndex('exam_attempt_questions_attempt_order_idx').on(table.attempt_id, table.order_index),
 }));
 
 export type ExamAttemptQuestion = InferSelectModel<typeof examAttemptQuestions>;

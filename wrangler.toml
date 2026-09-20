@@ -25,7 +25,9 @@ JWT_SECRET = ""
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRES_MINUTES = "20160"
 BOOTSTRAP_ADMIN_EMAIL = "hussein2004810@gmail.com"
-CORS_ORIGINS = "*"
+# Set production front-end origins as a comma-separated Cloudflare secret or
+# environment variable.  Wildcards are rejected by the production validator.
+CORS_ORIGINS = ""
 ALLOWED_UNIVERSITY_DOMAINS = ""
 FRONTEND_URL = ""
 ADMIN_FRONTEND_URL = ""

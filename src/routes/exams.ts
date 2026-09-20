@@ -65,9 +65,11 @@ async function getItemsOut(db: D1Database, attemptId: string, reveal: boolean) {
 
   return (items.results as any[])
     .map((it) => {
-      const q = qMap[it.question_id];
+      const snapshotQuestion = parseSnapshot(it.question_snapshot);
+      const snapshotChoices = parseSnapshot(it.choices_snapshot);
+      const q = snapshotQuestion ?? qMap[it.question_id];
       if (!q) return null;
-      const qChoices = chMap[it.question_id] ?? [];
+      const qChoices = Array.isArray(snapshotChoices) ? snapshotChoices : (chMap[it.question_id] ?? []);
       const correct = qChoices.find((ch) => Boolean(ch.is_correct));
 
       const row: Record<string, unknown> = {
@@ -95,6 +97,16 @@ async function getItemsOut(db: D1Database, attemptId: string, reveal: boolean) {
       return row;
     })
     .filter(Boolean);
+}
+
+function parseSnapshot(value: unknown): any | null {
+  if (!value || typeof value !== 'string') return null;
+  try { return JSON.parse(value); } catch { return null; }
+}
+
+function snapshotChoice(item: any, choiceId: string): any | null {
+  const choices = parseSnapshot(item.choices_snapshot);
+  return Array.isArray(choices) ? choices.find((choice) => choice?.id === choiceId) ?? null : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -217,32 +229,30 @@ examsRouter.post('/attempts/:attempt_id/finish', requireAuth, async (c) => {
     return c.json({ detail: 'تم إنهاء الامتحان مسبقاً' }, 400);
   }
 
-  const countRes = await c.env.DB.prepare(
-    'SELECT COUNT(*) as c FROM exam_attempt_questions WHERE attempt_id = ? AND is_correct = 1'
-  )
-    .bind(attemptId)
-    .first('c');
-  const totalRes = await c.env.DB.prepare(
-    'SELECT COUNT(*) as c FROM exam_attempt_questions WHERE attempt_id = ?'
-  )
-    .bind(attemptId)
-    .first('c');
-
-  const score = Number(countRes ?? 0);
-  const total = Number(totalRes ?? 0);
-  const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
   const finishedAt = new Date().toISOString();
 
-  // Atomically update attempt status
+  // One statement computes the score from the same database state in which it
+  // changes active -> finished.  An answer racing this update must either land
+  // before scoring or be rejected by its active-attempt predicate.
   const updateRes = await c.env.DB.prepare(
-    'UPDATE exam_attempts SET score = ?, total = ?, finished_at = ? WHERE id = ? AND finished_at IS NULL'
+    `UPDATE exam_attempts
+       SET score = (SELECT COUNT(*) FROM exam_attempt_questions WHERE attempt_id = ? AND is_correct = 1),
+           total = (SELECT COUNT(*) FROM exam_attempt_questions WHERE attempt_id = ?),
+           finished_at = ?
+     WHERE id = ? AND user_id = ? AND finished_at IS NULL`
   )
-    .bind(score, total, finishedAt, attemptId)
+    .bind(attemptId, attemptId, finishedAt, attemptId, user.id)
     .run();
 
   if (!updateRes.meta.changes) {
     return c.json({ detail: 'تم إنهاء الامتحان مسبقاً' }, 400);
   }
+
+  const finished = await c.env.DB.prepare('SELECT score, total FROM exam_attempts WHERE id = ?')
+    .bind(attemptId).first<any>();
+  const score = Number(finished?.score ?? 0);
+  const total = Number(finished?.total ?? 0);
+  const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
 
   // Copy answered questions to student_answers for student analytics & profile stats
   const answers = await c.env.DB.prepare(
@@ -311,11 +321,9 @@ examsRouter.post('/attempts/:attempt_id/items/:item_id/answer', requireAuth, asy
     return c.json({ detail: 'السؤال غير موجود بهذه المحاولة' }, 404);
   }
 
-  const choice = await c.env.DB.prepare(
+  const choice = snapshotChoice(item, body.choice_id) ?? await c.env.DB.prepare(
     'SELECT * FROM choices WHERE id = ? AND question_id = ?'
-  )
-    .bind(body.choice_id, item.question_id)
-    .first();
+  ).bind(body.choice_id, item.question_id).first();
   if (!choice) {
     return c.json({ detail: 'الخيار المحدد لا ينتمي لهذا السؤال' }, 400);
   }
@@ -323,9 +331,12 @@ examsRouter.post('/attempts/:attempt_id/items/:item_id/answer', requireAuth, asy
   const isCorrect = Boolean(choice.is_correct);
 
   await c.env.DB.prepare(
-    'UPDATE exam_attempt_questions SET choice_id = ?, is_correct = ?, answered_at = ? WHERE id = ?'
+    `UPDATE exam_attempt_questions SET choice_id = ?, is_correct = ?, answered_at = ?
+     WHERE id = ? AND attempt_id = ? AND EXISTS (
+       SELECT 1 FROM exam_attempts WHERE id = ? AND user_id = ? AND finished_at IS NULL
+     )`
   )
-    .bind(choice.id, isCorrect ? 1 : 0, new Date().toISOString(), item_id)
+    .bind(choice.id, isCorrect ? 1 : 0, new Date().toISOString(), item_id, attempt_id, attempt_id, user.id)
     .run();
 
   return c.json({ message: 'تم حفظ الإجابة بنجاح', ok: true, recorded: true });
@@ -402,11 +413,9 @@ const handleAttemptAnswer = async (c: Context<AppEnv>) => {
     return c.json({ detail: 'السؤال غير موجود بهذه المحاولة' }, 404);
   }
 
-  const choice = await c.env.DB.prepare(
+  const choice = snapshotChoice(item, choiceId) ?? await c.env.DB.prepare(
     'SELECT * FROM choices WHERE id = ? AND question_id = ?'
-  )
-    .bind(choiceId, item.question_id)
-    .first();
+  ).bind(choiceId, item.question_id).first();
   if (!choice) {
     return c.json({ detail: 'الخيار المحدد لا ينتمي لهذا السؤال' }, 400);
   }
@@ -414,9 +423,12 @@ const handleAttemptAnswer = async (c: Context<AppEnv>) => {
   const isCorrect = Boolean(choice.is_correct);
 
   await c.env.DB.prepare(
-    'UPDATE exam_attempt_questions SET choice_id = ?, is_correct = ?, answered_at = ? WHERE id = ?'
+    `UPDATE exam_attempt_questions SET choice_id = ?, is_correct = ?, answered_at = ?
+     WHERE id = ? AND attempt_id = ? AND EXISTS (
+       SELECT 1 FROM exam_attempts WHERE id = ? AND user_id = ? AND finished_at IS NULL
+     )`
   )
-    .bind(choice.id, isCorrect ? 1 : 0, new Date().toISOString(), item.id)
+    .bind(choice.id, isCorrect ? 1 : 0, new Date().toISOString(), item.id, attempt_id, attempt_id, user.id)
     .run();
 
   return c.json({ message: 'تم حفظ الإجابة بنجاح', recorded: true, ok: true });
@@ -433,6 +445,10 @@ examsRouter.post('/attempts/:attempt_id/answers', requireAuth, handleAttemptAnsw
 examsRouter.post('/:exam_id/start', requireAuth, async (c) => {
   const user = c.get('user')!;
   const examId = c.req.param('exam_id');
+  const idempotencyKey = c.req.header('Idempotency-Key')?.trim() || null;
+  if (idempotencyKey && !/^[A-Za-z0-9_-]{16,128}$/.test(idempotencyKey)) {
+    return c.json({ detail: 'مفتاح idempotency غير صالح' }, 400);
+  }
 
   const exam = await c.env.DB.prepare(
     'SELECT * FROM exams WHERE id = ?'
@@ -482,18 +498,42 @@ examsRouter.post('/:exam_id/start', requireAuth, async (c) => {
     const now = new Date().toISOString();
 
     const attemptStmt = c.env.DB.prepare(
-      'INSERT INTO exam_attempts (id, exam_id, user_id, started_at, total, score) VALUES (?, ?, ?, ?, ?, 0)'
-    ).bind(attemptId, examId, user.id, now, chosen.length);
+      `INSERT INTO exam_attempts
+        (id, exam_id, user_id, started_at, total, score, revision, start_idempotency_key)
+       VALUES (?, ?, ?, ?, ?, 0, 1, ?)`
+    ).bind(attemptId, examId, user.id, now, chosen.length, idempotencyKey);
 
+    const choicesByQuestion = await Promise.all(chosen.map(async (q: any) => {
+      const result = await c.env.DB.prepare(
+        'SELECT id, text, order_index, is_correct FROM choices WHERE question_id = ? ORDER BY order_index ASC'
+      ).bind(q.id).all();
+      return [q.id, result.results ?? []] as const;
+    }));
+    const choiceMap = new Map(choicesByQuestion);
     const itemStmts = chosen.map((q: any, idx: number) => {
       const eaqId = 'eaq_' + Math.random().toString(36).substring(2, 10);
       return c.env.DB.prepare(
-        'INSERT INTO exam_attempt_questions (id, attempt_id, question_id, order_index) VALUES (?, ?, ?, ?)'
-      ).bind(eaqId, attemptId, q.id, idx);
+        `INSERT INTO exam_attempt_questions
+          (id, attempt_id, question_id, order_index, question_snapshot, choices_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).bind(
+        eaqId, attemptId, q.id, idx,
+        JSON.stringify({ id: q.id, text: q.text, eyebrow: q.eyebrow, image_url: q.image_url, rationale: q.rationale }),
+        JSON.stringify(choiceMap.get(q.id) ?? [])
+      );
     });
 
     // Execute atomic batch creation
-    await c.env.DB.batch([attemptStmt, ...itemStmts]);
+    try {
+      await c.env.DB.batch([attemptStmt, ...itemStmts]);
+    } catch {
+      // The partial unique index is the race-safe authority.  A concurrent
+      // start returns its winner instead of producing a second attempt.
+      attempt = await c.env.DB.prepare(
+        'SELECT * FROM exam_attempts WHERE exam_id = ? AND user_id = ? AND finished_at IS NULL'
+      ).bind(examId, user.id).first();
+      if (!attempt) throw new Error('تعذر إنشاء محاولة الامتحان');
+    }
 
     attempt = await c.env.DB.prepare('SELECT * FROM exam_attempts WHERE id = ?')
       .bind(attemptId)

@@ -6,7 +6,9 @@ export const DEFAULT_JWT_EXPIRES_MINUTES = 60 * 24 * 14; // 14 days (20160 minut
 export const DEFAULT_PASSWORD_RESET_TTL_MINUTES = 60;
 export const DEFAULT_PASSWORD_RESET_COOLDOWN_SECONDS = 120;
 
-export const ALLOWED_JWT_ALGORITHMS = ['HS256', 'HS384', 'HS512'] as const;
+// KIUR issues symmetric access tokens itself.  Keeping this to one algorithm
+// makes the configured algorithm and the verifier impossible to drift apart.
+export const ALLOWED_JWT_ALGORITHMS = ['HS256'] as const;
 
 export const KNOWN_INSECURE_SECRETS = new Set([
   'dev-secret-change-me',
@@ -67,6 +69,10 @@ export function validateConfig(config: AppConfig): void {
     if (config.jwtSecret.length < 32) {
       throw new Error('FATAL: JWT_SECRET must be at least 32 characters long in production.');
     }
+
+    if (config.corsOriginsList.length === 0 || config.corsOriginsList.includes('*')) {
+      throw new Error('FATAL: explicit, non-wildcard CORS_ORIGINS are required in production.');
+    }
   }
 }
 
@@ -82,7 +88,9 @@ export function getConfig(env?: AppBindings): AppConfig {
   const jwtAlgorithm = env?.JWT_ALGORITHM || 'HS256';
   const jwtExpiresMinutes = parseInt(env?.JWT_EXPIRES_MINUTES || '20160', 10) || DEFAULT_JWT_EXPIRES_MINUTES;
 
-  const rawCors = env?.CORS_ORIGINS || 'http://localhost:5500,http://127.0.0.1:5500,http://localhost:8787,http://127.0.0.1:8787';
+  const rawCors = env?.CORS_ORIGINS ?? (isDebug
+    ? 'http://localhost:5500,http://127.0.0.1:5500,http://localhost:8787,http://127.0.0.1:8787'
+    : '');
   const corsOriginsList = rawCors
     .split(',')
     .map((s) => s.trim().toLowerCase())

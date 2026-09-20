@@ -7,6 +7,7 @@ import { eq, inArray, asc, and, like, desc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth, optionalAuth } from '../middleware/auth';
+import { canAccessCourse } from '../services/content-access';
 
 /**
  * Checks if a user is entitled to view course videos and materials.
@@ -18,35 +19,7 @@ export async function isUserEntitledToCourse(
   user: any,
   course: typeof schema.courses.$inferSelect
 ): Promise<boolean> {
-  if (user.role === 'admin' || user.role === 'professor') {
-    return true;
-  }
-
-  if (course.subject_id) {
-    // 1. Check if user activated a license/code for this subject
-    const activation = await db
-      .select({ id: schema.activationCodes.id })
-      .from(schema.activationCodes)
-      .where(and(
-        eq(schema.activationCodes.subject_id, course.subject_id),
-        eq(schema.activationCodes.activated_by_user_id, user.id)
-      ))
-      .get();
-    if (activation) return true;
-
-    // 2. Check academic scope: user.stage_id vs subject.stage_id
-    const subject = await db
-      .select({ stage_id: schema.subjects.stage_id })
-      .from(schema.subjects)
-      .where(eq(schema.subjects.id, course.subject_id))
-      .get();
-
-    if (subject?.stage_id && user.stage_id) {
-      return user.stage_id === subject.stage_id;
-    }
-  }
-
-  return true;
+  return canAccessCourse(db, user, course);
 }
 
 async function doneIds(db: ReturnType<typeof drizzle>, userId: string): Promise<Set<string>> {
@@ -146,7 +119,7 @@ coursesRouter.get('/', async (c) => {
 coursesRouter.get('/:course_id', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user');
-  const courseId = c.req.param('course_id');
+  const courseId = c.req.param('course_id') ?? '';
 
   const course = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId)).get();
   if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
@@ -195,10 +168,10 @@ coursesRouter.get('/:course_id/stats', async (c) => {
 });
 
 // GET /api/courses/:course_id/materials
-coursesRouter.get('/:course_id/materials', async (c) => {
+coursesRouter.get('/:course_id/materials', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
-  const courseId = c.req.param('course_id');
+  const courseId = c.req.param('course_id') ?? '';
 
   const course = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId)).get();
   if (!course) return c.json({ detail: 'الكورس غير موجود' }, 404);
@@ -264,7 +237,7 @@ coursesRouter.post('/lectures/:lecture_id/complete', async (c) => {
 export const lecturesRouter = new Hono<AppEnv>();
 
 // GET /api/lectures/:id
-lecturesRouter.get('/:id', optionalAuth, async (c) => {
+lecturesRouter.get('/:id', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const id = c.req.param('id') as string;
   if (!id) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
@@ -273,14 +246,11 @@ lecturesRouter.get('/:id', optionalAuth, async (c) => {
   const lec = await db.select().from(schema.lectures).where(eq(schema.lectures.id, id)).get();
   if (!lec) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
 
-  if (user && lec.course_id) {
-    const course = await db.select().from(schema.courses).where(eq(schema.courses.id, lec.course_id)).get();
-    if (course) {
-      const isEntitled = await isUserEntitledToCourse(db, user, course);
-      if (!isEntitled) {
-        return c.json({ detail: 'غير مصرح بالوصول إلى هذه المحاضرة' }, 403);
-      }
-    }
+  const courseId = lec.course_id;
+  if (!courseId || lec.is_deleted) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
+  const course = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId)).get();
+  if (!course || !(await isUserEntitledToCourse(db, user!, course))) {
+    return c.json({ detail: 'غير مصرح بالوصول إلى هذه المحاضرة' }, 403);
   }
 
   return c.json(lec);

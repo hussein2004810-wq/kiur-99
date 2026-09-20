@@ -62,8 +62,11 @@ export async function decodeAccessToken(
   if (!token || typeof token !== 'string') return null;
 
   try {
-    const { payload } = await jwtVerify(token, getSecretKey(jwtSecret), {
-      algorithms: ['HS256', 'HS384', 'HS512'],
+    const { payload, protectedHeader } = await jwtVerify(token, getSecretKey(jwtSecret), {
+      algorithms: ['HS256'],
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+      requiredClaims: ['iss', 'aud', 'exp', 'iat', 'sub'],
     });
 
     const p = payload as AccessTokenPayload & { pending_2fa_user?: string };
@@ -73,18 +76,9 @@ export async function decodeAccessToken(
       return null;
     }
 
-    // 2. Token type must be 'access' if type claim is present
-    if (p.type && p.type !== JWT_TYPE_ACCESS) {
-      return null;
-    }
-
-    // 3. Validate issuer if present
-    if (p.iss && p.iss !== JWT_ISSUER) {
-      return null;
-    }
-
-    // 4. Validate audience if present
-    if (p.aud && p.aud !== JWT_AUDIENCE) {
+    // Access tokens are never backward-compatible with untyped JWTs.  This
+    // avoids a legacy signed token bypassing session revocation checks.
+    if (protectedHeader.typ !== 'JWT' || p.type !== JWT_TYPE_ACCESS) {
       return null;
     }
 
@@ -93,11 +87,9 @@ export async function decodeAccessToken(
       return null;
     }
 
-    // Stage 2 JWT Hardening: typed access tokens require a session ID
-    if (p.type === JWT_TYPE_ACCESS) {
-      if (!p.sid || typeof p.sid !== 'string' || p.sid.trim() === '') {
-        return null;
-      }
+    // Every access token must be tied to an active server-side session.
+    if (!p.sid || typeof p.sid !== 'string' || p.sid.trim() === '') {
+      return null;
     }
 
     return p;
@@ -136,8 +128,11 @@ export async function decode2faPendingToken(
   if (!token || typeof token !== 'string') return null;
 
   try {
-    const { payload } = await jwtVerify(token, getSecretKey(jwtSecret), {
-      algorithms: ['HS256', 'HS384', 'HS512'],
+    const { payload, protectedHeader } = await jwtVerify(token, getSecretKey(jwtSecret), {
+      algorithms: ['HS256'],
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+      requiredClaims: ['iss', 'aud', 'exp', 'iat'],
     });
 
     const p = payload as PendingTwoFAPayload;
@@ -147,15 +142,7 @@ export async function decode2faPendingToken(
       return null;
     }
 
-    if (p.type && p.type !== JWT_TYPE_2FA) {
-      return null;
-    }
-
-    if (p.iss && p.iss !== JWT_ISSUER) {
-      return null;
-    }
-
-    if (p.aud && p.aud !== JWT_AUDIENCE) {
+    if (protectedHeader.typ !== 'JWT' || p.type !== JWT_TYPE_2FA) {
       return null;
     }
 

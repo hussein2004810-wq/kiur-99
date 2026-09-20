@@ -372,10 +372,14 @@ CREATE TABLE IF NOT EXISTS exam_attempts (
     started_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
     finished_at TEXT,
     score INTEGER NOT NULL DEFAULT 0,
-    total INTEGER NOT NULL DEFAULT 0
+    total INTEGER NOT NULL DEFAULT 0,
+    revision INTEGER NOT NULL DEFAULT 1,
+    start_idempotency_key TEXT
 );
 CREATE INDEX IF NOT EXISTS exam_attempts_exam_id_idx ON exam_attempts(exam_id);
 CREATE INDEX IF NOT EXISTS exam_attempts_user_id_idx ON exam_attempts(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS exam_attempts_one_open_user_exam_idx ON exam_attempts(exam_id, user_id) WHERE finished_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS exam_attempts_start_idempotency_idx ON exam_attempts(user_id, exam_id, start_idempotency_key) WHERE start_idempotency_key IS NOT NULL;
 
 -- 25. exam_attempt_questions
 CREATE TABLE IF NOT EXISTS exam_attempt_questions (
@@ -385,10 +389,14 @@ CREATE TABLE IF NOT EXISTS exam_attempt_questions (
     order_index INTEGER NOT NULL DEFAULT 0,
     choice_id TEXT REFERENCES choices(id),
     is_correct INTEGER,
-    answered_at TEXT
+    answered_at TEXT,
+    question_snapshot TEXT,
+    choices_snapshot TEXT
 );
 CREATE INDEX IF NOT EXISTS exam_attempt_questions_attempt_id_idx ON exam_attempt_questions(attempt_id);
 CREATE INDEX IF NOT EXISTS exam_attempt_questions_question_id_idx ON exam_attempt_questions(question_id);
+CREATE UNIQUE INDEX IF NOT EXISTS exam_attempt_questions_attempt_question_idx ON exam_attempt_questions(attempt_id, question_id);
+CREATE UNIQUE INDEX IF NOT EXISTS exam_attempt_questions_attempt_order_idx ON exam_attempt_questions(attempt_id, order_index);
 
 -- 26. user_skills
 CREATE TABLE IF NOT EXISTS user_skills (

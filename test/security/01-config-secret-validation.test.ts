@@ -7,6 +7,7 @@ describe('Stage 1: Production Secret and Configuration Validation', () => {
     DB: {} as any,
     JWT_SECRET: 'a-very-long-and-secure-random-token-for-kiur-99-production-system-at-least-32-chars',
     DEBUG: 'false',
+    CORS_ORIGINS: 'https://app.kiur.edu.iq',
   };
 
   it('passes validation with a secure production secret', () => {
@@ -81,6 +82,13 @@ describe('Stage 1: Production Secret and Configuration Validation', () => {
     ).toThrow(/Insecure or unsupported JWT algorithm/);
   });
 
+  it('fails closed in production without explicit non-wildcard CORS origins', () => {
+    expect(() => getConfig({ ...baseBindings, CORS_ORIGINS: '*' }))
+      .toThrow(/non-wildcard CORS_ORIGINS/);
+    expect(() => getConfig({ ...baseBindings, CORS_ORIGINS: '' }))
+      .toThrow(/non-wildcard CORS_ORIGINS/);
+  });
+
   it('never leaks secret values in the exception message', () => {
     const leakedSecret = 'my-super-secret-password-leaked-123456';
     try {
@@ -95,4 +103,3 @@ describe('Stage 1: Production Secret and Configuration Validation', () => {
     }
   });
 });
-

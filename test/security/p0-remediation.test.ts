@@ -158,6 +158,7 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
           ...ctx.bindings,
           DEBUG: 'false',
           JWT_SECRET: 'valid-secure-production-secret-with-at-least-32-characters!',
+          CORS_ORIGINS: 'https://app.kiur.edu.iq',
         },
       };
 
@@ -423,6 +424,15 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(data.detail).toContain('الملف غير موجود أو غير مصرح');
     });
 
+    it('denies an ordinary orphaned object key instead of relying on filename heuristics', async () => {
+      await ctx.r2.put('unregistered-lecture.mp4', new Uint8Array([1, 2, 3, 4]), {
+        httpMetadata: { contentType: 'video/mp4' },
+      });
+
+      const res = await apiRequest(app, 'GET', '/media-files/unregistered-lecture.mp4', {}, ctx);
+      expect(res.status).toBe(404);
+    });
+
     it('isolates student lecture progress independently without Drizzle short-circuit bug', async () => {
       const student1 = ctx.fixtures.users.student;
       const token1 = ctx.createAuthToken(student1.id, 'student', student1.sessionId);
@@ -574,6 +584,4 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
     });
   });
 });
-
-
 

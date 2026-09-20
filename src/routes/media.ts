@@ -3,7 +3,8 @@ import { drizzle } from 'drizzle-orm/d1';
 import { eq, or } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { createStorageService } from '../services/storage';
-import { decodeAccessToken } from '../services/jwt';
+import { authenticateToken } from '../middleware/auth';
+import { canAccessMedia } from '../services/content-access';
 import type { AppEnv } from '../types';
 
 export const mediaRouter = new Hono<AppEnv>();
@@ -30,44 +31,32 @@ mediaRouter.get('/:name', async (c) => {
     .where(or(eq(schema.mediaFiles.id, name), eq(schema.mediaFiles.filename, name)))
     .get();
 
-  // If record exists and is marked deleted, fail closed
-  if (mediaRecord?.is_deleted) {
+  // Never treat an R2 object key as an authorization record.  Orphaned data
+  // remains unreachable even when the object still exists in storage.
+  if (!mediaRecord || mediaRecord.is_deleted) {
     return c.json({ detail: 'الملف غير موجود أو غير مصرح بالوصول إليه' }, 404);
   }
 
-  const objectKey = mediaRecord ? mediaRecord.filename : name;
+  const objectKey = mediaRecord.filename;
 
   // 2. Governance check: If media is linked to an unreleased or future clinical glimpse
-  if (mediaRecord) {
-    const linkedGlimpse = await db
-      .select()
-      .from(schema.clinicalGlimpses)
-      .where(eq(schema.clinicalGlimpses.image_id, mediaRecord.id))
-      .get();
+  const linkedGlimpse = await db.select().from(schema.clinicalGlimpses)
+    .where(eq(schema.clinicalGlimpses.image_id, mediaRecord.id)).get();
+  const isPublicProfilePhoto = Boolean(await db.select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.photo_url, mediaRecord.url)).get());
+  const now = new Date().toISOString();
+  const isPublishedPublicImage = Boolean(
+    linkedGlimpse && linkedGlimpse.status === 'published' &&
+    (!linkedGlimpse.publish_at || linkedGlimpse.publish_at <= now)
+  );
 
-    if (linkedGlimpse) {
-      const now = new Date().toISOString();
-      const isFuture = linkedGlimpse.publish_at && linkedGlimpse.publish_at > now;
-      const isUnpublished = linkedGlimpse.status !== 'published';
-
-      if (isFuture || isUnpublished) {
-        let isStaff = false;
-        const authHeader = c.req.header('Authorization') ?? '';
-        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-        if (token) {
-          const payload = await decodeAccessToken(token, c.env.JWT_SECRET);
-          if (payload?.sub) {
-            const user = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();
-            if (user && (user.role === 'admin' || user.role === 'professor')) {
-              isStaff = true;
-            }
-          }
-        }
-
-        if (!isStaff) {
-          return c.json({ detail: 'غير مصرح بالوصول إلى وسائط لم تنشر بعد' }, 403);
-        }
-      }
+  if (!isPublishedPublicImage && !isPublicProfilePhoto) {
+    const authHeader = c.req.header('Authorization') ?? '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    const auth = token ? await authenticateToken(db, token, c.env.JWT_SECRET) : null;
+    if (!auth?.success || !(await canAccessMedia(db, auth.user, mediaRecord))) {
+      return c.json({ detail: 'غير مصرح بالوصول إلى هذا الوسيط' }, 403);
     }
   }
 

@@ -19,39 +19,30 @@ export async function authenticateToken(
     return { success: false, status: 401, detail: 'انتهت صلاحية الجلسة' };
   }
 
-  let sessionRecord: CurrentSession;
-  if (payload.sid) {
-    // Atomic compound session check: session must exist, be active, and belong strictly to payload.sub
-    const session = await db
-      .select()
-      .from(schema.userSessions)
-      .where(
-        and(
-          eq(schema.userSessions.id, payload.sid),
-          eq(schema.userSessions.user_id, payload.sub),
-          eq(schema.userSessions.is_active, true)
-        )
+  // decodeAccessToken already requires sid; keep the compound predicate here
+  // so a valid JWT can never be paired with someone else's active session.
+  const session = await db
+    .select()
+    .from(schema.userSessions)
+    .where(
+      and(
+        eq(schema.userSessions.id, payload.sid!),
+        eq(schema.userSessions.user_id, payload.sub),
+        eq(schema.userSessions.is_active, true)
       )
-      .get();
+    )
+    .get();
 
-    if (!session || !session.is_active) {
-      return { success: false, status: 401, detail: 'تم تسجيل الدخول من جهاز آخر' };
-    }
-
-    sessionRecord = {
-      id: session.id,
-      user_id: session.user_id,
-      device_label: session.device_label ?? '',
-      is_active: session.is_active ?? false,
-    };
-  } else {
-    sessionRecord = {
-      id: '',
-      user_id: payload.sub,
-      device_label: 'direct',
-      is_active: true,
-    };
+  if (!session || !session.is_active) {
+    return { success: false, status: 401, detail: 'تم تسجيل الدخول من جهاز آخر' };
   }
+
+  const sessionRecord: CurrentSession = {
+    id: session.id,
+    user_id: session.user_id,
+    device_label: session.device_label ?? '',
+    is_active: session.is_active ?? false,
+  };
 
   // Load user
   const user = await db

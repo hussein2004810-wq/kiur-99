@@ -47,7 +47,17 @@ function base64UrlDecode(str: string): Buffer {
 export function signJwt(payload: Record<string, any>, secret: string, expiresInMinutes = 20160): string {
   const header = { alg: 'HS256', typ: 'JWT' };
   const exp = Math.floor(Date.now() / 1000) + expiresInMinutes * 60;
-  const fullPayload = { ...payload, exp: payload.exp ?? exp };
+  const isAccess = typeof payload.sub === 'string';
+  const isPendingTwoFactor = typeof payload.pending_2fa_user === 'string';
+  const fullPayload = {
+    ...payload,
+    ...(isAccess ? { type: payload.type ?? 'access' } : {}),
+    ...(isPendingTwoFactor ? { type: payload.type ?? 'pending_2fa' } : {}),
+    iss: payload.iss ?? 'kiur-api',
+    aud: payload.aud ?? 'kiur-app',
+    iat: payload.iat ?? Math.floor(Date.now() / 1000),
+    exp: payload.exp ?? exp,
+  };
 
   const encodedHeader = base64UrlEncode(JSON.stringify(header));
   const encodedPayload = base64UrlEncode(JSON.stringify(fullPayload));
