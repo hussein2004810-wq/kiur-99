@@ -1949,7 +1949,7 @@
     document.getElementById('notifStudentSearch').value = '';
     const sel = document.getElementById('notifSelectedStudent');
     sel.style.display = 'flex';
-    sel.innerHTML = `<div class="item-body"><div class="item-title">${name}</div></div><button class="btn btn-ghost item-action" onclick="notifSelectedStudentId=null; document.getElementById('notifSelectedStudent').style.display='none';">إزالة</button>`;
+    sel.innerHTML = `<div class="item-body"><div class="item-title">${esc(name)}</div></div><button class="btn btn-ghost item-action" onclick="notifSelectedStudentId=null; document.getElementById('notifSelectedStudent').style.display='none';">إزالة</button>`;
   }
   async function sendNotificationFromAdmin(){
     if (!liveMode){ showToast('سجّل دخول حقيقي أولاً (وضع المعاينة بدون اتصال لا يدعم هذا الإجراء)'); return; }
@@ -3574,7 +3574,7 @@
         <div class="item-card glass" style="align-items:flex-start;">
           <div class="item-body">
             <div class="item-title">${esc(q.text)}</div>
-            <div class="item-meta">${q.choices.map(c => (c.is_correct ? '✓ ' : '• ') + c.text).join(' · ')}</div>
+            <div class="item-meta">${q.choices.map(c => (c.is_correct ? '✓ ' : '• ') + esc(c.text)).join(' · ')}</div>
           </div>
           <div style="display:flex; gap:6px; flex:none;">
             <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="openQuestionForm('${q.id}')">تعديل</button>

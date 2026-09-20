@@ -6,6 +6,7 @@ and an active subject entitlement, where applicable.
 
 | Resource / operation | Anonymous | Student | Professor | Reseller | Admin |
 | --- | --- | --- | --- | --- | --- |
+| Account registration and email verification | May create an unverified student only; no session is issued | Verify own mailbox before login | Same | Same | Provisioned by an authenticated admin workflow | Provisioned by an authenticated admin workflow |
 | Profile directory and booklet metadata | Read metadata only; no raw file URL | Same | Same | Same | Same |
 | Booklet, lecture and protected media bytes | Deny | Allowed only with scope/entitlement | Own subject/course or assigned subject | Deny | Allowed |
 | Courses, questions and exams | No protected content | Scoped subjects or active activation code | Assigned subjects; own courses are allowed | Deny | Allowed |
@@ -21,6 +22,7 @@ and an active subject entitlement, where applicable.
 - `src/routes/questions.ts`, `src/routes/exams.ts`, and `src/routes/students.ts` enforce scope at read and mutation boundaries.
 - `src/routes/professors.ts` resolves the caller's professor profile before content writes; supplied owner identifiers cannot override it.
 - `src/middleware/auth.ts` verifies the token, session, user, ban state, issuer, audience, type, and access-token session binding.
+- `src/routes/auth.ts` ignores public role input, creates every public account as an unverified student, and refuses login, 2FA completion, and session restoration until mailbox verification succeeds.
 - `src/middleware/rate-limit.ts` applies durable D1 limits to both IP and authenticated account where available.
 
 ## Regression evidence

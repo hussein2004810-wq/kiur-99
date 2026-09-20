@@ -14,11 +14,14 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `ae4ede3` prevents cross-professor content creation, mutation, and deletion through generic professor routes.
 - `7dc0ea4` removes raw booklet URLs from public professor metadata.
 - `ac9fb15` makes every upload endpoint fail closed with a controlled 503 when R2 is not configured.
+- The current working commit closes the remaining public-registration privilege escalation, requires email verification before any password session, and fixes additional stored-text escaping in both served SPA files.
 
 ## Implemented controls
 
 - `src/services/content-access.ts` is the shared server-side entitlement policy used by media, courses, questions, and exams.
 - `src/routes/questions.ts`, `src/routes/exams.ts`, and `src/routes/students.ts` require authenticated, scoped access rather than relying on the client UI.
+- Public registration always persists the `student` role and returns no access token or session cookie.  Existing unverified accounts cannot obtain a password/2FA/restored session until their email is verified.
+- Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
 - `src/routes/exams.ts` stores question/choice snapshots, prevents a second open attempt with database constraints, performs conditional answer/finish transitions, and replays only a finish request bearing its original idempotency key.
 - `migrations/0005_exam_integrity.sql`, `migrations/0006_durable_rate_limits.sql`, and `migrations/0007_exam_finish_idempotency.sql` are additive remote-D1 migrations.  They have not been applied remotely.
 - `load-tests/exam-burst.k6.js` requires an explicit staging URL, exam id, and one entitled token per simulated student.  It cannot run against anything by default.
@@ -27,7 +30,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 ## Verification performed locally
 
 - `npm run typecheck` passed after the final application changes.
-- `npm test` passed: 40 files and 530 tests after the final ownership, media, rate-limit, D1-bound, and R2 fail-closed changes.
+- `npm test` passed: 40 files and 532 tests after the final ownership, media, registration, rate-limit, D1-bound, and R2 fail-closed changes.
 - `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 116 tests against the actual Worker routes.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
 - Vitest was upgraded to `4.1.11`, closing its Moderate mocker path-traversal advisory.  `npm audit --json` now reports four Moderate development-only findings from Drizzle Kit's legacy `@esbuild-kit` chain; npm's only suggested fix is a major downgrade of Drizzle Kit to `0.18.1`, so it was not applied automatically.
@@ -35,7 +38,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 ## Owner actions required before production
 
 1. Generate and store a new 32+ character JWT secret in the deployment secret store, revoke existing sessions, and remove every historical exposed secret from deployment history/configuration.
-2. Set exact production `CORS_ORIGINS` values and all production mail/OAuth values.  Empty/wildcard CORS is intentionally rejected in production.
+2. Set exact production `CORS_ORIGINS` values and all production mail/OAuth values.  Empty/wildcard CORS is intentionally rejected in production; SMTP or the selected transactional-mail provider must be configured before public password registration is enabled, because unverified accounts now correctly receive no session.
 3. Back up the remote D1 database, apply migrations 0005 through 0007, and confirm indexes with the production D1 tooling.
 4. Run Gitleaks and CI from the remote provider, then run the supplied k6 test on isolated staging at 600 and 1,000 distinct entitled users.  Keep the results before claiming concurrency readiness.
 5. Choose and budget for the video architecture before enabling large uploads or promising HLS/ABR playback.  Cloudflare Stream and a self-hosted transcoding pipeline are external product/operational decisions, not safe local code defaults.

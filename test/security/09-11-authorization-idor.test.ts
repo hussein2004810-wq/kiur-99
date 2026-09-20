@@ -65,7 +65,7 @@ describe('Stages 9, 10 & 11: Authorization, IDOR Protection, and Privilege Harde
 
       expect(res.status).toBe(200);
       const data = await res.json();
-      expect(data.user.role).toBe('student'); // Must be student, not admin
+      expect(data.role).toBe('student'); // Must be student, not admin
     });
   });
 
@@ -144,4 +144,3 @@ describe('Stages 9, 10 & 11: Authorization, IDOR Protection, and Privilege Harde
     });
   });
 });
-

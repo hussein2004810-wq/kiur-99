@@ -172,11 +172,9 @@ describe('Tier 3: Cross-Feature Combinations & Sequential Interactions', () => {
       },
     }, ctx);
     expect(regRes.status).toBe(200);
-    const { access_token } = await regRes.json();
-
-    const meRes = await apiRequest(app, 'GET', '/auth/me', { token: access_token }, ctx);
-    expect(meRes.status).toBe(200);
-    const me = await meRes.json();
+    const registration = await regRes.json();
+    expect(registration.requires_email_verification).toBe(true);
+    const me = await ctx.db.prepare('SELECT full_name, university_id, stage_id, phone FROM users WHERE id = ?').bind(registration.user_id).first<any>();
     expect(me.full_name).toBe('طالب التسجيل المتكامل');
     expect(me.university_id).toBe(ctx.fixtures.universityId);
     expect(me.stage_id).toBe(ctx.fixtures.stageId);

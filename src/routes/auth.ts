@@ -55,12 +55,6 @@ const EMAIL_VERIFICATION_TTL_HOURS = 24;
 
 // ─────────────────────────────────────────── helpers ────────────────────────
 
-function shouldBootstrapAdmin(users: typeof schema.users.$inferSelect[], email: string, bootstrapEmail: string | undefined): boolean {
-  if (!bootstrapEmail) return false;
-  if (email.trim().toLowerCase() !== bootstrapEmail.trim().toLowerCase()) return false;
-  return !users.some((u) => u.role === 'admin');
-}
-
 function domainAllowed(email: string, allowedDomains: string): boolean {
   if (!allowedDomains) return true;
   const domains = allowedDomains.split(',').map((d) => d.trim().toLowerCase());
@@ -214,24 +208,18 @@ authRouter.post('/google/verify', async (c) => {
 
   const db = drizzle(c.env.DB, { schema });
   let user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
-  const allUsers = await db.select().from(schema.users);
-  const bootstrapEmail = c.env.BOOTSTRAP_ADMIN_EMAIL;
-
   if (user) {
     const patch: Partial<typeof schema.users.$inferInsert> = {};
     if (!user.google_sub && sub) patch.google_sub = sub;
     if (!user.photo_url && picture) patch.photo_url = picture;
     if (!user.email_verified_at) patch.email_verified_at = new Date().toISOString();
-    if (user.role !== 'admin' && shouldBootstrapAdmin(allUsers, email, bootstrapEmail)) {
-      patch.role = 'admin';
-    }
     if (Object.keys(patch).length > 0) {
       await db.update(schema.users).set(patch).where(eq(schema.users.id, user.id));
       user = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).get();
     }
   } else {
     // SECURITY: Any new user always starts as student. The next/flow parameter can never grant admin!
-    const role = shouldBootstrapAdmin(allUsers, email, bootstrapEmail) ? 'admin' : 'student';
+    const role = 'student';
     const id = schema.genId();
     const now = new Date().toISOString();
 
@@ -332,19 +320,12 @@ authRouter.get('/google/callback', async (c) => {
 
   // Find or create user
   let user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
-  const allUsers = await db.select().from(schema.users);
-  const bootstrapEmail = c.env.BOOTSTRAP_ADMIN_EMAIL;
-
   if (user) {
     if (!user.google_sub) {
       await db.update(schema.users).set({ google_sub: sub }).where(eq(schema.users.id, user.id));
     }
-    if (user.role !== 'admin' && shouldBootstrapAdmin(allUsers, email, bootstrapEmail)) {
-      await db.update(schema.users).set({ role: 'admin' }).where(eq(schema.users.id, user.id));
-      user = { ...user, role: 'admin' };
-    }
   } else {
-    const role = shouldBootstrapAdmin(allUsers, email, bootstrapEmail) ? 'admin' : 'student';
+    const role = 'student';
     const id = schema.genId();
     await db.insert(schema.users).values({ id, email, full_name: name, google_sub: sub, role });
     user = await db.select().from(schema.users).where(eq(schema.users.id, id)).get();
@@ -463,11 +444,7 @@ authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
 
   // New user creation
   if (!user) {
-    const allUsers = await db.select().from(schema.users).all();
-    // Default to student. Only bootstrap admin if explicitly matching bootstrap email
-    const role = shouldBootstrapAdmin(allUsers, fbUser.email, c.env.BOOTSTRAP_ADMIN_EMAIL)
-      ? 'admin'
-      : 'student';
+    const role = 'student';
 
     const newId = schema.genId();
     await db.insert(schema.users).values({
@@ -552,12 +529,9 @@ authRouter.post('/dev-login', async (c) => {
   if (!email) return c.json({ detail: 'email مطلوب' }, 400);
 
   const db = drizzle(c.env.DB, { schema });
-  const allUsers = await db.select().from(schema.users);
-  const bootstrapEmail = c.env.BOOTSTRAP_ADMIN_EMAIL;
-
   let user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
   if (!user) {
-    const role = shouldBootstrapAdmin(allUsers, email, bootstrapEmail) ? 'admin' : 'student';
+    const role = 'student';
     const id = schema.genId();
     await db.insert(schema.users).values({ id, email, full_name: name, google_sub: `dev:${email}`, role });
     user = await db.select().from(schema.users).where(eq(schema.users.id, id)).get()!;
@@ -602,8 +576,9 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
   const existing = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
   if (existing) return c.json({ detail: 'البريد الإلكتروني مسجل بالفعل' }, 400);
 
-  const allUsers = await db.select().from(schema.users).all();
-  const role = shouldBootstrapAdmin(allUsers, email, c.env.BOOTSTRAP_ADMIN_EMAIL) ? 'admin' : (body.role ?? 'student');
+  // Public registration is intentionally roleless: privileged roles are
+  // granted only by an authenticated server-side administrator workflow.
+  const role = 'student';
 
   const id = schema.genId();
   const passwordHash = await hashPassword(password);
@@ -620,21 +595,6 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
   });
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, id)).get();
-
-  const jwtSecret = c.env.JWT_SECRET;
-  const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
-  const session = await startNewSession(db, user!.id, body.device_label || 'متصفح ويب');
-  const token = await createAccessToken(user!.id, session.id, jwtSecret, expiresMinutes);
-
-  const response = c.json({
-    access_token: token,
-    token_type: 'bearer',
-    user_id: user!.id,
-    role: user!.role,
-    user: userOut(user!),
-  });
-  setSessionCookie(response, token, expiresMinutes, isDebug);
 
   recordAuditEvent({
     event: 'AUTH_REGISTER_SUCCESS',
@@ -666,7 +626,13 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
     details: { role },
   });
 
-  return response;
+  return c.json({
+    ok: true,
+    requires_email_verification: true,
+    user_id: user!.id,
+    role: user!.role,
+    message: 'تم إنشاء الحساب. يرجى توثيق بريدك الإلكتروني قبل تسجيل الدخول.',
+  });
 });
 
 // ─────────────────────────────────────────── Email Verification (Stage A2) ──
@@ -833,6 +799,10 @@ authRouter.post('/login', loginRateLimiter, async (c) => {
     return c.json({ detail: 'هذا الحساب محظور' }, 403);
   }
 
+  if (!user.email_verified_at) {
+    return c.json({ detail: 'يرجى توثيق بريدك الإلكتروني قبل تسجيل الدخول' }, 403);
+  }
+
   // Clear failed attempts
   if (user.failed_login_attempts || user.locked_until) {
     await db.update(schema.users).set({ failed_login_attempts: 0, locked_until: null }).where(eq(schema.users.id, user.id));
@@ -945,6 +915,7 @@ authRouter.post('/2fa/verify', twoFaVerifyRateLimiter, async (c) => {
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
   if (!user || !user.totp_enabled) return c.json({ detail: 'جلسة غير صالحة' }, 401);
   if (user.is_banned) return c.json({ detail: 'هذا الحساب محظور' }, 403);
+  if (!user.email_verified_at) return c.json({ detail: 'يرجى توثيق بريدك الإلكتروني قبل تسجيل الدخول' }, 403);
 
   if (user.locked_until && new Date(user.locked_until) > new Date()) {
     const minutesLeft = Math.max(1, Math.floor((new Date(user.locked_until).getTime() - Date.now()) / 60000) + 1);
@@ -996,6 +967,7 @@ authRouter.post('/2fa/login', twoFaVerifyRateLimiter, async (c) => {
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
   if (!user || !user.totp_enabled || !user.totp_secret) return c.json({ detail: 'المستخدم غير صالح' }, 400);
   if (user.is_banned) return c.json({ detail: 'هذا الحساب محظور' }, 403);
+  if (!user.email_verified_at) return c.json({ detail: 'يرجى توثيق بريدك الإلكتروني قبل تسجيل الدخول' }, 403);
 
   const valid = await verifyTotp(user.totp_secret, body.code);
   if (!valid) return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
@@ -1776,6 +1748,7 @@ authRouter.post('/session/restore', async (c) => {
 
   if (!session || !userRecord) return c.json({ detail: 'الجلسة غير صالحة أو تم إنهاؤها' }, 401);
   if (userRecord.is_banned) return c.json({ detail: 'هذا الحساب محظور' }, 403);
+  if (!userRecord.email_verified_at) return c.json({ detail: 'يرجى توثيق بريدك الإلكتروني قبل تسجيل الدخول' }, 403);
 
   const fresh = await createAccessToken(userRecord.id, session.id, jwtSecret, expiresMinutes);
   const response = c.json({

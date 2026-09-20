@@ -99,20 +99,20 @@ export async function createTestContext(): Promise<TestContext> {
   const bannedId = 'usr_banned';
 
   await db.exec(`
-    INSERT INTO users (id, email, full_name, password_hash, role)
-    VALUES ('${adminId}', 'admin@nabd.app', 'مدير النظام', '${defaultHash}', 'admin');
+    INSERT INTO users (id, email, full_name, password_hash, role, email_verified_at)
+    VALUES ('${adminId}', 'admin@nabd.app', 'مدير النظام', '${defaultHash}', 'admin', CURRENT_TIMESTAMP);
 
-    INSERT INTO users (id, email, full_name, password_hash, role)
-    VALUES ('${profUserId}', 'prof@nabd.app', 'د. أحمد الجبوري', '${defaultHash}', 'professor');
+    INSERT INTO users (id, email, full_name, password_hash, role, email_verified_at)
+    VALUES ('${profUserId}', 'prof@nabd.app', 'د. أحمد الجبوري', '${defaultHash}', 'professor', CURRENT_TIMESTAMP);
 
-    INSERT INTO users (id, email, full_name, password_hash, role)
-    VALUES ('${resellerId}', 'reseller@nabd.app', 'وكيل بغداد', '${defaultHash}', 'reseller');
+    INSERT INTO users (id, email, full_name, password_hash, role, email_verified_at)
+    VALUES ('${resellerId}', 'reseller@nabd.app', 'وكيل بغداد', '${defaultHash}', 'reseller', CURRENT_TIMESTAMP);
 
-    INSERT INTO users (id, email, full_name, password_hash, role, university_id, stage_id, section_id)
-    VALUES ('${studentId}', 'student@nabd.app', 'علي محمد', '${defaultHash}', 'student', '${universityId}', '${stageId}', '${sectionId}');
+    INSERT INTO users (id, email, full_name, password_hash, role, university_id, stage_id, section_id, email_verified_at)
+    VALUES ('${studentId}', 'student@nabd.app', 'علي محمد', '${defaultHash}', 'student', '${universityId}', '${stageId}', '${sectionId}', CURRENT_TIMESTAMP);
 
-    INSERT INTO users (id, email, full_name, password_hash, role, is_banned)
-    VALUES ('${bannedId}', 'banned@nabd.app', 'طالب محظور', '${defaultHash}', 'student', 1);
+    INSERT INTO users (id, email, full_name, password_hash, role, is_banned, email_verified_at)
+    VALUES ('${bannedId}', 'banned@nabd.app', 'طالب محظور', '${defaultHash}', 'student', 1, CURRENT_TIMESTAMP);
   `);
 
   // Sessions for each user

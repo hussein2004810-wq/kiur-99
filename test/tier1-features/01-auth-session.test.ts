@@ -15,7 +15,7 @@ describe('Tier 1: Feature 1 - Auth & Session Management', () => {
     ctx.cleanup();
   });
 
-  it('1.1 should register a new student successfully with 200 OK and access token', async () => {
+  it('1.1 should register a new student without issuing a session before email verification', async () => {
     const res = await apiRequest(app, 'POST', '/auth/register', {
       body: {
         email: 'newstudent@test.com',
@@ -29,12 +29,13 @@ describe('Tier 1: Feature 1 - Auth & Session Management', () => {
 
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.access_token).toBeDefined();
-    expect(data.token_type).toBe('bearer');
+    expect(data.ok).toBe(true);
+    expect(data.requires_email_verification).toBe(true);
+    expect(data.access_token).toBeUndefined();
     expect(data.role).toBe('student');
   });
 
-  it('1.2 should set nabd_session cookie on registration', async () => {
+  it('1.2 should not set a session cookie on registration', async () => {
     const res = await apiRequest(app, 'POST', '/auth/register', {
       body: {
         email: 'cookietest@test.com',
@@ -44,11 +45,9 @@ describe('Tier 1: Feature 1 - Auth & Session Management', () => {
     }, ctx);
 
     expect(res.status).toBe(200);
-    const setCookie = res.headers.get('set-cookie');
-    expect(setCookie).toBeDefined();
-    expect(setCookie).toContain('nabd_session=');
-    expect(setCookie).toContain('Path=/auth/session');
-    expect(setCookie).toContain('HttpOnly');
+    expect(res.headers.get('set-cookie')).toBeNull();
+    const sessions = await ctx.db.prepare("SELECT COUNT(*) AS count FROM user_sessions WHERE user_id = (SELECT id FROM users WHERE email = 'cookietest@test.com')").first('count');
+    expect(sessions).toBe(0);
   });
 
   it('1.3 should login with valid email and password', async () => {

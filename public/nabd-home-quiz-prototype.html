@@ -4652,7 +4652,7 @@
       if (currentUser.is_graduate) tags.push(t('graduated'));
       else if (stage) tags.push(stage.name);
       if (!tags.length){ card.style.display = 'none'; return; }
-      document.getElementById('homePathTags').innerHTML = tags.map(tg => `<span class="prof-tag">${tg}</span>`).join('');
+      document.getElementById('homePathTags').innerHTML = tags.map(tg => `<span class="prof-tag">${esc(tg)}</span>`).join('');
       card.style.display = 'block';
     } catch (e) { card.style.display = 'none'; }
   }
@@ -5244,7 +5244,7 @@
         <div class="prof-avatar" style="background:linear-gradient(145deg, ${esc(p.color)}, var(--accent-2)); overflow:hidden;">${p.photoUrl ? `<img src="${API_BASE_URL}${esc(p.photoUrl)}" alt="${esc(p.name)}" style="width:100%; height:100%; object-fit:cover;" />` : initials(p.name)}</div>
         <div class="prof-info">
           <div class="prof-name">${esc(p.name)}</div>
-          <div class="prof-meta">${esc(p.title)} · ${esc(p.subject)}${p.uni ? ' · ' + p.uni : ''}</div>
+          <div class="prof-meta">${esc(p.title)} · ${esc(p.subject)}${p.uni ? ' · ' + esc(p.uni) : ''}</div>
           <div class="prof-stats">
             <span>${pdfIcon}${p.booklets} ملزمة</span>
             <span>${examIcon}${p.exams} امتحان</span>
@@ -6128,7 +6128,7 @@
       else if (stage) tags.push(stage.name);
     } catch (e) { /* catalogue unreachable — show whatever we already have */ }
     const tagsEl = document.getElementById('accTags');
-    if (tagsEl) tagsEl.innerHTML = tags.map(tg => `<span class="prof-tag">${tg}</span>`).join('');
+    if (tagsEl) tagsEl.innerHTML = tags.map(tg => `<span class="prof-tag">${esc(tg)}</span>`).join('');
     const captionEl = document.getElementById('accCaptionDisplay');
     if (captionEl) captionEl.textContent = u.caption || t('addCaptionPrompt');
     const captionFormEl = document.getElementById('accCaptionForm');

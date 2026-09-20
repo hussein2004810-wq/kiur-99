@@ -38,8 +38,13 @@ describe('Tier 4: Real-World Application Workload Scenarios (S1-S6)', () => {
 
     expect([200, 201]).toContain(regRes.status);
     const regData = await regRes.json();
-    expect(regData.access_token).toBeDefined();
+    expect(regData.requires_email_verification).toBe(true);
+    expect(regData.access_token).toBeUndefined();
     expect(regData.role).toBe('student');
+
+    // The real Worker suite covers token verification. This contract-flow
+    // fixture marks the mailbox confirmation complete before its login phase.
+    await ctx.db.prepare('UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?').bind(regData.user_id).run();
 
     // 2. First Login on Device A (iPhone)
     const loginA = await apiRequest(app, 'POST', '/auth/login', {

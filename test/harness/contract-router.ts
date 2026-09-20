@@ -97,7 +97,8 @@ export function createContractRouter(): Hono<{ Bindings: any; Variables: any }> 
 
     const userId = 'usr_' + Math.random().toString(36).substring(2, 10);
     const pwdHash = hashPassword(body.password);
-    const role = body.role ?? 'student';
+    // Mirror the production boundary: public input can never select a role.
+    const role = 'student';
 
     await c.env.DB.prepare(`
       INSERT INTO users (id, email, full_name, password_hash, role, university_id, stage_id, section_id, phone)
@@ -114,17 +115,13 @@ export function createContractRouter(): Hono<{ Bindings: any; Variables: any }> 
       body.phone ?? null
     ).run();
 
-    const sessionId = 'ses_' + Math.random().toString(36).substring(2, 10);
-    await c.env.DB.prepare('INSERT INTO user_sessions (id, user_id, device_label, is_active) VALUES (?, ?, ?, 1)')
-      .bind(sessionId, userId, body.device_label ?? 'متصفح ويب').run();
-
-    const secret = c.env?.JWT_SECRET || 'test-jwt-secret-key-32-chars-long!';
-    const token = verifyJwt ? verifyJwt : null;
-    const { signJwt } = await import('./crypto-helpers');
-    const accessToken = signJwt({ sub: userId, role, sid: sessionId }, secret);
-
-    c.header('Set-Cookie', `nabd_session=${sessionId}; Path=/auth/session; HttpOnly; SameSite=Lax; Max-Age=1209600`);
-    return c.json({ access_token: accessToken, token_type: 'bearer', user_id: userId, role });
+    return c.json({
+      ok: true,
+      requires_email_verification: true,
+      user_id: userId,
+      role,
+      message: 'تم إنشاء الحساب. يرجى توثيق بريدك الإلكتروني قبل تسجيل الدخول.',
+    });
   });
 
   app.post('/auth/login', async (c) => {

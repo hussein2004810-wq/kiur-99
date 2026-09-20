@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { readFile } from 'node:fs/promises';
 import { createTestContext, TestContext } from '../harness/test-context';
 import { apiRequest } from '../harness/app';
 import mainApp from '../../src/index';
@@ -20,6 +21,34 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
   // P0-1: Google Authentication Bypass & Admin Privilege Escalation
   // ──────────────────────────────────────────────────────────────────────────
   describe('P0-1: Google Auth Bypass & Admin Escalation Hardening', () => {
+    it('registers an unverified caller only as a student and without a usable session', async () => {
+      const res = await apiRequest(app, 'POST', '/auth/register', {
+        body: {
+          email: 'role-escalation@nabd.app',
+          full_name: 'طالب غير موثق',
+          password: 'Password123!',
+          role: 'admin',
+        },
+      }, ctx);
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.role).toBe('student');
+      expect(data.requires_email_verification).toBe(true);
+      expect(data.access_token).toBeUndefined();
+      expect(res.headers.get('set-cookie')).toBeNull();
+
+      const user = await ctx.db.prepare('SELECT id, role, email_verified_at FROM users WHERE email = ?').bind('role-escalation@nabd.app').first<any>();
+      expect(user).toMatchObject({ role: 'student', email_verified_at: null });
+      const sessions = await ctx.db.prepare('SELECT COUNT(*) AS count FROM user_sessions WHERE user_id = ?').bind(user.id).first<number>('count');
+      expect(sessions).toBe(0);
+
+      const login = await apiRequest(app, 'POST', '/auth/login', {
+        body: { email: 'role-escalation@nabd.app', password: 'Password123!' },
+      }, ctx);
+      expect(login.status).toBe(403);
+    });
+
     it('rejects unauthenticated email login via POST /auth/google/login with 405 Method Not Allowed', async () => {
       const res = await apiRequest(app, 'POST', '/auth/google/login', {
         body: {
@@ -287,6 +316,22 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
   // P0-5: Stored XSS Prevention & CSP Hardening
   // ──────────────────────────────────────────────────────────────────────────
   describe('P0-5: Stored XSS Prevention & CSP Hardening', () => {
+    it('escapes persisted text before interpolating it into the served SPA HTML', async () => {
+      const [homeHtml, adminHtml] = await Promise.all([
+        readFile(new URL('../../public/nabd-home-quiz-prototype.html', import.meta.url), 'utf8'),
+        readFile(new URL('../../public/nabd-admin-dashboard.html', import.meta.url), 'utf8'),
+      ]);
+
+      // These sources are served directly by src/routes/static.ts.  Keep the
+      // escaping at the rendering boundary so malicious profile, catalogue,
+      // and question text stays text even if old database data predates the
+      // server-side input validator.
+      expect(homeHtml).toContain('tags.map(tg => `<span class="prof-tag">${esc(tg)}</span>`).join(\'\')');
+      expect(homeHtml).toContain("p.uni ? ' · ' + esc(p.uni) : ''");
+      expect(adminHtml).toContain('<div class="item-title">${esc(name)}</div>');
+      expect(adminHtml).toContain("(c.is_correct ? '✓ ' : '• ') + esc(c.text)");
+    });
+
     it('rejects skill input containing HTML or script tags with 400', async () => {
       const student = ctx.fixtures.users.student;
       const token = ctx.createAuthToken(student.id, 'student', student.sessionId);

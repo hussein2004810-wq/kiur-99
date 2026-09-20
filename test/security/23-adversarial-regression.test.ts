@@ -276,7 +276,6 @@ describe('Stage 23: Adversarial Security Regression Suite', () => {
     );
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.user.role).toBe('student');
+    expect(body.role).toBe('student');
   });
 });
-
