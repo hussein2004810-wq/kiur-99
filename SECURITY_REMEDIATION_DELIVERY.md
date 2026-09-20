@@ -22,6 +22,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `f0b0f9e` requires a verified provider email in the Google OAuth callback.
 - `4dea90e` accepts only audience-bound Google ID credentials and removes the UI's untrusted Google fallback.
 - `38851d9` prevents production password registration unless transactional email is ready to deliver verification links.
+- The current dependency update pins development `esbuild` at `^0.28.2`, satisfying the installed Vite/Vitest requirement and removing the invalid root dependency tree.
 
 ## Implemented controls
 
@@ -48,6 +49,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 127 tests against the actual Worker routes.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
 - Vitest was upgraded to `4.1.11`, closing its Moderate mocker path-traversal advisory.  `npm audit --json` now reports four Moderate development-only findings from Drizzle Kit's legacy `@esbuild-kit` chain; npm's only suggested fix is a major downgrade of Drizzle Kit to `0.18.1`, so it was not applied automatically.
+- A current `npm audit --omit=dev --json` reports zero runtime dependency vulnerabilities.  The full audit still reports only the four Drizzle Kit development-tool findings above.
 
 ## Owner actions required before production
 

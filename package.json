@@ -32,6 +32,7 @@
     "@cloudflare/workers-types": "^5.20260916.1",
     "@types/node": "^22.13.9",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.28.2",
     "typescript": "^5.8.2",
     "vitest": "^4.1.11",
     "wrangler": "^4.133.0"
