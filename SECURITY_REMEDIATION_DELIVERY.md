@@ -32,6 +32,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `934007a` rejects arbitrary lecture video URLs at the server boundary, requires the verified video-upload flow, and limits a revoked banned session to its own appeal request only.
 - `54138a0` escapes values as well as labels in the reusable administrator modal's dynamic select options.
 - `ba9d129` removes the unused HTML rendering mode from the administrator confirmation modal, so confirmation messages remain text-only.
+- `8808e70` encodes dynamic student UI identifiers passed to inline click handlers as JavaScript arguments rather than quoted interpolations.
 
 ## Implemented controls
 
@@ -55,6 +56,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - The administrator confirmation modal no longer accepts an HTML payload; all confirmation copy is assigned through `textContent`.
 - Both static SPA documents also allowlist dynamically rendered image, booklet, and lecture-video URLs to the Worker-owned media routes before placing them in `src` or `href`; unsafe or legacy external values render the existing safe fallback instead.
 - Dynamic user-controlled values that must be passed to legacy inline handlers are encoded as a single JavaScript argument rather than HTML-escaped inside a quoted handler literal, preventing quote-breakout from stored catalogue, account, or Google-profile data.
+- Student content cards, booklets, quizzes, products, notifications, saved questions, clinical glimpses, and profile links now apply that same argument encoding to their dynamic identifiers.
 - `src/routes/exams.ts` stores question/choice snapshots, prevents a second open attempt with database constraints, performs conditional answer/finish transitions, and replays only a finish request bearing its original idempotency key.
 - `migrations/0005_exam_integrity.sql`, `migrations/0006_durable_rate_limits.sql`, and `migrations/0007_exam_finish_idempotency.sql` are additive remote-D1 migrations.  They have not been applied remotely.
 - `load-tests/exam-burst.k6.js` requires an explicit staging URL, exam id, and one entitled token per simulated student.  It cannot run against anything by default.
