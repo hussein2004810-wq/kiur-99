@@ -28,6 +28,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `e410802` aligns direct Worker uploads at a verified 25 MB ceiling, including professor lecture videos; larger-video delivery remains an external architecture decision.
 - `9949443` redacts unexpected server, mail-provider, Firebase, and admin-mutation failures from production responses and logs.
 - `e033245` removes reseller self-minting: only an admin allocation may assign idle activation-code stock to a reseller.
+- `e20aeb7` allows dynamically rendered media only from KIUR's `/media-files/...` and `/api/media/...` paths, preventing stored URLs from becoming external, `data:`, or `javascript:` browser navigations.
 
 ## Implemented controls
 
@@ -45,6 +46,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - Unexpected production failures now emit only structured event/category records.  Firebase and admin error responses no longer expose raw exception messages, and transactional-mail failure logs omit recipient/provider error details.
 - Resellers can sell only their assigned codes.  The administrator's allocation endpoint validates the target and requested count, writes each allocation in one D1 batch, and records the allocation; self-generation endpoints now reject with 403.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
+- Both static SPA documents also allowlist dynamically rendered image, booklet, and lecture-video URLs to the Worker-owned media routes before placing them in `src` or `href`; unsafe or legacy external values render the existing safe fallback instead.
 - Dynamic user-controlled values that must be passed to legacy inline handlers are encoded as a single JavaScript argument rather than HTML-escaped inside a quoted handler literal, preventing quote-breakout from stored catalogue, account, or Google-profile data.
 - `src/routes/exams.ts` stores question/choice snapshots, prevents a second open attempt with database constraints, performs conditional answer/finish transitions, and replays only a finish request bearing its original idempotency key.
 - `migrations/0005_exam_integrity.sql`, `migrations/0006_durable_rate_limits.sql`, and `migrations/0007_exam_finish_idempotency.sql` are additive remote-D1 migrations.  They have not been applied remotely.
@@ -57,6 +59,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 39 tests, including verification-link, verified/unverified Google OAuth callback, audience, access-token rejection, production-mail readiness, and admin-media upload hardening cases.
 - `npm test` passed: 40 files and 546 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, CSP-source, Google OAuth credential, mail-readiness, admin-upload, direct-video-upload, and error-redaction changes.
 - `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 133 tests against the actual Worker routes.
+- The scripts embedded in both served SPA documents were parsed after the URL-allowlist change; dynamic media URL regressions are covered by the P0 source-level test.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.
 - Vitest was upgraded to `4.1.11`, closing its Moderate mocker path-traversal advisory.  `npm audit --json` now reports four Moderate development-only findings from Drizzle Kit's legacy `@esbuild-kit` chain; npm's only suggested fix is a major downgrade of Drizzle Kit to `0.18.1`, so it was not applied automatically.
 - A current `npm audit --omit=dev --json` reports zero runtime dependency vulnerabilities.  The full audit still reports only the four Drizzle Kit development-tool findings above.
