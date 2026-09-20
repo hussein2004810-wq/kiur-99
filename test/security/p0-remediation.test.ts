@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createTestContext, TestContext } from '../harness/test-context';
 import { apiRequest } from '../harness/app';
 import mainApp from '../../src/index';
+import { hashResetToken } from '../../src/services/crypto';
 
 describe('P0 Security Vulnerability Remediation Suite', () => {
   let ctx: TestContext;
@@ -15,6 +16,18 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
 
   afterEach(() => {
     ctx.cleanup();
+  });
+
+  it('consumes an email-verification link through the GET callback', async () => {
+    const rawToken = 'verify_callback_token_0123456789';
+    const tokenHash = await hashResetToken(rawToken);
+    await ctx.db.prepare("INSERT INTO users (id, email, full_name, password_hash, role) VALUES ('usr_verify_link', 'verify-link@nabd.app', 'طالب التحقق', 'hash', 'student')").run();
+    await ctx.db.prepare("INSERT INTO email_verifications (id, user_id, token_hash, expires_at) VALUES ('ver_verify_link', 'usr_verify_link', ?, ?)").bind(tokenHash, new Date(Date.now() + 3600000).toISOString()).run();
+
+    const res = await app.request(`/auth/verify-email?token=${rawToken}`, {}, ctx.bindings);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/#email_verified=1');
+    expect(await ctx.db.prepare("SELECT email_verified_at FROM users WHERE id = 'usr_verify_link'").first('email_verified_at')).toBeTruthy();
   });
 
   // ──────────────────────────────────────────────────────────────────────────

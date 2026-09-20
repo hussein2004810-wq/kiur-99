@@ -14,13 +14,16 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `ae4ede3` prevents cross-professor content creation, mutation, and deletion through generic professor routes.
 - `7dc0ea4` removes raw booklet URLs from public professor metadata.
 - `ac9fb15` makes every upload endpoint fail closed with a controlled 503 when R2 is not configured.
-- The current working commit closes the remaining public-registration privilege escalation, requires email verification before any password session, and fixes additional stored-text escaping in both served SPA files.
+- `b2ce237` closes the remaining public-registration privilege escalation, requires email verification before any password session, and fixes additional stored-text escaping in both served SPA files.
+- `d67f157` sends verification links through the configured mail provider during registration and resend flows.
+- The current working change exercises the browser-facing verification-link callback and shares its verification logic with the JSON API.
 
 ## Implemented controls
 
 - `src/services/content-access.ts` is the shared server-side entitlement policy used by media, courses, questions, and exams.
 - `src/routes/questions.ts`, `src/routes/exams.ts`, and `src/routes/students.ts` require authenticated, scoped access rather than relying on the client UI.
 - Public registration always persists the `student` role and returns no access token or session cookie.  Existing unverified accounts cannot obtain a password/2FA/restored session until their email is verified.
+- When SMTP is configured, registration and resend create a single-use verification token and schedule delivery of a link to `GET /auth/verify-email`; that callback consumes the same token-validation path as `POST /auth/verify-email` and redirects to a success or failure state.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
 - `src/routes/exams.ts` stores question/choice snapshots, prevents a second open attempt with database constraints, performs conditional answer/finish transitions, and replays only a finish request bearing its original idempotency key.
 - `migrations/0005_exam_integrity.sql`, `migrations/0006_durable_rate_limits.sql`, and `migrations/0007_exam_finish_idempotency.sql` are additive remote-D1 migrations.  They have not been applied remotely.
@@ -30,6 +33,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 ## Verification performed locally
 
 - `npm run typecheck` passed after the final application changes.
+- `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 30 tests, including a verification-link callback that marks the user verified and returns the success redirect.
 - `npm test` passed: 40 files and 532 tests after the final ownership, media, registration, rate-limit, D1-bound, and R2 fail-closed changes.
 - `TEST_TARGET=src npm test -- --run test/security` passed: 14 files and 116 tests against the actual Worker routes.
 - `npm run build` passed as a Wrangler dry run; it did not deploy.

@@ -4,7 +4,7 @@
  * profile updates, skills, photos, stats, leaderboard, history,
  * password reset (forgot/reset), session restore.
  */
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, ne, inArray, desc, isNotNull, isNull, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -59,6 +59,38 @@ function domainAllowed(email: string, allowedDomains: string): boolean {
   if (!allowedDomains) return true;
   const domains = allowedDomains.split(',').map((d) => d.trim().toLowerCase());
   return domains.some((d) => email.toLowerCase().endsWith('@' + d));
+}
+
+type EmailVerificationResult =
+  | { ok: true; alreadyVerified: boolean }
+  | { ok: false; detail: string };
+
+async function completeEmailVerification(c: Context<AppEnv>, token: string): Promise<EmailVerificationResult> {
+  const db = drizzle(c.env.DB, { schema });
+  const tokenHash = await hashResetToken(token);
+  const record = await db
+    .select()
+    .from(schema.emailVerifications)
+    .where(eq(schema.emailVerifications.token_hash, tokenHash))
+    .get();
+
+  if (!record) return { ok: false, detail: 'رمز التحقق أو التوثيق غير صالح أو منتهي الصلاحية' };
+  if (record.verified_at) return { ok: true, alreadyVerified: true };
+  if (new Date(record.expires_at) < new Date()) return { ok: false, detail: 'رمز التحقق منتهي الصلاحية' };
+
+  const now = new Date().toISOString();
+  await db.batch([
+    db.update(schema.emailVerifications).set({ verified_at: now }).where(eq(schema.emailVerifications.id, record.id)),
+    db.update(schema.users).set({ email_verified_at: now }).where(eq(schema.users.id, record.user_id)),
+  ]);
+  await recordAccountEvent(db, {
+    userId: record.user_id,
+    eventType: 'email_verified',
+    outcome: 'success',
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+  });
+  return { ok: true, alreadyVerified: false };
 }
 
 function userOut(user: typeof schema.users.$inferSelect) {
@@ -643,57 +675,19 @@ authRouter.post('/verify-email', async (c) => {
   const body = await c.req.json<{ token?: string }>().catch(() => ({} as Record<string, string>));
   const token = (body?.token ?? '').trim();
   if (!token) return c.json({ detail: 'رمز التوثيق مطلوب' }, 400);
-
-  const db = drizzle(c.env.DB, { schema });
-  const tokenHash = await hashResetToken(token);
-
-  const record = await db
-    .select()
-    .from(schema.emailVerifications)
-    .where(eq(schema.emailVerifications.token_hash, tokenHash))
-    .get();
-
-  if (!record) {
-    return c.json({ detail: 'رمز التحقق أو التوثيق غير صالح أو منتهي الصلاحية' }, 400);
-  }
-
-  // Idempotency: if already verified, return success safely
-  if (record.verified_at) {
-    return c.json({ ok: true, message: 'البريد الإلكتروني موثق مسبقاً', already_verified: true });
-  }
-
-  // Check expiration
-  if (new Date(record.expires_at) < new Date()) {
-    return c.json({ detail: 'رمز التحقق منتهي الصلاحية' }, 400);
-  }
-
-  const now = new Date().toISOString();
-  await db.batch([
-    db
-      .update(schema.emailVerifications)
-      .set({ verified_at: now })
-      .where(eq(schema.emailVerifications.id, record.id)),
-    db
-      .update(schema.users)
-      .set({ email_verified_at: now })
-      .where(eq(schema.users.id, record.user_id)),
-  ]);
-
-  await recordAccountEvent(db, {
-    userId: record.user_id,
-    eventType: 'email_verified',
-    outcome: 'success',
-    ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
-    userAgent: c.req.header('user-agent'),
+  const result = await completeEmailVerification(c, token);
+  if (!result.ok) return c.json({ detail: result.detail }, 400);
+  return c.json({
+    ok: true,
+    message: result.alreadyVerified ? 'البريد الإلكتروني موثق مسبقاً' : 'تم توثيق البريد الإلكتروني بنجاح',
+    ...(result.alreadyVerified ? { already_verified: true } : {}),
   });
-
-  return c.json({ ok: true, message: 'تم توثيق البريد الإلكتروني بنجاح' });
 });
 
 authRouter.get('/verify-email', async (c) => {
   const token = c.req.query('token')?.trim();
   if (!token) return c.redirect('/#email_verification_failed=1');
-  const result = await authRouter.fetch(new Request(c.req.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) }), c.env, c.executionCtx);
+  const result = await completeEmailVerification(c, token);
   return c.redirect(result.ok ? '/#email_verified=1' : '/#email_verification_failed=1');
 });
 
