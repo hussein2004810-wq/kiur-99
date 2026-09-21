@@ -34,6 +34,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `ba9d129` removes the unused HTML rendering mode from the administrator confirmation modal, so confirmation messages remain text-only.
 - `8808e70` encodes dynamic student UI identifiers passed to inline click handlers as JavaScript arguments rather than quoted interpolations.
 - `2d4b91e` applies the same argument encoding to dynamic administrator account, catalogue, content, glimpse, and product controls.
+- `e72c416` configures the existing Worker Assets integration for `public`, providing a same-origin delivery path for the planned external CSP modules.
 
 ## Implemented controls
 
@@ -55,6 +56,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
 - The reusable administrator modal escapes both labels and values in dynamic `<option>` attributes, preventing a stored catalogue identifier from breaking its attribute boundary.
 - The administrator confirmation modal no longer accepts an HTML payload; all confirmation copy is assigned through `textContent`.
+- `wrangler.toml` now binds Worker Assets from `public`; `src/routes/static.ts` serves the SPA through that binding when deployed and retains its text-import fallback for tests.
 - Both static SPA documents also allowlist dynamically rendered image, booklet, and lecture-video URLs to the Worker-owned media routes before placing them in `src` or `href`; unsafe or legacy external values render the existing safe fallback instead.
 - Dynamic user-controlled values that must be passed to legacy inline handlers are encoded as a single JavaScript argument rather than HTML-escaped inside a quoted handler literal, preventing quote-breakout from stored catalogue, account, or Google-profile data.
 - Student content cards, booklets, quizzes, products, notifications, saved questions, clinical glimpses, and profile links now apply that same argument encoding to their dynamic identifiers.

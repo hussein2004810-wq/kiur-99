@@ -27,14 +27,13 @@ replacement for CSP migration.
 
 ### Phase 1 — Establish external module entry points
 
-- First add an actual module delivery path.  At present the two pages are
-  bundled through Wrangler's `Text` rule and `ASSETS` is optional, with no
-  Worker Assets binding declared in `wrangler.toml`; a bare `src="..."` URL
-  would therefore return no module in the current deployment model.
+- Completed foundation: `wrangler.toml` now binds `ASSETS` to `./public`, and
+  `src/routes/static.ts` already fetches both SPA documents through it when
+  available.  A dry build confirmed the binding and read the public assets.
 - Choose one implementation deliberately: configure a Worker Assets binding
-  for versioned static modules, or add a reviewed same-origin Worker route
-  which serves compiled module text with `Content-Type: text/javascript`.
-  Do not use a third-party CDN for application code.
+  for versioned static modules (now selected), or add a reviewed same-origin
+  Worker route which serves compiled module text with `Content-Type:
+  text/javascript`.  Do not use a third-party CDN for application code.
 - Create one external module per SPA and load it with `<script type="module"
   src="...">`.
 - Move the existing script bodies without changing runtime behaviour.
