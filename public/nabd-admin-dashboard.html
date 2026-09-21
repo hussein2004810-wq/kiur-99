@@ -1877,12 +1877,12 @@
     const q = (document.getElementById('accountSearch')?.value || '').trim().toLowerCase();
     let list = accountFilter === 'all' ? allAccounts : allAccounts.filter(a => a.role === accountFilter);
     if (q) list = list.filter(a => a.full_name.toLowerCase().includes(q) || a.email.toLowerCase().includes(q));
-    const editBtn = a => `<button class="icon-btn" aria-label="تعديل المستخدم" style="width:30px;height:30px;" title="تعديل" onclick="promptEditUser('${a.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>`;
+    const editBtn = a => `<button class="icon-btn" aria-label="تعديل المستخدم" style="width:30px;height:30px;" title="تعديل" onclick="promptEditUser(${jsArg(a.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>`;
     const banBtn = a => a.is_banned
-      ? `<button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem;" onclick="unbanUserAccount('${a.id}')">رفع الحظر</button>`
-      : `<button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem; color:var(--danger);" onclick="promptBanUser('${a.id}')">حظر</button>`;
+      ? `<button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem;" onclick="unbanUserAccount(${jsArg(a.id)})">رفع الحظر</button>`
+      : `<button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem; color:var(--danger);" onclick="promptBanUser(${jsArg(a.id)})">حظر</button>`;
     const totpBtn = a => a.totp_enabled
-      ? `<button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem;" title="يلغي التحقق بخطوتين عن هذا الحساب" onclick="promptReset2FA('${a.id}')">إعادة تعيين 2FA</button>`
+      ? `<button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem;" title="يلغي التحقق بخطوتين عن هذا الحساب" onclick="promptReset2FA(${jsArg(a.id)})">إعادة تعيين 2FA</button>`
       : '';
     document.getElementById('accountsBody').innerHTML = list.map(a => `
       <tr>
@@ -1892,8 +1892,8 @@
         <td>${a.is_banned ? '<span class="badge badge-disabled">محظور</span>' : '<span class="badge badge-active">نشط</span>'}</td>
         <td style="text-align:end;">${a.role === 'reseller'
           ? `<div style="display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">
-              <button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem;" onclick="promptGenerateCodes('${a.id}')">توليد أكواد</button>
-              <button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem;" onclick="openResellerCodesModal('${a.id}')">أخذ كود</button>
+              <button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem;" onclick="promptGenerateCodes(${jsArg(a.id)})">توليد أكواد</button>
+              <button class="btn btn-ghost" style="padding:6px 10px; font-size:.7rem;" onclick="openResellerCodesModal(${jsArg(a.id)})">أخذ كود</button>
               ${totpBtn(a)}
               ${editBtn(a)}
             </div>`
@@ -1913,7 +1913,7 @@
       return `<div class="cell-sub">${esc(p.subject_name)}</div>`;
     }
     return `<button class="btn btn-ghost" style="padding:3px 8px; font-size:.66rem; margin-top:4px; color:var(--danger);"
-      title="لا يستطيع فتح لوحته حتى تُسند له مادة" onclick="promptAssignSubject('${a.id}')">⚠ بدون مادة — أسنِد</button>`;
+      title="لا يستطيع فتح لوحته حتى تُسند له مادة" onclick="promptAssignSubject(${jsArg(a.id)})">⚠ بدون مادة — أسنِد</button>`;
   }
 
   async function promptReset2FA(userId){
@@ -1950,7 +1950,7 @@
         const results = await apiFetch('/api/students/search?q=' + encodeURIComponent(q));
         notifSearchResults = results;
         box.innerHTML = results.map(s => `
-          <div style="padding:10px 12px; cursor:pointer; border-bottom:1px solid var(--glass-border);" onclick="pickNotifStudent('${s.id}')">
+          <div style="padding:10px 12px; cursor:pointer; border-bottom:1px solid var(--glass-border);" onclick="pickNotifStudent(${jsArg(s.id)})">
             ${esc(s.full_name)}
           </div>
         `).join('') || '<div style="padding:10px 12px; color:var(--ink-faint);">لا يوجد نتائج</div>';
@@ -2390,7 +2390,7 @@
 
       return `
         <div class="acad-uni-card" id="uni-card-${u.id}">
-          <div class="acad-uni-head" onclick="toggleUniCollapse('${u.id}')">
+          <div class="acad-uni-head" onclick="toggleUniCollapse(${jsArg(u.id)})">
             <div class="acad-uni-title">
               <span style="font-size:1.25rem;">🏛️</span>
               <span style="font-size:.95rem; font-weight:800;">${esc(u.name)}</span>
@@ -2399,10 +2399,10 @@
               <span style="font-size:.72rem; color:var(--ink-faint); margin-inline-start:4px;">(${(u.programs||[]).length} كلية · ${uTotalSubjects} مادة)</span>
             </div>
             <div style="display:flex; align-items:center; gap:6px;" onclick="event.stopPropagation()">
-              <button class="btn btn-ghost" style="padding:5px 12px; font-size:.74rem; gap:4px;" onclick="openLinkProgramModal('${u.id}')" title="ربط كلية بهذه الجامعة">
+              <button class="btn btn-ghost" style="padding:5px 12px; font-size:.74rem; gap:4px;" onclick="openLinkProgramModal(${jsArg(u.id)})" title="ربط كلية بهذه الجامعة">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M12 5v14M5 12h14"/></svg>ربط كلية
               </button>
-              <button class="icon-btn" style="width:28px;height:28px;" onclick="openEditUniversityModal('${u.id}')" title="تعديل الجامعة" aria-label="تعديل الجامعة">
+              <button class="icon-btn" style="width:28px;height:28px;" onclick="openEditUniversityModal(${jsArg(u.id)})" title="تعديل الجامعة" aria-label="تعديل الجامعة">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
               </button>
               <button class="icon-btn" style="width:28px;height:28px;" onclick="deleteUniversity(${jsArg(u.id)}, ${jsArg(u.name)})" title="حذف الجامعة" aria-label="حذف الجامعة">
@@ -2428,7 +2428,7 @@
               return `
                 <div class="acad-prog-card">
                   <div class="acad-prog-head">
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; cursor:pointer;" onclick="toggleProgCollapse('${p.id}')">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; cursor:pointer;" onclick="toggleProgCollapse(${jsArg(p.id)})">
                       <span style="font-size:1.1rem;">🏥</span>
                       <span style="font-weight:700; font-size:.88rem;">${esc(p.college_name)}</span>
                       <span class="badge ${isModular ? 'badge-modular' : 'badge-trad'}">${isModular ? '🧬 موديولات تكاملي' : '📖 فصلي / سنوي'}</span>
@@ -2781,15 +2781,15 @@
             <div class="acad-subject-row" style="display:flex; align-items:center; justify-content:space-between; padding:5px 8px; border-radius:6px; margin-top:3px; background:var(--glass-bg-subtle);">
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1;">
                 ${sub.code ? `<span class="mono" style="font-size:.7rem; padding:2px 6px; border-radius:6px; background:var(--track); font-weight:700;">${esc(sub.code)}</span>` : ''}
-                <span style="font-weight:700; cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;" onclick="openQuestionBank('${sub.id}')" title="فتح بنك أسئلة المادة">${esc(sub.name)}</span>
+                <span style="font-weight:700; cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;" onclick="openQuestionBank(${jsArg(sub.id)})" title="فتح بنك أسئلة المادة">${esc(sub.name)}</span>
                 ${sub.is_ministerial ? `<span class="badge badge-ministerial">🏛️ وزاري تقويمي</span>` : ''}
                 ${sub.has_practical ? `<span class="badge badge-practical">🔬 نظري + عملي/سريري</span>` : `<span class="badge badge-idle" style="font-size:.65rem;">نظري</span>`}
                 <span class="badge badge-term">${termLabel}</span>
-                <span style="font-size:.68rem; color:var(--ink-faint); cursor:pointer;" onclick="openQuestionBank('${sub.id}')">❓ ${sub.questions_count || 0} أسئلة</span>
+                <span style="font-size:.68rem; color:var(--ink-faint); cursor:pointer;" onclick="openQuestionBank(${jsArg(sub.id)})">❓ ${sub.questions_count || 0} أسئلة</span>
               </div>
               <div style="display:flex; align-items:center; gap:4px; flex:none;">
-                <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem;" onclick="openQuestionBank('${sub.id}')" title="بنك الأسئلة">بنك الأسئلة</button>
-                <button class="icon-btn" style="width:24px;height:24px;" onclick="openEditSubjectModal('${sub.id}')" title="تعديل المادة">
+                <button class="btn btn-ghost" style="padding:3px 8px; font-size:.68rem;" onclick="openQuestionBank(${jsArg(sub.id)})" title="بنك الأسئلة">بنك الأسئلة</button>
+                <button class="icon-btn" style="width:24px;height:24px;" onclick="openEditSubjectModal(${jsArg(sub.id)})" title="تعديل المادة">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                 </button>
                 <button class="icon-btn" style="width:24px;height:24px;" onclick="deleteSubject(${jsArg(sub.id)}, ${jsArg(sub.name)})" title="حذف المادة">
@@ -3302,8 +3302,8 @@
         ${noun && r.id ? `<button class="btn btn-ghost hier-add" onclick="promptAddCatalogChild(${jsArg(r.type)}, ${jsArg(r.id)})" title="إضافة ${noun} داخل ${esc(r.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>${noun}</button>` : ''}
         ${r.id && r.type !== 'subject' ? `<button class="icon-btn" aria-label="نسخ مع كل ما تحته" style="width:24px;height:24px;" title="نسخ ${esc(r.name)} مع كل ما تحته" onclick="promptDuplicateCatalog(${jsArg(r.type)}, ${jsArg(r.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg></button>` : ''}
         ${r.id ? `
-          <button class="icon-btn" aria-label="تعديل الاسم" style="width:24px;height:24px;" title="تعديل الاسم" onclick="promptRenameCatalog('${r.type}', '${r.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
-          <button class="icon-btn" aria-label="حذف" style="width:24px;height:24px;" title="حذف" onclick="deleteCatalogNode('${r.type}', '${r.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>` : ''}
+          <button class="icon-btn" aria-label="تعديل الاسم" style="width:24px;height:24px;" title="تعديل الاسم" onclick="promptRenameCatalog(${jsArg(r.type)}, ${jsArg(r.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+          <button class="icon-btn" aria-label="حذف" style="width:24px;height:24px;" title="حذف" onclick="deleteCatalogNode(${jsArg(r.type)}, ${jsArg(r.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>` : ''}
       </div>`;
     }).join('');
   }
@@ -3593,8 +3593,8 @@
             <div class="item-meta">${q.choices.map(c => (c.is_correct ? '✓ ' : '• ') + esc(c.text)).join(' · ')}</div>
           </div>
           <div style="display:flex; gap:6px; flex:none;">
-            <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="openQuestionForm('${q.id}')">تعديل</button>
-            <button class="icon-btn" title="حذف السؤال" aria-label="حذف السؤال" style="width:28px;height:28px;" onclick="deleteQuestionAdmin('${q.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+            <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="openQuestionForm(${jsArg(q.id)})">تعديل</button>
+            <button class="icon-btn" title="حذف السؤال" aria-label="حذف السؤال" style="width:28px;height:28px;" onclick="deleteQuestionAdmin(${jsArg(q.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
           </div>
         </div>
       `).join('') || '<div class="empty-row">لا توجد أسئلة لهذه المادة بعد</div>';
@@ -3745,8 +3745,8 @@
         <td><span class="badge badge-disabled">${esc(b.reason)}</span></td>
         <td style="max-width:220px;">"${esc(b.appeal_message || '')}"</td>
         <td><div style="display:flex; gap:6px;">
-          <button class="btn" style="padding:6px 12px; font-size:.72rem;" onclick="resolveAppeal('${b.id}', true)">قبول</button>
-          <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="resolveAppeal('${b.id}', false)">رفض</button>
+          <button class="btn" style="padding:6px 12px; font-size:.72rem;" onclick="resolveAppeal(${jsArg(b.id)}, true)">قبول</button>
+          <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="resolveAppeal(${jsArg(b.id)}, false)">رفض</button>
         </div></td>
       </tr>
     `).join('') || `<tr><td colspan="4" class="empty-row">لا توجد طلبات إعفاء حالياً</td></tr>`;
@@ -4022,8 +4022,8 @@
         <td>${safeMediaUrl(b.file_url) ? `<a href="${esc(safeMediaUrl(b.file_url))}" target="_blank" class="badge badge-active" style="text-decoration:none;">عرض الملف</a>` : '<span class="badge badge-disabled">لا يوجد ملف</span>'}</td>
         <td style="text-align:end;"><div style="display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">
           <button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="triggerBookletUpload('${b.id}')">${b.file_url ? 'تغيير الملف' : 'رفع ملف'}</button>
-          <button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="promptEditBooklet('${b.id}')">تعديل</button>
-          <button class="icon-btn" title="حذف الملزمة" aria-label="حذف الملزمة" style="width:30px;height:30px;" onclick="deleteBooklet('${b.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+          <button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="promptEditBooklet(${jsArg(b.id)})">تعديل</button>
+          <button class="icon-btn" title="حذف الملزمة" aria-label="حذف الملزمة" style="width:30px;height:30px;" onclick="deleteBooklet(${jsArg(b.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
         </div></td>
       </tr>
     `).join('') || `<tr><td colspan="4" class="empty-row">لا توجد ملازم بعد</td></tr>`;
@@ -4034,8 +4034,8 @@
       <tr>
         <td><div class="cell-name">${esc(e.title)}</div></td><td>${e.question_count}</td><td>${e.duration_minutes} د</td>
         <td style="text-align:end;"><div style="display:flex; gap:6px; justify-content:flex-end;">
-          <button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="promptEditExam('${e.id}')">تعديل</button>
-          <button class="icon-btn" title="حذف الامتحان" aria-label="حذف الامتحان" style="width:30px;height:30px;" onclick="deleteExam('${e.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+          <button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="promptEditExam(${jsArg(e.id)})">تعديل</button>
+          <button class="icon-btn" title="حذف الامتحان" aria-label="حذف الامتحان" style="width:30px;height:30px;" onclick="deleteExam(${jsArg(e.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
         </div></td>
       </tr>
     `).join('') || `<tr><td colspan="4" class="empty-row">لا توجد امتحانات بعد</td></tr>`;
@@ -4152,9 +4152,9 @@
         <td><div class="cell-name">${esc(c.title)}</div></td>
         <td>${c.lectures.length}</td>
         <td style="text-align:end;"><div style="display:flex; gap:6px; justify-content:flex-end;">
-          <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="showLectures('${c.id}')">المحاضرات</button>
-          <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="promptEditCourse('${c.id}')">تعديل</button>
-          <button class="icon-btn" title="حذف الكورس" aria-label="حذف الكورس" style="width:28px;height:28px;" onclick="deleteCourse('${c.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+          <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="showLectures(${jsArg(c.id)})">المحاضرات</button>
+          <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="promptEditCourse(${jsArg(c.id)})">تعديل</button>
+          <button class="icon-btn" title="حذف الكورس" aria-label="حذف الكورس" style="width:28px;height:28px;" onclick="deleteCourse(${jsArg(c.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
         </div></td>
       </tr>
     `).join('') || `<tr><td colspan="3" class="empty-row">لا توجد كورسات بعد</td></tr>`;
@@ -4177,8 +4177,8 @@
         <td>${l.video_url ? '<span class="badge badge-active">مرفوع</span>' : '<span class="badge badge-disabled">لا يوجد فيديو</span>'}</td>
         <td style="text-align:end;"><div style="display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">
           <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="triggerLectureUpload('${l.id}')">${l.video_url ? 'تغيير الفيديو' : 'رفع فيديو'}</button>
-          <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="promptEditLecture('${l.id}')">تعديل</button>
-          <button class="icon-btn" title="حذف المحاضرة" aria-label="حذف المحاضرة" style="width:28px;height:28px;" onclick="deleteLecture('${l.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+          <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="promptEditLecture(${jsArg(l.id)})">تعديل</button>
+          <button class="icon-btn" title="حذف المحاضرة" aria-label="حذف المحاضرة" style="width:28px;height:28px;" onclick="deleteLecture(${jsArg(l.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
         </div></td>
       </tr>
     `).join('') || `<tr><td colspan="4" class="empty-row">لا توجد محاضرات بعد</td></tr>`;
@@ -4411,28 +4411,28 @@
       if (p.deletedAt || p.status === 'archived') {
         if (isAdmin) {
           actionsHtml = `
-            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem; color:var(--success);" onclick="actGlimpse('${p.id}', 'restore')">استعادة كمسودة</button>
-            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem; color:var(--danger);" onclick="actGlimpse('${p.id}', 'delete-forever')">حذف نهائي</button>
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem; color:var(--success);" onclick="actGlimpse(${jsArg(p.id)}, 'restore')">استعادة كمسودة</button>
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem; color:var(--danger);" onclick="actGlimpse(${jsArg(p.id)}, 'delete-forever')">حذف نهائي</button>
           `;
         } else {
           actionsHtml = '<span class="cell-sub">مؤرشفة</span>';
         }
       } else {
-        const editBtn = `<button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="editGlimpse('${p.id}')">تعديل</button>`;
-        const archiveBtn = `<button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem; color:var(--danger);" onclick="actGlimpse('${p.id}', 'archive')">أرشفة</button>`;
+        const editBtn = `<button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="editGlimpse(${jsArg(p.id)})">تعديل</button>`;
+        const archiveBtn = `<button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem; color:var(--danger);" onclick="actGlimpse(${jsArg(p.id)}, 'archive')">أرشفة</button>`;
 
         let flowBtn = '';
         if (p.status === 'draft') {
-          flowBtn = `<button class="btn" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse('${p.id}', 'submit-review')">طلب مراجعة</button>`;
+          flowBtn = `<button class="btn" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse(${jsArg(p.id)}, 'submit-review')">طلب مراجعة</button>`;
         } else if (p.status === 'in_review') {
           flowBtn = `
             ${isAdmin ? `<button class="btn" style="padding:4px 8px; font-size:.72rem; background:var(--primary);" onclick="actGlimpse('${p.id}', 'approve')">اعتماد</button>` : ''}
-            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse('${p.id}', 'return-draft')">إرجاع لمسودة</button>
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse(${jsArg(p.id)}, 'return-draft')">إرجاع لمسودة</button>
           `;
         } else if (p.status === 'approved') {
           flowBtn = `
             ${isAdmin ? `<button class="btn badge-active" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse('${p.id}', 'publish')">نشر الآن</button>` : ''}
-            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse('${p.id}', 'return-draft')">إرجاع لمسودة</button>
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse(${jsArg(p.id)}, 'return-draft')">إرجاع لمسودة</button>
           `;
         }
 
@@ -4729,8 +4729,8 @@
           <td class="mono">${fmtIQD(p.price)}</td>
           <td style="text-align:end;">
             <div style="display:flex; gap:6px; justify-content:flex-end;">
-              <button class="icon-btn" aria-label="تعديل المنتج" style="width:30px;height:30px;" title="تعديل" onclick="promptEditProduct('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
-              <button class="icon-btn" aria-label="حذف المنتج" style="width:30px;height:30px;" title="حذف" onclick="deleteProduct('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+              <button class="icon-btn" aria-label="تعديل المنتج" style="width:30px;height:30px;" title="تعديل" onclick="promptEditProduct(${jsArg(p.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+              <button class="icon-btn" aria-label="حذف المنتج" style="width:30px;height:30px;" title="حذف" onclick="deleteProduct(${jsArg(p.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
             </div>
           </td>
         </tr>

@@ -494,6 +494,8 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(adminHtml).toContain('esc(safeMediaUrl(d.professor.photo_url))');
       expect(adminHtml).toContain('value="${esc(o.value)}"');
       expect(adminHtml).not.toContain('msgEl.innerHTML = opts.html');
+      expect(adminHtml).toContain('promptEditUser(${jsArg(a.id)})');
+      expect(adminHtml).toContain('actGlimpse(${jsArg(p.id)}, \'archive\')');
     });
 
     it('rejects skill input containing HTML or script tags with 400', async () => {
