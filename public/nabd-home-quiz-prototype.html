@@ -5688,7 +5688,7 @@
     const codesNote = (order.granted_activation_codes && order.granted_activation_codes.length)
       ? `<div class="glass" style="padding:14px 16px; margin-top:14px; text-align:start;">
            <div style="font-weight:700; font-size:.82rem; margin-bottom:6px;">تم تفعيل كود التفعيل تلقائياً على حسابك</div>
-           ${order.granted_activation_codes.map(c => `<div class="mono" style="font-size:.85rem;">${c}</div>`).join('')}
+           ${order.granted_activation_codes.map(c => `<div class="mono" style="font-size:.85rem;">${esc(c)}</div>`).join('')}
          </div>`
       : '';
 
@@ -5698,7 +5698,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
         </div>
         <div class="confirm-title">تم إرسال طلبك بنجاح</div>
-        <div class="confirm-sub">رقم الطلب <span class="mono">${order.id}</span> — ${selectedPayment === 'zaincash' ? 'سيتم تفعيل طلبك فور تأكيد الدفع عبر زين كاش' : 'سيتواصل معك المندوب لتأكيد التوصيل'}</div>
+        <div class="confirm-sub">رقم الطلب <span class="mono">${esc(order.id)}</span> — ${selectedPayment === 'zaincash' ? 'سيتم تفعيل طلبك فور تأكيد الدفع عبر زين كاش' : 'سيتواصل معك المندوب لتأكيد التوصيل'}</div>
         ${codesNote}
         <button class="btn" onclick="cart={}; updateCartBadge(); goHome();">العودة للرئيسية</button>
       </div>

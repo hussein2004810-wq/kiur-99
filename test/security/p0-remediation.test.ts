@@ -522,6 +522,8 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(homeHtml).toContain('openProfessor(${jsArg(p.id)})');
       expect(homeHtml).toContain('recordRecentView(\'booklet\',${jsArg(b.id)})');
       expect(homeHtml).toContain("return esc(clean.split(' ').map(w => w[0]).slice(0, 2).join(''));");
+      expect(homeHtml).toContain('order.granted_activation_codes.map(c => `<div class="mono" style="font-size:.85rem;">${esc(c)}</div>`).join(\'\')');
+      expect(homeHtml).toContain('<span class="mono">${esc(order.id)}</span>');
       expect(homeHtml).not.toContain("startExam('${e.id}')");
       expect(homeHtml).not.toContain("body: JSON.stringify({ email, name, next: 'student' })");
       expect(adminHtml).toContain('function jsArg(value)');
@@ -545,6 +547,11 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(adminHtml).not.toContain('msgEl.innerHTML = opts.html');
       expect(adminHtml).toContain('promptEditUser(${jsArg(a.id)})');
       expect(adminHtml).toContain('actGlimpse(${jsArg(p.id)}, \'archive\')');
+      expect(adminHtml).toContain('triggerBookletUpload(${jsArg(b.id)})');
+      expect(adminHtml).toContain('triggerLectureUpload(${jsArg(l.id)})');
+      expect(adminHtml).toContain('actGlimpse(${jsArg(p.id)}, \'approve\')');
+      expect(adminHtml).toContain('updateOrderStatus(${jsArg(o.id)}, this.value)');
+      expect(adminHtml).toContain('id="uni-card-${esc(u.id)}"');
     });
 
     it('rejects skill input containing HTML or script tags with 400', async () => {

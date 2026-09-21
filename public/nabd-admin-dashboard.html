@@ -2391,7 +2391,7 @@
       const uTotalSubjects = (u.programs || []).reduce((acc, p) => acc + (p.stages || []).reduce((a2, st) => a2 + st.subjects.length, 0), 0);
 
       return `
-        <div class="acad-uni-card" id="uni-card-${u.id}">
+        <div class="acad-uni-card" id="uni-card-${esc(u.id)}">
           <div class="acad-uni-head" onclick="toggleUniCollapse(${jsArg(u.id)})">
             <div class="acad-uni-title">
               <span style="font-size:1.25rem;">🏛️</span>
@@ -4023,7 +4023,7 @@
         <td><div class="cell-name">${esc(b.title)}</div></td><td>${b.pages}</td>
         <td>${safeMediaUrl(b.file_url) ? `<a href="${esc(safeMediaUrl(b.file_url))}" target="_blank" class="badge badge-active" style="text-decoration:none;">عرض الملف</a>` : '<span class="badge badge-disabled">لا يوجد ملف</span>'}</td>
         <td style="text-align:end;"><div style="display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">
-          <button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="triggerBookletUpload('${b.id}')">${b.file_url ? 'تغيير الملف' : 'رفع ملف'}</button>
+          <button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="triggerBookletUpload(${jsArg(b.id)})">${b.file_url ? 'تغيير الملف' : 'رفع ملف'}</button>
           <button class="btn btn-ghost" style="padding:6px 14px; font-size:.72rem;" onclick="promptEditBooklet(${jsArg(b.id)})">تعديل</button>
           <button class="icon-btn" title="حذف الملزمة" aria-label="حذف الملزمة" style="width:30px;height:30px;" onclick="deleteBooklet(${jsArg(b.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
         </div></td>
@@ -4178,7 +4178,7 @@
         <td class="mono">${fmtLectureDuration(l.duration_seconds)}</td>
         <td>${l.video_url ? '<span class="badge badge-active">مرفوع</span>' : '<span class="badge badge-disabled">لا يوجد فيديو</span>'}</td>
         <td style="text-align:end;"><div style="display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">
-          <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="triggerLectureUpload('${l.id}')">${l.video_url ? 'تغيير الفيديو' : 'رفع فيديو'}</button>
+          <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="triggerLectureUpload(${jsArg(l.id)})">${l.video_url ? 'تغيير الفيديو' : 'رفع فيديو'}</button>
           <button class="btn btn-ghost" style="padding:6px 12px; font-size:.72rem;" onclick="promptEditLecture(${jsArg(l.id)})">تعديل</button>
           <button class="icon-btn" title="حذف المحاضرة" aria-label="حذف المحاضرة" style="width:28px;height:28px;" onclick="deleteLecture(${jsArg(l.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
         </div></td>
@@ -4428,12 +4428,12 @@
           flowBtn = `<button class="btn" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse(${jsArg(p.id)}, 'submit-review')">طلب مراجعة</button>`;
         } else if (p.status === 'in_review') {
           flowBtn = `
-            ${isAdmin ? `<button class="btn" style="padding:4px 8px; font-size:.72rem; background:var(--primary);" onclick="actGlimpse('${p.id}', 'approve')">اعتماد</button>` : ''}
+            ${isAdmin ? `<button class="btn" style="padding:4px 8px; font-size:.72rem; background:var(--primary);" onclick="actGlimpse(${jsArg(p.id)}, 'approve')">اعتماد</button>` : ''}
             <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse(${jsArg(p.id)}, 'return-draft')">إرجاع لمسودة</button>
           `;
         } else if (p.status === 'approved') {
           flowBtn = `
-            ${isAdmin ? `<button class="btn badge-active" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse('${p.id}', 'publish')">نشر الآن</button>` : ''}
+            ${isAdmin ? `<button class="btn badge-active" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse(${jsArg(p.id)}, 'publish')">نشر الآن</button>` : ''}
             <button class="btn btn-ghost" style="padding:4px 8px; font-size:.72rem;" onclick="actGlimpse(${jsArg(p.id)}, 'return-draft')">إرجاع لمسودة</button>
           `;
         }
@@ -4708,7 +4708,7 @@
           <td class="mono">${fmtIQD(o.total)}</td>
           <td>${o.payment_method === 'cod' ? 'عند الاستلام' : 'زين كاش'}</td>
           <td>
-            <select onchange="updateOrderStatus('${o.id}', this.value)" style="font-size:.72rem; padding:4px 6px;">
+            <select onchange="updateOrderStatus(${jsArg(o.id)}, this.value)" style="font-size:.72rem; padding:4px 6px;">
               ${['pending','paid','fulfilled','cancelled'].map(s => `<option value="${s}" ${s===o.status?'selected':''}>${statusLabel[s]}</option>`).join('')}
             </select>
           </td>
