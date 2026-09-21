@@ -1164,11 +1164,13 @@
   // If we just landed back from /auth/google/callback — a real Google OAuth
   // round trip for this dashboard — the backend hands the result off via a
   // URL fragment (never logged by servers/proxies), the same way it does
-  // for the student app. Three possible outcomes: a token, a paused 2FA
+  // for the student app. The fragment now contains a one-time handoff code,
+  // a paused 2FA step,
   // step, or a rejection because the Google account isn't an admin,
   // professor or reseller (the backend checks this before issuing anything,
   // so no session ever gets created for the rejected case).
   let pendingGoogleToken = null;
+  let pendingOauthHandoff = null;
   let googleSignInError = null;
   let pendingResetToken = null;
   (function captureGoogleRedirect(){
@@ -1182,9 +1184,13 @@
       return;
     }
     const m = location.hash.match(/access_token=([^&]+)/);
+    const mHandoff = location.hash.match(/oauth_handoff=([^&]+)/);
     const m2 = location.hash.match(/requires_2fa=1&pending_token=([^&]+)/);
     const m3 = location.hash.match(/google_error=([^&]+)/);
-    if (m){
+    if (mHandoff){
+      pendingOauthHandoff = decodeURIComponent(mHandoff[1]);
+      history.replaceState(null, '', location.pathname + location.search);
+    } else if (m){
       authToken = decodeURIComponent(m[1]);
       history.replaceState(null, '', location.pathname + location.search);
     } else if (m2){
@@ -4847,6 +4853,16 @@
       } catch (e) {
         authToken = null;
         showToast(e.detail || 'تعذّر إكمال تسجيل الدخول عبر Google', 'error');
+      }
+    })();
+  } else if (pendingOauthHandoff){
+    (async () => {
+      try {
+        const data = await apiFetch('/auth/oauth/handoff', {method: 'POST', body: JSON.stringify({code: pendingOauthHandoff})});
+        finishGoogleSignIn(data.access_token, data.user);
+      } catch (e) {
+        showToast(e.detail || 'تعذّر إكمال تسجيل الدخول عبر Google', 'error');
+        showLogin();
       }
     })();
   } else if (pendingGoogleToken){

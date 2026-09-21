@@ -42,6 +42,7 @@ import {
   resendVerificationRateLimiter,
   firebaseAuthRateLimiter,
   googleIdentityRateLimiter,
+  oauthHandoffRateLimiter,
 } from '../middleware/rate-limit';
 import { recordAuditEvent } from '../services/audit';
 import { verifyFirebaseGoogleToken, FirebaseAuthError } from '../services/firebase';
@@ -59,6 +60,7 @@ const EMAIL_VERIFICATION_TTL_HOURS = 24;
 const GOOGLE_GIS_FLOW_COOKIE = 'kiur_google_gis_flow';
 const MIN_PASSWORD_LENGTH = 10;
 const MAX_PASSWORD_LENGTH = 128;
+const OAUTH_HANDOFF_TTL_SECONDS = 60;
 
 // ─────────────────────────────────────────── helpers ────────────────────────
 
@@ -404,9 +406,49 @@ authRouter.get('/google/callback', async (c) => {
 
   const session = await startNewSession(db, user.id, 'متصفح');
   const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
-  const response = c.redirect(`${redirectBase}#access_token=${token}`);
+  const handoffToken = `oauth_handoff_${crypto.randomUUID().replace(/-/g, '')}${crypto.randomUUID().replace(/-/g, '')}`;
+  const handoffHash = await hashResetToken(handoffToken);
+  const handoffOrigin = new URL(redirectBase).origin.toLowerCase();
+  await db.insert(schema.oauthHandoffs).values({
+    token_hash: handoffHash,
+    session_id: session.id,
+    redirect_origin: handoffOrigin,
+    expires_at: new Date(Date.now() + OAUTH_HANDOFF_TTL_SECONDS * 1000).toISOString(),
+  });
+  // The fragment contains only a short-lived, single-use handoff code, never
+  // the bearer token itself.  This preserves cross-origin dashboard support.
+  const response = c.redirect(`${redirectBase}#oauth_handoff=${handoffToken}`);
   setSessionCookie(response, token, expiresMinutes, isDebug);
   return response;
+});
+
+authRouter.post('/oauth/handoff', oauthHandoffRateLimiter, async (c) => {
+  const body = await c.req.json<{ code?: string }>().catch(() => ({} as { code?: string }));
+  const code = typeof body.code === 'string' ? body.code.trim() : '';
+  const origin = c.req.header('Origin')?.toLowerCase();
+  if (!code || !origin) return c.json({ detail: 'رمز التسليم أو مصدر المتصفح مفقود' }, 400);
+
+  const db = drizzle(c.env.DB, { schema });
+  const handoff = await db.select().from(schema.oauthHandoffs)
+    .where(eq(schema.oauthHandoffs.token_hash, await hashResetToken(code))).get();
+  if (!handoff || handoff.consumed_at || new Date(handoff.expires_at) < new Date() || handoff.redirect_origin !== origin) {
+    return c.json({ detail: 'رمز التسليم غير صالح أو منتهي الصلاحية' }, 401);
+  }
+
+  const consumed = await c.env.DB.prepare(
+    'UPDATE oauth_handoffs SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL AND expires_at > ?'
+  ).bind(new Date().toISOString(), handoff.id, new Date().toISOString()).run();
+  if (consumed.meta.changes !== 1) return c.json({ detail: 'رمز التسليم غير صالح أو مستهلك' }, 401);
+
+  const session = await db.select().from(schema.userSessions)
+    .where(and(eq(schema.userSessions.id, handoff.session_id), eq(schema.userSessions.is_active, true))).get();
+  if (!session) return c.json({ detail: 'الجلسة غير صالحة أو تم إنهاؤها' }, 401);
+  const user = await db.select().from(schema.users).where(eq(schema.users.id, session.user_id)).get();
+  if (!user || user.is_banned || !user.email_verified_at) return c.json({ detail: 'الحساب غير متاح' }, 403);
+
+  const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
+  const accessToken = await createAccessToken(user.id, session.id, c.env.JWT_SECRET, expiresMinutes);
+  return c.json({ access_token: accessToken, token_type: 'bearer', user: userOut(user) });
 });
 
 // ─────────────────────────────────────────── Firebase Google Sign-In (Stage A1) ──

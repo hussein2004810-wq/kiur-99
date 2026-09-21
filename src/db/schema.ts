@@ -243,6 +243,24 @@ export type UserSession = InferSelectModel<typeof userSessions>;
 export type NewUserSession = InferInsertModel<typeof userSessions>;
 
 // ============================================================================
+// 6b. OAUTH HANDOFFS (one-time browser redirect exchange)
+// ============================================================================
+export const oauthHandoffs = sqliteTable('oauth_handoffs', {
+  id: text('id').primaryKey().$defaultFn(genId),
+  token_hash: text('token_hash').notNull().unique(),
+  session_id: text('session_id').notNull().references(() => userSessions.id, { onDelete: 'cascade' }),
+  redirect_origin: text('redirect_origin').notNull(),
+  expires_at: text('expires_at').notNull(),
+  consumed_at: text('consumed_at'),
+  created_at: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
+}, (table) => ({
+  expires_at_idx: index('oauth_handoffs_expires_at_idx').on(table.expires_at),
+}));
+
+export type OAuthHandoff = InferSelectModel<typeof oauthHandoffs>;
+export type NewOAuthHandoff = InferInsertModel<typeof oauthHandoffs>;
+
+// ============================================================================
 // 7. PROFESSOR PROFILES
 // ============================================================================
 export const professorProfiles = sqliteTable('professor_profiles', {

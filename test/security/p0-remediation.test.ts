@@ -365,7 +365,25 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
         });
 
         expect(res.status).toBe(302);
-        expect(res.headers.get('location')).toContain('#access_token=');
+        const location = res.headers.get('location') ?? '';
+        expect(location).toContain('#oauth_handoff=');
+        expect(location).not.toContain('access_token=');
+        const handoffCode = decodeURIComponent(location.split('#oauth_handoff=')[1] ?? '');
+        expect(handoffCode).toMatch(/^oauth_handoff_/);
+        expect(await ctx.db.prepare('SELECT token_hash FROM oauth_handoffs').first('token_hash')).toBeTruthy();
+
+        const exchange = await apiRequest(app, 'POST', '/auth/oauth/handoff', {
+          headers: { Origin: 'http://localhost' },
+          body: { code: handoffCode },
+        }, ctx);
+        expect(exchange.status).toBe(200);
+        expect((await exchange.json()).access_token).toBeTruthy();
+
+        const replay = await apiRequest(app, 'POST', '/auth/oauth/handoff', {
+          headers: { Origin: 'http://localhost' },
+          body: { code: handoffCode },
+        }, ctx);
+        expect(replay.status).toBe(401);
         expect(await ctx.db.prepare("SELECT email_verified_at FROM users WHERE id = 'usr_oauth_upgrade'").first('email_verified_at')).toBeTruthy();
       } finally {
         fetchMock.mockRestore();

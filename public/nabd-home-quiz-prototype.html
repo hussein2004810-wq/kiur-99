@@ -4045,13 +4045,15 @@
   }
 
   // If the page just loaded after Google's redirect back from
-  // /auth/google/callback, the backend hands the token off via URL fragment —
-  // either a real access_token, or (on a 2FA-enabled account) a pending_token
+  // /auth/google/callback, the backend hands off a short-lived one-time code
+  // via the URL fragment — or (on a 2FA-enabled account) a pending token
   // that still needs a code before any session actually starts.
   let pending2faToken = null;
+  let pendingOauthHandoff = null;
   let pendingResetToken = null;
   (function captureRedirectToken(){
     const m = location.hash.match(/access_token=([^&]+)/);
+    const mHandoff = location.hash.match(/oauth_handoff=([^&]+)/);
     const m2 = location.hash.match(/requires_2fa=1&pending_token=([^&]+)/);
     // The link from a password-reset email lands here.
     const m3 = location.hash.match(/reset_token=([^&]+)/);
@@ -4060,7 +4062,10 @@
       history.replaceState(null, '', location.pathname + location.search);
       return;
     }
-    if (m){
+    if (mHandoff){
+      pendingOauthHandoff = decodeURIComponent(mHandoff[1]);
+      history.replaceState(null, '', location.pathname + location.search);
+    } else if (m){
       authToken = decodeURIComponent(m[1]);
       history.replaceState(null, '', location.pathname + location.search);
     } else if (m2){
@@ -8503,6 +8508,18 @@
     }
     if (pending2faToken){
       goToTotpVerify(pending2faToken);
+      return;
+    }
+    if (pendingOauthHandoff){
+      try {
+        const data = await apiFetch('/auth/oauth/handoff', {method: 'POST', body: JSON.stringify({code: pendingOauthHandoff})});
+        authToken = data.access_token;
+        currentUser = data.user;
+        proceedAfterAuth();
+      } catch (e) {
+        goToLanding();
+        initGoogleIdentityServices();
+      }
       return;
     }
     try {

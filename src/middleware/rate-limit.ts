@@ -83,6 +83,7 @@ export const examAttemptRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, 
 export const resendVerificationRateLimiter = rateLimiter({ max: 3, windowSeconds: 3600, keyPrefix: 'rl:resend-verif' });
 export const firebaseAuthRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:firebase' });
 export const googleIdentityRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:google-identity' });
+export const oauthHandoffRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:oauth-handoff' });
 export const redeemRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:redeem' });
 
 /**
