@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
+import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import { createTestContext, TestContext } from '../harness/test-context';
 import { apiRequest } from '../harness/app';
 import mainApp from '../../src/index';
@@ -141,27 +142,44 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       }
     });
 
-    it('rejects a signed Google token issued for another OAuth client', async () => {
-      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+    it('rejects a cryptographically valid Google ID token issued for another OAuth client', async () => {
+      const { publicKey, privateKey } = await generateKeyPair('RS256');
+      const jwk = await exportJWK(publicKey);
+      Object.assign(jwk, { kid: 'google-test-key-wrong-audience', use: 'sig', alg: 'RS256' });
+      const credential = await new SignJWT({
         email: 'wrong-audience@nabd.app',
         name: 'رمز لجمهور آخر',
-        sub: 'google_wrong_audience',
         email_verified: true,
-        iss: 'https://accounts.google.com',
-        aud: 'other-client-id.apps.googleusercontent.com',
-      }), { status: 200 }));
+      })
+        .setProtectedHeader({ alg: 'RS256', kid: jwk.kid })
+        .setSubject('google_wrong_audience')
+        .setIssuer('https://accounts.google.com')
+        .setAudience('other-client-id.apps.googleusercontent.com')
+        .setIssuedAt()
+        .setExpirationTime('5m')
+        .sign(privateKey);
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({ keys: [jwk] }), { status: 200 }));
 
       try {
         const res = await apiRequest(app, 'POST', '/auth/google/verify', {
-          body: { credential: 'signed-token-for-other-client' },
+          body: { credential },
         }, {
           ...ctx,
           bindings: { ...ctx.bindings, GOOGLE_CLIENT_ID: 'kiur-client-id.apps.googleusercontent.com' },
         });
 
         expect(res.status).toBe(401);
-        expect((await res.json()).detail).toContain('غير مخصص');
+        expect((await res.json()).detail).toContain('غير صالح');
+        expect(fetchMock).toHaveBeenCalledOnce();
         expect(await ctx.db.prepare('SELECT id FROM users WHERE email = ?').bind('wrong-audience@nabd.app').first()).toBeNull();
+        const [authSource, verifierSource] = await Promise.all([
+          readFile(new URL('../../src/routes/auth.ts', import.meta.url), 'utf8'),
+          readFile(new URL('../../src/services/google-identity.ts', import.meta.url), 'utf8'),
+        ]);
+        expect(authSource).not.toContain('oauth2.googleapis.com/tokeninfo');
+        expect(verifierSource).toContain('createRemoteJWKSet');
+        expect(verifierSource).toContain("algorithms: ['RS256']");
+        expect(verifierSource).toContain('maxTokenAge');
       } finally {
         fetchMock.mockRestore();
       }

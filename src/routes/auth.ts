@@ -42,6 +42,7 @@ import {
 } from '../middleware/rate-limit';
 import { recordAuditEvent } from '../services/audit';
 import { verifyFirebaseGoogleToken, FirebaseAuthError } from '../services/firebase';
+import { verifyGoogleIdentityCredential, GoogleIdentityError } from '../services/google-identity';
 import { recordAccountEvent } from '../services/account-events';
 
 export const authRouter = new Hono<AppEnv>();
@@ -192,33 +193,18 @@ authRouter.post('/google/verify', async (c) => {
   let name = '';
   let sub = '';
   let picture = '';
-  let emailVerified = false;
 
   try {
-    const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-    if (!verifyRes.ok) {
-      return c.json({ detail: 'رمز مصادقة Google غير صالح أو مرفوض من Google' }, 401);
+    const identity = await verifyGoogleIdentityCredential(credential, expectedAud);
+    email = identity.email;
+    name = identity.name ?? '';
+    sub = identity.subject;
+    picture = identity.picture ?? '';
+  } catch (error) {
+    if (error instanceof GoogleIdentityError) {
+      return c.json({ detail: error.message }, error.statusCode as 400 | 401 | 403);
     }
-    const info = await verifyRes.json<{ email: string; name: string; sub: string; picture: string; email_verified: string | boolean; iss?: string; aud?: string }>();
-    email = String(info.email || '').trim().toLowerCase();
-    name = String(info.name || '');
-    sub = String(info.sub || '');
-    picture = String(info.picture || '');
-    emailVerified = isVerifiedGoogleEmail(info.email_verified);
-
-    const validIssuers = ['accounts.google.com', 'https://accounts.google.com'];
-    if (!info.iss || !validIssuers.includes(info.iss)) {
-      return c.json({ detail: 'مصدر رمز Google غير صالح' }, 401);
-    }
-    if (info.aud !== expectedAud) {
-      return c.json({ detail: 'رمز Google غير مخصص لهذا التطبيق' }, 401);
-    }
-  } catch {
-    return c.json({ detail: 'تعذر التحقق من رمز Google حالياً' }, 503);
-  }
-
-  if (!email || !email.includes('@') || !emailVerified) {
-    return c.json({ detail: 'بريد Google غير موثق أو غير صالح' }, 403);
+    return c.json({ detail: 'تعذر إكمال مصادقة Google حالياً' }, 503);
   }
 
   if (!domainAllowed(email, c.env.ALLOWED_UNIVERSITY_DOMAINS ?? '')) {
