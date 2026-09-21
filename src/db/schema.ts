@@ -248,7 +248,8 @@ export type NewUserSession = InferInsertModel<typeof userSessions>;
 export const oauthHandoffs = sqliteTable('oauth_handoffs', {
   id: text('id').primaryKey().$defaultFn(genId),
   token_hash: text('token_hash').notNull().unique(),
-  session_id: text('session_id').notNull().references(() => userSessions.id, { onDelete: 'cascade' }),
+  session_id: text('session_id').references(() => userSessions.id, { onDelete: 'cascade' }),
+  user_id: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   redirect_origin: text('redirect_origin').notNull(),
   expires_at: text('expires_at').notNull(),
   consumed_at: text('consumed_at'),

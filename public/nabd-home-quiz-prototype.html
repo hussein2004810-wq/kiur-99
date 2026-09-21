@@ -8513,6 +8513,10 @@
     if (pendingOauthHandoff){
       try {
         const data = await apiFetch('/auth/oauth/handoff', {method: 'POST', body: JSON.stringify({code: pendingOauthHandoff})});
+        if (data.requires_2fa){
+          goToTotpVerify(data.pending_token);
+          return;
+        }
         authToken = data.access_token;
         currentUser = data.user;
         proceedAfterAuth();

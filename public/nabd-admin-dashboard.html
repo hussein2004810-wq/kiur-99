@@ -4859,6 +4859,10 @@
     (async () => {
       try {
         const data = await apiFetch('/auth/oauth/handoff', {method: 'POST', body: JSON.stringify({code: pendingOauthHandoff})});
+        if (data.requires_2fa){
+          promptTotpVerify(data.pending_token, (result) => finishGoogleSignIn(result.access_token, result.user));
+          return;
+        }
         finishGoogleSignIn(data.access_token, data.user);
       } catch (e) {
         showToast(e.detail || 'تعذّر إكمال تسجيل الدخول عبر Google', 'error');

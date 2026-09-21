@@ -46,6 +46,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `a998ba8` adds browser isolation and privacy headers while retaining Google Identity popup compatibility.
 - `6eef79b` rejects state-changing requests that carry the session cookie but provide neither `Origin` nor `Sec-Fetch-Site` browser provenance.
 - `a4accb2` replaces OAuth redirect JWT fragments with origin-bound, hashed, 60-second, one-time handoff codes.
+- This working-tree follow-up extends the same unapplied `0008` migration so OAuth accounts with 2FA also receive only a handoff code in the redirect fragment.
 
 ## Implemented controls
 
@@ -61,7 +62,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - Debug behavior is deny-by-default: a missing `DEBUG` value does not enable development login or development-only response data.  Password-reset tokens are returned only with explicit `DEBUG=true`, and the session-cookie helper defaults to `Secure`.
 - If production has no `CORS_ORIGINS` configuration, the CORS middleware allows no configured cross-origin caller instead of falling back to localhost.  Responses also use `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin-allow-popups`, `Cross-Origin-Resource-Policy: same-origin`, and `Origin-Agent-Cluster: ?1`; the popup-compatible COOP value is intentional for Google Identity.
 - Cookie-backed state changes that provide neither `Origin` nor `Sec-Fetch-Site` are denied.  This closes an ambiguous browser-request path while leaving bearer-token API clients unaffected.
-- The Google OAuth callback never places an access token in its redirect fragment.  It stores only a hash of a one-time handoff code bound to the target frontend origin and active session; `/auth/oauth/handoff` rate-limits the browser exchange, verifies the origin and session state, and atomically consumes the code before issuing a JWT.
+- The Google OAuth callback never places an access token or 2FA pending JWT in its redirect fragment.  It stores only a hash of a one-time handoff code bound to the target frontend origin and active session (or 2FA user); `/auth/oauth/handoff` rate-limits the browser exchange, verifies the origin and account/session state, and atomically consumes the code before issuing the appropriate JWT response.
 - The CSP permits only the Google Identity script origin required by the SPA, removes the unused jsDelivr allowlist, and restricts form submissions to same-origin destinations.
 - Admin media uploads now fail closed before body parsing when R2 is absent, verify magic bytes rather than trusting the declared filename or MIME type, generate server-owned object names, and remove the R2 object if media-record persistence fails.
 - Every new image, booklet, and lecture-video object now receives a server-generated filename with the extension detected from its verified bytes.  Media reads use a fixed extension-to-MIME allowlist and serve unrecognized legacy names as `application/octet-stream`.

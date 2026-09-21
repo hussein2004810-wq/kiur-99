@@ -479,7 +479,8 @@ CREATE INDEX IF NOT EXISTS email_verifications_token_idx ON email_verifications(
 CREATE TABLE IF NOT EXISTS oauth_handoffs (
     id TEXT PRIMARY KEY NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
-    session_id TEXT NOT NULL REFERENCES user_sessions(id) ON DELETE CASCADE,
+    session_id TEXT REFERENCES user_sessions(id) ON DELETE CASCADE,
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     redirect_origin TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     consumed_at TEXT,

@@ -389,6 +389,41 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
         fetchMock.mockRestore();
       }
     });
+
+    it('keeps OAuth 2FA pending tokens out of the redirect fragment', async () => {
+      await ctx.db.prepare("INSERT INTO users (id, email, full_name, password_hash, role, email_verified_at, totp_enabled, totp_secret) VALUES ('usr_oauth_2fa', 'oauth-2fa@nabd.app', 'طالب OAuth 2FA', 'hash', 'student', ?, 1, 'JBSWY3DPEHPK3PXP')")
+        .bind(new Date().toISOString()).run();
+      const fetchMock = vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'google_access_token' }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          email: 'oauth-2fa@nabd.app', name: 'طالب OAuth 2FA', sub: 'google_oauth_2fa', email_verified: true,
+        }), { status: 200 }));
+
+      try {
+        const res = await apiRequest(app, 'GET', '/auth/google/callback?code=valid_code&state=student:twofa_nonce', {
+          headers: { Cookie: 'oauth_state=student:twofa_nonce' },
+        }, {
+          ...ctx,
+          bindings: { ...ctx.bindings, GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com', GOOGLE_CLIENT_SECRET: 'test-client-secret' },
+        });
+
+        const location = res.headers.get('location') ?? '';
+        expect(res.status).toBe(302);
+        expect(location).toContain('#oauth_handoff=');
+        expect(location).not.toContain('pending_token=');
+        const handoffCode = decodeURIComponent(location.split('#oauth_handoff=')[1] ?? '');
+        const exchange = await apiRequest(app, 'POST', '/auth/oauth/handoff', {
+          headers: { Origin: 'http://localhost' }, body: { code: handoffCode },
+        }, ctx);
+        expect(exchange.status).toBe(200);
+        const exchangeData = await exchange.json();
+        expect(exchangeData.requires_2fa).toBe(true);
+        expect(exchangeData.pending_token).toBeTruthy();
+        expect(exchangeData.access_token).toBeUndefined();
+      } finally {
+        fetchMock.mockRestore();
+      }
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────

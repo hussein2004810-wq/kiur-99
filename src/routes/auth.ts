@@ -400,8 +400,14 @@ authRouter.get('/google/callback', async (c) => {
   const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
 
   if (user.totp_enabled) {
-    const pending = await create2faPendingToken(user.id, jwtSecret);
-    return c.redirect(`${redirectBase}#requires_2fa=1&pending_token=${pending}`);
+    const handoffToken = `oauth_handoff_${crypto.randomUUID().replace(/-/g, '')}${crypto.randomUUID().replace(/-/g, '')}`;
+    await db.insert(schema.oauthHandoffs).values({
+      token_hash: await hashResetToken(handoffToken),
+      user_id: user.id,
+      redirect_origin: new URL(redirectBase).origin.toLowerCase(),
+      expires_at: new Date(Date.now() + OAUTH_HANDOFF_TTL_SECONDS * 1000).toISOString(),
+    });
+    return c.redirect(`${redirectBase}#oauth_handoff=${handoffToken}`);
   }
 
   const session = await startNewSession(db, user.id, 'متصفح');
@@ -440,6 +446,16 @@ authRouter.post('/oauth/handoff', oauthHandoffRateLimiter, async (c) => {
   ).bind(new Date().toISOString(), handoff.id, new Date().toISOString()).run();
   if (consumed.meta.changes !== 1) return c.json({ detail: 'رمز التسليم غير صالح أو مستهلك' }, 401);
 
+  if (handoff.user_id) {
+    const user = await db.select().from(schema.users).where(eq(schema.users.id, handoff.user_id)).get();
+    if (!user || user.is_banned || !user.email_verified_at || !user.totp_enabled) {
+      return c.json({ detail: 'الحساب غير متاح' }, 403);
+    }
+    const pendingToken = await create2faPendingToken(user.id, c.env.JWT_SECRET);
+    return c.json({ requires_2fa: true, pending_token: pendingToken, user: userOut(user) });
+  }
+
+  if (!handoff.session_id) return c.json({ detail: 'رمز التسليم غير صالح' }, 401);
   const session = await db.select().from(schema.userSessions)
     .where(and(eq(schema.userSessions.id, handoff.session_id), eq(schema.userSessions.is_active, true))).get();
   if (!session) return c.json({ detail: 'الجلسة غير صالحة أو تم إنهاؤها' }, 401);
