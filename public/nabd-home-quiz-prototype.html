@@ -5399,7 +5399,7 @@
         <div class="product-shine"></div>
         <div class="product-glow"></div>
         <div class="product-icon-wrap">
-          <span class="product-badge ${p.type === 'physical' ? 'physical' : 'digital'}">${PRODUCT_TYPE_BADGE[p.type] || p.type}</span>
+          <span class="product-badge ${p.type === 'physical' ? 'physical' : 'digital'}">${esc(PRODUCT_TYPE_BADGE[p.type] || p.type)}</span>
           ${productIcons[PRODUCT_TYPE_ICON[p.type] || 'key']}
         </div>
         <div>

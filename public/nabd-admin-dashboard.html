@@ -1773,7 +1773,8 @@
   function initialsOf(name){ return esc((name||'').trim().split(' ').map(w=>w[0]).slice(0,2).join('')); }
   function roleBadge(role){
     const map = {admin:'أدمن', student:'طالب', professor:'أستاذ', reseller:'مندوب'};
-    return `<span class="badge badge-${role}">${map[role]||role}</span>`;
+    const safeRole = Object.hasOwn(map, role) ? role : 'unknown';
+    return `<span class="badge badge-${safeRole}">${esc(map[role] || role || 'غير معروف')}</span>`;
   }
   // Weekday label for a YYYY-MM-DD string, so a real per-day series can
   // label itself instead of assuming the week always starts on Saturday.
@@ -2067,7 +2068,7 @@
             <div class="item-card glass" style="align-items:center; opacity:.7;">
               <div class="item-body">
                 <div class="item-title mono">${esc(c.code)}</div>
-                <div class="item-meta">${esc(c.subject_name)} · ${statusLabel[c.status] || c.status}</div>
+                <div class="item-meta">${esc(c.subject_name)} · ${esc(statusLabel[c.status] || c.status)}</div>
               </div>
             </div>
           `).join('')}
@@ -4670,7 +4671,7 @@
         <tr>
           <td class="mono">${esc(c.code)}</td>
           <td>${esc(c.subject_name)}</td>
-          <td><span class="badge ${c.status==='idle'?'badge-idle':(c.status==='active'?'badge-active':'badge-disabled')}">${statusLabel[c.status] || c.status}</span></td>
+          <td><span class="badge ${c.status==='idle'?'badge-idle':(c.status==='active'?'badge-active':'badge-disabled')}">${esc(statusLabel[c.status] || c.status)}</span></td>
           <td>${c.sold_at ? fmtDate(c.sold_at) : '—'}</td>
         </tr>
       `).join('') || `<tr><td colspan="4" class="empty-row">لا توجد أكواد مخصصة بعد — تواصل مع إدارة المنصة</td></tr>`;

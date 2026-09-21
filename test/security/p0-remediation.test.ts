@@ -524,10 +524,13 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(homeHtml).toContain("return esc(clean.split(' ').map(w => w[0]).slice(0, 2).join(''));");
       expect(homeHtml).toContain('order.granted_activation_codes.map(c => `<div class="mono" style="font-size:.85rem;">${esc(c)}</div>`).join(\'\')');
       expect(homeHtml).toContain('<span class="mono">${esc(order.id)}</span>');
+      expect(homeHtml).toContain('${esc(PRODUCT_TYPE_BADGE[p.type] || p.type)}');
       expect(homeHtml).not.toContain("startExam('${e.id}')");
       expect(homeHtml).not.toContain("body: JSON.stringify({ email, name, next: 'student' })");
       expect(adminHtml).toContain('function jsArg(value)');
       expect(adminHtml).toContain("function initialsOf(name){ return esc((name||'').trim().split(' ').map(w=>w[0]).slice(0,2).join('')); }");
+      expect(adminHtml).toContain("const safeRole = Object.hasOwn(map, role) ? role : 'unknown';");
+      expect(adminHtml).toContain('${esc(statusLabel[c.status] || c.status)}');
       expect(adminHtml).toContain('<span class="weak-label">${esc(label)}</span>');
       expect(adminHtml).toContain('deleteUniversity(${jsArg(u.id)}, ${jsArg(u.name)})');
 
