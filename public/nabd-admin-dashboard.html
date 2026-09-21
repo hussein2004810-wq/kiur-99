@@ -1275,21 +1275,25 @@
     genericModalFieldsSpec = fields; // [{id, label, type:'text'|'password'|'number'|'select'|'textarea', value, placeholder, options:[{value,label}], rows}]
     genericModalOnSubmit = onSubmit;
     document.getElementById('genericModalFields').innerHTML = fields.map(f => {
+      const fieldId = esc(String(f.id));
       const labelHtml = `<label style="font-size:.75rem; color:var(--ink-faint); display:block; margin-bottom:5px;">${esc(f.label)}</label>`;
       if (f.type === 'select'){
         const opts = f.options.map(o => `<option value="${esc(o.value)}" ${String(o.value) === String(f.value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
-        return `<div class="form-field">${labelHtml}<select id="gm_${f.id}">${opts}</select></div>`;
+        return `<div class="form-field">${labelHtml}<select id="gm_${fieldId}">${opts}</select></div>`;
       }
       if (f.type === 'textarea'){
+        const rows = Number.isInteger(Number(f.rows)) ? Math.max(1, Math.min(20, Number(f.rows))) : 8;
         // Used for pasting a whole list at once — one item per line.
-        return `<div class="form-field">${labelHtml}<textarea id="gm_${f.id}" rows="${f.rows || 8}"
+        return `<div class="form-field">${labelHtml}<textarea id="gm_${fieldId}" rows="${rows}"
           placeholder="${esc(f.placeholder || '')}"
           style="width:100%; resize:vertical; font:inherit; line-height:1.9; padding:10px 12px;
                  border-radius:var(--radius-sm); border:1px solid var(--glass-border);
                  background:var(--glass-bg-strong); color:var(--ink);">${esc(f.value || '')}</textarea></div>`;
       }
-      const val = f.value != null ? String(f.value).replace(/"/g, '&quot;') : '';
-      return `<div class="form-field">${labelHtml}<input id="gm_${f.id}" type="${f.type || 'text'}" value="${esc(val)}" placeholder="${esc(f.placeholder || '')}" /></div>`;
+      const safeInputTypes = new Set(['text', 'password', 'number', 'email', 'url', 'tel']);
+      const inputType = safeInputTypes.has(f.type) ? f.type : 'text';
+      const val = f.value != null ? String(f.value) : '';
+      return `<div class="form-field">${labelHtml}<input id="gm_${fieldId}" type="${inputType}" value="${esc(val)}" placeholder="${esc(f.placeholder || '')}" /></div>`;
     }).join('');
     document.getElementById('genericModalMsg').style.display = 'none';
     document.getElementById('genericModalOverlay').style.display = 'flex';

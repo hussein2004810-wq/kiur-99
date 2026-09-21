@@ -546,6 +546,8 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(adminHtml).toContain("const safeRole = Object.hasOwn(map, role) ? role : 'unknown';");
       expect(adminHtml).toContain('${esc(statusLabel[c.status] || c.status)}');
       expect(adminHtml).toContain('${esc(data.secret)}');
+      expect(adminHtml).toContain("const safeInputTypes = new Set(['text', 'password', 'number', 'email', 'url', 'tel']);");
+      expect(adminHtml).toContain("const rows = Number.isInteger(Number(f.rows)) ? Math.max(1, Math.min(20, Number(f.rows))) : 8;");
       expect(adminHtml).toContain('<span class="weak-label">${esc(label)}</span>');
       expect(adminHtml).toContain('deleteUniversity(${jsArg(u.id)}, ${jsArg(u.name)})');
 
