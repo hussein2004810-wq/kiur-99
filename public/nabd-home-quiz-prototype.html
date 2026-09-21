@@ -5041,7 +5041,7 @@
 
   function bsPopulateManualDropdowns(){
     document.getElementById('bsSection').innerHTML = '<option value="">اختر القسم</option>' +
-      (bsCatalogTree || []).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+      (bsCatalogTree || []).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
     // Pre-select user's values if available
     if (currentUser?.section_id || currentUser?.college_id) {
       const secId = currentUser.college_id || currentUser.section_id;
@@ -5100,7 +5100,7 @@
     const uniSel = document.getElementById('bsUniversity');
     uniSel.disabled = !section;
     uniSel.innerHTML = '<option value="">اختر الجامعة</option>' +
-      (section ? (section.universities || []).map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('') : '');
+      (section ? (section.universities || []).map(u => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('') : '');
     onBsUniversityChange();
   }
   function onBsUniversityChange(){
@@ -5110,7 +5110,7 @@
     const stageSel = document.getElementById('bsStage');
     stageSel.disabled = !uni;
     stageSel.innerHTML = '<option value="">اختر المرحلة</option>' +
-      (uni ? (uni.stages || []).map(st => `<option value="${st.id}">${esc(st.name)}</option>`).join('') : '');
+      (uni ? (uni.stages || []).map(st => `<option value="${esc(st.id)}">${esc(st.name)}</option>`).join('') : '');
     onBsStageChange();
   }
   function onBsStageChange(){
@@ -5121,7 +5121,7 @@
     const subjSel = document.getElementById('bsSubject');
     subjSel.disabled = !stage;
     subjSel.innerHTML = '<option value="">اختر المادة</option>' +
-      (stage ? (stage.subjects || []).map(sub => `<option value="${sub.id}">${esc(sub.name)}</option>`).join('') : '');
+      (stage ? (stage.subjects || []).map(sub => `<option value="${esc(sub.id)}">${esc(sub.name)}</option>`).join('') : '');
   }
   function startBankQuizFromSelection(){
     const subjSel = document.getElementById('bsSubject');
@@ -6256,7 +6256,7 @@
     const u = currentUser || {};
     const selectedSecId = u.college_id || u.section_id;
     document.getElementById('acSection').innerHTML = `<option value="">${t('selectCollege') || 'اختر التخصص / الكلية'}</option>` +
-      tree.map(s => `<option value="${s.id}" ${s.id === selectedSecId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+      tree.map(s => `<option value="${esc(s.id)}" ${s.id === selectedSecId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
     onAcSectionChange(u.university_id, u.department_id, u.stage_id, u.study_section_id);
     document.getElementById('acGraduate').value = u.is_graduate === true ? '1' : (u.is_graduate === false ? '0' : '');
     onAcGraduateChange();
@@ -6270,7 +6270,7 @@
     const uniSel = document.getElementById('acUniversity');
     uniSel.disabled = !section;
     uniSel.innerHTML = `<option value="">${t('selectUniversity')}</option>` +
-      (section ? (section.universities || []).map(u => `<option value="${u.id}" ${u.id === preselectUniId ? 'selected' : ''}>${esc(u.name)}</option>`).join('') : '');
+      (section ? (section.universities || []).map(u => `<option value="${esc(u.id)}" ${u.id === preselectUniId ? 'selected' : ''}>${esc(u.name)}</option>`).join('') : '');
     onAcUniversityChange(preselectDeptId, preselectStageId, preselectStudySecId);
   }
 
@@ -6286,7 +6286,7 @@
     if (depts.length > 0) {
       deptField.style.display = 'block';
       deptSel.innerHTML = `<option value="">اختر القسم (مثال: قسم التخدير، قسم التحليلات)</option>` +
-        depts.map(d => `<option value="${d.id}" ${d.id === preselectDeptId ? 'selected' : ''}>🩺 ${esc(d.name)}</option>`).join('');
+        depts.map(d => `<option value="${esc(d.id)}" ${d.id === preselectDeptId ? 'selected' : ''}>🩺 ${esc(d.name)}</option>`).join('');
     } else {
       deptField.style.display = 'none';
       deptSel.innerHTML = `<option value="">اختر القسم</option>`;
@@ -6309,7 +6309,7 @@
     }
 
     stageSel.innerHTML = `<option value="">${t('selectStage')}</option>` +
-      availableStages.map(st => `<option value="${st.id}" ${st.id === preselectStageId ? 'selected' : ''}>${esc(st.name)}</option>`).join('');
+      availableStages.map(st => `<option value="${esc(st.id)}" ${st.id === preselectStageId ? 'selected' : ''}>${esc(st.name)}</option>`).join('');
 
     onAcStageChange(preselectStudySecId);
   }
@@ -6328,7 +6328,7 @@
     if (sections.length > 0) {
       studySecField.style.display = 'block';
       studySecSel.innerHTML = `<option value="">اختر الشعبة الدراسية (مثال: شعبة أ)</option>` +
-        sections.map(sec => `<option value="${sec.id}" ${sec.id === preselectStudySecId ? 'selected' : ''}>👥 ${esc(sec.name)}</option>`).join('');
+        sections.map(sec => `<option value="${esc(sec.id)}" ${sec.id === preselectStudySecId ? 'selected' : ''}>👥 ${esc(sec.name)}</option>`).join('');
     } else {
       studySecField.style.display = 'none';
       studySecSel.innerHTML = `<option value="">اختر الشعبة الدراسية</option>`;
@@ -7380,7 +7380,7 @@
     document.getElementById('cpStudySectionField').style.display = 'none';
     const tree = await loadCatalogTreeForProfile();
     document.getElementById('cpSection').innerHTML = `<option value="">${t('selectCollege')}</option>` +
-      tree.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+      tree.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
     document.getElementById('cpUniversity').innerHTML = `<option value="">${t('selectUniversity')}</option>`;
     document.getElementById('cpUniversity').disabled = true;
     document.getElementById('cpDepartment').innerHTML = `<option value="">اختر القسم الطبي</option>`;
@@ -7394,7 +7394,7 @@
     const uniSel = document.getElementById('cpUniversity');
     uniSel.disabled = !section;
     uniSel.innerHTML = `<option value="">${t('selectUniversity')}</option>` +
-      (section ? (section.universities || []).map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('') : '');
+      (section ? (section.universities || []).map(u => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('') : '');
     onCpUniversityChange();
   }
 
@@ -7410,7 +7410,7 @@
     if (depts.length > 0) {
       deptField.style.display = 'block';
       deptSel.innerHTML = `<option value="">اختر القسم الطبي</option>` +
-        depts.map(d => `<option value="${d.id}">🩺 ${esc(d.name)}</option>`).join('');
+        depts.map(d => `<option value="${esc(d.id)}">🩺 ${esc(d.name)}</option>`).join('');
     } else {
       deptField.style.display = 'none';
       deptSel.innerHTML = `<option value="">اختر القسم الطبي</option>`;
@@ -7432,7 +7432,7 @@
     }
 
     stageSel.innerHTML = `<option value="">${t('selectStage')}</option>` +
-      availableStages.map(st => `<option value="${st.id}">${esc(st.name)}</option>`).join('');
+      availableStages.map(st => `<option value="${esc(st.id)}">${esc(st.name)}</option>`).join('');
 
     onCpStageChange();
   }
@@ -7451,7 +7451,7 @@
     if (sections.length > 0) {
       studySecField.style.display = 'block';
       studySecSel.innerHTML = `<option value="">اختر الشعبة الدراسية (مثال: شعبة أ، شعبة ب)</option>` +
-        sections.map(sec => `<option value="${sec.id}">👥 ${esc(sec.name)}</option>`).join('');
+        sections.map(sec => `<option value="${esc(sec.id)}">👥 ${esc(sec.name)}</option>`).join('');
     } else {
       studySecField.style.display = 'none';
       studySecSel.innerHTML = `<option value="">اختر الشعبة الدراسية</option>`;

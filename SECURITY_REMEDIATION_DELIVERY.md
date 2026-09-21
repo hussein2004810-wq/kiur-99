@@ -55,6 +55,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - Resellers can sell only their assigned codes.  The administrator's allocation endpoint validates the target and requested count, writes each allocation in one D1 batch, and records the allocation; self-generation endpoints now reject with 403.
 - Both static SPA documents escape persisted academic/profile/question text at their `innerHTML` rendering boundaries; regression coverage reads the served documents directly.
 - The reusable administrator modal escapes both labels and values in dynamic `<option>` attributes, preventing a stored catalogue identifier from breaking its attribute boundary.
+- Student academic-path selectors and the administrator question-bank selector also escape each dynamic `<option>` value, so a persisted catalogue identifier cannot break an attribute boundary in either SPA.
 - The administrator confirmation modal no longer accepts an HTML payload; all confirmation copy is assigned through `textContent`.
 - `wrangler.toml` now binds Worker Assets from `public`; `src/routes/static.ts` serves the SPA through that binding when deployed and retains its text-import fallback for tests.
 - Both static SPA documents also allowlist dynamically rendered image, booklet, and lecture-video URLs to the Worker-owned media routes before placing them in `src` or `href`; unsafe or legacy external values render the existing safe fallback instead.

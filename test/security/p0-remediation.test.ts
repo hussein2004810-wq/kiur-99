@@ -493,6 +493,9 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(homeHtml).toContain('const videoUrl = safeMediaUrl(lec.videoUrl);');
       expect(adminHtml).toContain('esc(safeMediaUrl(d.professor.photo_url))');
       expect(adminHtml).toContain('value="${esc(o.value)}"');
+      expect(adminHtml).toContain('subjects.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join(\'\')');
+      expect(homeHtml).toContain('tree.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join(\'\')');
+      expect(homeHtml).not.toContain('<option value="${s.id}">${esc(s.name)}</option>');
       expect(adminHtml).not.toContain('msgEl.innerHTML = opts.html');
       expect(adminHtml).toContain('promptEditUser(${jsArg(a.id)})');
       expect(adminHtml).toContain('actGlimpse(${jsArg(p.id)}, \'archive\')');

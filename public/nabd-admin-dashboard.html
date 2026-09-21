@@ -3561,7 +3561,7 @@
     if (!allCatalogRows.length){ try { allCatalogRows = await apiFetch('/api/admin/catalog'); } catch (e) {} }
     const subjects = allCatalogRows.filter(r => r.type === 'subject');
     const select = document.getElementById('qbSubjectSelect');
-    select.innerHTML = subjects.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    select.innerHTML = subjects.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
     if (currentQuestionBankSubject && subjects.some(s => s.id === currentQuestionBankSubject)){
       select.value = currentQuestionBankSubject;
     } else if (subjects.length){
