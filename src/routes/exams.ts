@@ -565,13 +565,27 @@ examsRouter.post('/:exam_id/start', requireAuth, examAttemptRateLimiter, async (
        VALUES (?, ?, ?, ?, ?, 0, 1, ?)`
     ).bind(attemptId, examId, user.id, now, chosen.length, idempotencyKey);
 
-    const choicesByQuestion = await Promise.all(chosen.map(async (q: any) => {
-      const result = await c.env.DB.prepare(
-        'SELECT id, text, order_index, is_correct FROM choices WHERE question_id = ? ORDER BY order_index ASC'
-      ).bind(q.id).all();
-      return [q.id, result.results ?? []] as const;
-    }));
-    const choiceMap = new Map(choicesByQuestion);
+    // Fetch choices for the whole selected question set in one D1 round trip.
+    // Per-question requests turn a 200-question start into 201 database reads,
+    // which becomes an avoidable hotspot when a class begins together.
+    const questionIds = chosen.map((q: any) => String(q.id));
+    const choiceRows = await c.env.DB.prepare(
+      `SELECT id, question_id, text, order_index, is_correct
+       FROM choices
+       WHERE question_id IN (${questionIds.map(() => '?').join(', ')})
+       ORDER BY question_id ASC, order_index ASC`
+    ).bind(...questionIds).all();
+    const choiceMap = new Map<string, any[]>();
+    for (const row of (choiceRows.results ?? []) as any[]) {
+      const questionChoices = choiceMap.get(String(row.question_id)) ?? [];
+      questionChoices.push({
+        id: row.id,
+        text: row.text,
+        order_index: row.order_index,
+        is_correct: row.is_correct,
+      });
+      choiceMap.set(String(row.question_id), questionChoices);
+    }
     const itemStmts = chosen.map((q: any, idx: number) => {
       const eaqId = 'eaq_' + Math.random().toString(36).substring(2, 10);
       return c.env.DB.prepare(
