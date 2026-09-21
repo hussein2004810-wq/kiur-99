@@ -203,13 +203,20 @@ coursesRouter.get('/:course_id/materials', requireAuth, async (c) => {
 });
 
 // POST /api/courses/lectures/:lecture_id/complete
-coursesRouter.post('/lectures/:lecture_id/complete', async (c) => {
+coursesRouter.post('/lectures/:lecture_id/complete', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
-  const lectureId = c.req.param('lecture_id');
+  const lectureId = c.req.param('lecture_id') ?? '';
+  if (!lectureId) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
 
   const lecture = await db.select().from(schema.lectures).where(eq(schema.lectures.id, lectureId)).get();
   if (!lecture) return c.json({ detail: 'المحاضرة غير موجودة' }, 404);
+
+  if (!lecture.course_id) return c.json({ detail: 'المحاضرة غير مرتبطة بكورس صالح' }, 404);
+  const course = await db.select().from(schema.courses).where(eq(schema.courses.id, lecture.course_id)).get();
+  if (!course || !(await isUserEntitledToCourse(db, user, course))) {
+    return c.json({ detail: 'غير مصرح بتسجيل تقدم هذه المحاضرة' }, 403);
+  }
 
   // Fixed: use and(...) instead of JavaScript short-circuit &&
   const existing = await db

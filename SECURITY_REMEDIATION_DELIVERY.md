@@ -47,6 +47,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `6eef79b` rejects state-changing requests that carry the session cookie but provide neither `Origin` nor `Sec-Fetch-Site` browser provenance.
 - `a4accb2` replaces OAuth redirect JWT fragments with origin-bound, hashed, 60-second, one-time handoff codes.
 - This working-tree follow-up extends the same unapplied `0008` migration so OAuth accounts with 2FA also receive only a handoff code in the redirect fragment.
+- The course lecture-completion endpoint now requires a valid authenticated user and the same server-side course entitlement used for protected video/material access.
 
 ## Implemented controls
 

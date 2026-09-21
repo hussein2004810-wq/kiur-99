@@ -865,7 +865,7 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(res.status).toBe(404);
     });
 
-    it('isolates student lecture progress independently without Drizzle short-circuit bug', async () => {
+    it('isolates lecture progress and rejects an academically unentitled student', async () => {
       const student1 = ctx.fixtures.users.student;
       const token1 = ctx.createAuthToken(student1.id, 'student', student1.sessionId);
 
@@ -896,16 +896,22 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       ).bind('usr_student2', 'lec_1').first();
       expect(s2Prog).toBeNull();
 
-      // Student 2 completes lecture lec_1
+      // Student 2 has only a stage id and no matching university/college/
+      // department scope, so it must not record progress for this course.
       const comp2 = await apiRequest(app, 'POST', '/api/courses/lectures/lec_1/complete', {
         token: token2,
       }, ctx);
-      expect(comp2.status).toBe(200);
+      expect(comp2.status).toBe(403);
 
       const s2ProgAfter = await ctx.db.prepare(
         'SELECT * FROM lecture_progress WHERE user_id = ? AND lecture_id = ?'
       ).bind('usr_student2', 'lec_1').first();
-      expect(s2ProgAfter).toBeDefined();
+      expect(s2ProgAfter).toBeNull();
+    });
+
+    it('requires authentication before recording lecture completion', async () => {
+      const res = await apiRequest(app, 'POST', '/api/courses/lectures/lec_1/complete', {}, ctx);
+      expect(res.status).toBe(401);
     });
 
     it('restricts course video URL and materials from students outside academic scope or without code', async () => {
