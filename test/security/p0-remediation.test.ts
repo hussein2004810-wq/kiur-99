@@ -73,6 +73,19 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       }
     });
 
+    it('fails closed when DEBUG is missing, including the development-only login route', async () => {
+      const res = await app.request('/auth/dev-login?email=debug-missing@nabd.app', { method: 'POST' }, {
+        ...ctx.bindings,
+        DEBUG: undefined,
+        JWT_SECRET: 'valid-secure-production-secret-with-at-least-32-characters!',
+        CORS_ORIGINS: 'https://app.kiur.edu.iq',
+      });
+      expect(res.status).toBe(404);
+
+      const authSource = await readFile(new URL('../../src/routes/auth.ts', import.meta.url), 'utf8');
+      expect(authSource).not.toContain("DEBUG ?? 'true'");
+    });
+
     it('does not create an unactivatable password account in production when mail is unavailable', async () => {
       const res = await apiRequest(app, 'POST', '/auth/register', {
         body: {

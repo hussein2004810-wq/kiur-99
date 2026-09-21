@@ -180,7 +180,7 @@ authRouter.get('/google/login', async (c) => {
     prompt: 'select_account',
   });
 
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   const secure = isDebug ? '' : '; Secure';
   c.header('Set-Cookie', `oauth_state=${state}; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=300${secure}`);
 
@@ -198,7 +198,7 @@ authRouter.post('/google/flow', googleIdentityRateLimiter, async (c) => {
   }
 
   const nonce = crypto.randomUUID().replace(/-/g, '');
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   const secure = isDebug ? '' : '; Secure';
   c.header(
     'Set-Cookie',
@@ -224,7 +224,7 @@ authRouter.post('/google/verify', googleIdentityRateLimiter, async (c) => {
   const cookieHeader = c.req.header('Cookie') ?? '';
   const nonceMatch = cookieHeader.match(new RegExp(`(?:^|; )${GOOGLE_GIS_FLOW_COOKIE}=([^;]+)`));
   const flowNonce = nonceMatch ? nonceMatch[1] : '';
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   const secure = isDebug ? '' : '; Secure';
   // Consume the browser-bound nonce before token validation so a credential
   // cannot be replayed after any verification outcome.
@@ -336,7 +336,7 @@ authRouter.get('/google/callback', async (c) => {
   const expectedState = stateCookieMatch ? stateCookieMatch[1] : null;
 
   // Clear state cookie
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   const secure = isDebug ? '' : '; Secure';
   c.header('Set-Cookie', `oauth_state=; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
 
@@ -412,7 +412,7 @@ authRouter.get('/google/callback', async (c) => {
 // ─────────────────────────────────────────── Firebase Google Sign-In (Stage A1) ──
 
 authRouter.post('/firebase/flow', firebaseAuthRateLimiter, async (c) => {
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   const nonce = crypto.randomUUID().replace(/-/g, '');
   const secure = isDebug ? '' : '; Secure';
 
@@ -445,7 +445,7 @@ authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
   }
 
   // Clear flow cookie immediately (consume once)
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   const secure = isDebug ? '' : '; Secure';
   c.header(
     'Set-Cookie',
@@ -575,7 +575,7 @@ authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
 // ─────────────────────────────────────────── Dev login ───────────────────────
 
 authRouter.post('/dev-login', async (c) => {
-  if ((c.env.DEBUG ?? 'true') !== 'true') return c.json(null, 404);
+  if ((c.env.DEBUG ?? 'false') !== 'true') return c.json(null, 404);
 
   const email = c.req.query('email') ?? '';
   const name = c.req.query('name') ?? 'طالب تجريبي';
@@ -628,7 +628,7 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
   if (passwordError) return c.json({ detail: passwordError }, 400);
 
   const mailerConfig = { smtpHost: c.env.SMTP_HOST, smtpUser: c.env.SMTP_USER, smtpPassword: c.env.SMTP_PASSWORD, smtpFrom: c.env.SMTP_FROM, smtpFromName: c.env.SMTP_FROM_NAME };
-  if ((c.env.DEBUG ?? 'true') !== 'true' && !emailConfigured(mailerConfig)) {
+  if ((c.env.DEBUG ?? 'false') !== 'true' && !emailConfigured(mailerConfig)) {
     return c.json({ detail: 'التسجيل غير متاح مؤقتاً لأن خدمة توثيق البريد غير مهيأة' }, 503);
   }
 
@@ -848,7 +848,7 @@ authRouter.post('/login', loginRateLimiter, async (c) => {
   }
 
   const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   const session = await startNewSession(db, user.id, body.device_label || 'متصفح');
   const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
 
@@ -890,7 +890,7 @@ authRouter.post('/logout', requireAuth, async (c) => {
   });
 
   const response = c.json({ ok: true });
-  clearSessionCookie(response, (c.env.DEBUG ?? 'true') === 'true');
+  clearSessionCookie(response, (c.env.DEBUG ?? 'false') === 'true');
   return response;
 });
 
@@ -967,7 +967,7 @@ authRouter.post('/2fa/verify', twoFaVerifyRateLimiter, async (c) => {
 
   await db.update(schema.users).set({ failed_login_attempts: 0, locked_until: null }).where(eq(schema.users.id, userId));
   const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   const session = await startNewSession(db, user.id, 'متصفح');
   const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
 
@@ -1004,7 +1004,7 @@ authRouter.post('/2fa/login', twoFaVerifyRateLimiter, async (c) => {
   if (!valid) return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
 
   const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   const session = await startNewSession(db, user.id, body.device_label || 'جهاز موثق');
   const token = await createAccessToken(user.id, session.id, jwtSecret, expiresMinutes);
 
@@ -1685,7 +1685,7 @@ authRouter.post('/logout-all', requireAuth, async (c) => {
   });
 
   const response = c.json({ ok: true, message: 'تم تسجيل الخروج من كافة الأجهزة بنجاح' });
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   clearSessionCookie(response, isDebug);
   return response;
 });
@@ -1746,7 +1746,7 @@ authRouter.post('/session/restore', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const jwtSecret = c.env.JWT_SECRET;
   const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
 
   let session = await db
     .select()
