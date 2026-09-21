@@ -21,6 +21,10 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `d1de359` encodes dynamic arguments sent to legacy inline event handlers, preventing stored-text quote breakout.
 - `f0b0f9e` requires a verified provider email in the Google OAuth callback.
 - `4dea90e` accepts only audience-bound Google ID credentials and removes the UI's untrusted Google fallback.
+- `228023b` verifies Google ID credentials against the provider JWKS rather than a response from `tokeninfo`.
+- `95d23ad` binds each Google Identity credential to a short-lived, one-time browser flow nonce.
+- `8eb881a` encodes the remaining dynamic identifiers passed through legacy administrator event handlers.
+- `140212d` escapes fallback enum text from legacy roles, statuses, and product types before the SPA renders it.
 - `38851d9` prevents production password registration unless transactional email is ready to deliver verification links.
 - `66e718b` pins development `esbuild` at `^0.28.2`, satisfying the installed Vite/Vitest requirement and removing the invalid root dependency tree.
 - `140877d` hardens admin media uploads and makes the streaming regression suite exercise the actual Worker authorization path.
@@ -43,7 +47,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - Public registration always persists the `student` role and returns no access token or session cookie.  Existing unverified accounts cannot obtain a password/2FA/restored session until their email is verified.
 - Every Google entry point now requires a provider-asserted verified email before it creates, verifies, or signs in a local user; a verified Google callback may safely mark an existing local password account verified.
 - Google Identity Services credentials are now verified with Google's OIDC JWKS using RS256, issuer, audience, issued-at, expiry, and a one-time browser-bound nonce; the direct credential route no longer treats the `tokeninfo` response as its authentication boundary.
-- The Google GIS endpoint accepts only a signed ID credential whose issuer and audience exactly match the configured KIUR Google client; general OAuth access tokens and local remembered-account fallbacks cannot establish a session.
+- The Google GIS endpoint accepts only a signed ID credential whose issuer and audience exactly match the configured KIUR Google client; general OAuth access tokens and local remembered-account fallbacks cannot establish a session.  Both the flow-nonce and verification endpoints are D1-backed rate-limited to 10 requests per minute per originating IP.
 - When SMTP is configured, registration and resend create a single-use verification token and schedule delivery of a link to `GET /auth/verify-email`; that callback consumes the same token-validation path as `POST /auth/verify-email` and redirects to a success or failure state.
 - A production password-registration request now fails before creating a user unless a supported transactional-mail provider, sender identity, and provider secret are present; local debug mode remains usable for development and test workflows.
 - The CSP permits only the Google Identity script origin required by the SPA, removes the unused jsDelivr allowlist, and restricts form submissions to same-origin destinations.
@@ -73,6 +77,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 ## Verification performed locally
 
 - `npm run typecheck` passed after the final application changes.
+- Latest local verification: `npm run typecheck` passed; `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed 42 tests; `TEST_TARGET=src npm test -- test/security` passed 14 files and 137 tests; and `npm run build` completed as a Worker dry-run without deployment.
 - `TEST_TARGET=src npm test -- test/security/p0-remediation.test.ts` passed: 40 tests, including verification-link, verified/unverified Google OAuth callback, audience, access-token rejection, production-mail readiness, admin-media upload hardening, and arbitrary-lecture-URL rejection cases.
 - `TEST_TARGET=src npm test` passed: 40 files and 548 tests against the actual Worker, including Tier 3 and Tier 4 media, entitlement, session-revocation, and ban-appeal flows.
 - `npm test` passed: 40 files and 548 tests after the final ownership, media, registration, rate-limit, D1-bound, R2 fail-closed, verification-link, CSP-source, Google OAuth credential, mail-readiness, admin-upload, direct-video-upload, error-redaction, and ban-appeal changes.

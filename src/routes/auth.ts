@@ -39,6 +39,7 @@ import {
   twoFaVerifyRateLimiter,
   resendVerificationRateLimiter,
   firebaseAuthRateLimiter,
+  googleIdentityRateLimiter,
 } from '../middleware/rate-limit';
 import { recordAuditEvent } from '../services/audit';
 import { verifyFirebaseGoogleToken, FirebaseAuthError } from '../services/firebase';
@@ -176,7 +177,7 @@ authRouter.post('/google/login', async (c) => {
   return c.json({ detail: 'طريقة تسجيل الدخول غير مدعومة؛ يجب استخدام مصادقة Google الرسمية' }, 405);
 });
 
-authRouter.post('/google/flow', async (c) => {
+authRouter.post('/google/flow', googleIdentityRateLimiter, async (c) => {
   const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
   if (!clientId || clientId.includes('your-client-id')) {
     return c.json({ detail: 'خدمة المصادقة عبر Google غير مهيأة على الخادم' }, 503);
@@ -192,7 +193,7 @@ authRouter.post('/google/flow', async (c) => {
   return c.json({ flow_nonce: nonce, client_id: clientId });
 });
 
-authRouter.post('/google/verify', async (c) => {
+authRouter.post('/google/verify', googleIdentityRateLimiter, async (c) => {
   const body = await c.req.json<{ credential?: string; access_token?: string; next?: string }>().catch(() => ({} as any));
   const credential = body.credential;
   const flow = body.next === 'admin' ? 'admin' : 'student';

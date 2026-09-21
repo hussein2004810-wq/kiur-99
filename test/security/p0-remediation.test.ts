@@ -128,6 +128,17 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(user).toBeNull();
     });
 
+    it('rate-limits both Google Identity flow endpoints before they can be abused', async () => {
+      const [authSource, limiterSource] = await Promise.all([
+        readFile(new URL('../../src/routes/auth.ts', import.meta.url), 'utf8'),
+        readFile(new URL('../../src/middleware/rate-limit.ts', import.meta.url), 'utf8'),
+      ]);
+
+      expect(authSource).toContain("authRouter.post('/google/flow', googleIdentityRateLimiter");
+      expect(authSource).toContain("authRouter.post('/google/verify', googleIdentityRateLimiter");
+      expect(limiterSource).toContain("googleIdentityRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:google-identity' })");
+    });
+
     it('rejects a Google access token because it is not an audience-bound ID credential', async () => {
       const fetchMock = vi.spyOn(globalThis, 'fetch');
       try {
