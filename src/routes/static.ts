@@ -12,6 +12,19 @@ export function registerStaticRoutes(app: Hono<AppEnv>) {
   // 1. Health Probe
   app.get('/health', (c) => c.json({ status: 'ok' }));
 
+  // Readiness is intentionally separate from the cheap liveness probe.  An
+  // uptime monitor can use this route to detect a Worker that is reachable
+  // but cannot serve students because D1 is unavailable.
+  app.get('/health/ready', async (c) => {
+    try {
+      const probe = await c.env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>();
+      if (!probe?.ok) throw new Error('D1 readiness probe returned no result');
+      return c.json({ status: 'ok', database: 'ok' });
+    } catch {
+      return c.json({ status: 'unavailable', database: 'unavailable' }, 503);
+    }
+  });
+
   // 2. Student SPA Root (GET /)
   app.get('/', async (c) => {
     if (c.env?.ASSETS) {

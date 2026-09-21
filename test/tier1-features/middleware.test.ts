@@ -16,6 +16,24 @@ describe('Tier 1: Middleware & Foundation Suite', () => {
       expect(json).toEqual({ status: 'ok' });
     });
 
+    it('GET /health/ready verifies that D1 can answer a query', async () => {
+      const res = await app.request('/health/ready', {}, {
+        DEBUG: 'true',
+        DB: { prepare: () => ({ first: async () => ({ ok: 1 }) }) },
+      } as any);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ status: 'ok', database: 'ok' });
+    });
+
+    it('GET /health/ready returns 503 when D1 is unavailable', async () => {
+      const res = await app.request('/health/ready', {}, {
+        DEBUG: 'true',
+        DB: { prepare: () => { throw new Error('D1 unavailable'); } },
+      } as any);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ status: 'unavailable', database: 'unavailable' });
+    });
+
     it('GET / returns 200 HTML with Cache-Control: no-cache', async () => {
       const res = await app.request('/');
       expect(res.status).toBe(200);
