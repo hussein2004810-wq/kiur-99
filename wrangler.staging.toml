@@ -1,0 +1,45 @@
+# Isolated, free-tier staging target for load and recovery testing.
+# Keep credentials in Cloudflare secrets; this file contains no secret values.
+name = "kiur-99-staging"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kiur-99-staging-db"
+database_id = "0041899f-ae97-40d0-87da-72d390d0ff72"
+migrations_dir = "migrations"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
+
+[vars]
+DEBUG = "false"
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRES_MINUTES = "20160"
+BOOTSTRAP_ADMIN_EMAIL = "hussein2004810@gmail.com"
+CORS_ORIGINS = "https://kiur-99-staging.hussein2004810.workers.dev"
+ALLOWED_UNIVERSITY_DOMAINS = ""
+FRONTEND_URL = ""
+ADMIN_FRONTEND_URL = ""
+GOOGLE_CLIENT_ID = ""
+GOOGLE_CLIENT_SECRET = ""
+GOOGLE_REDIRECT_URI = ""
+PASSWORD_RESET_TTL_MINUTES = "60"
+PASSWORD_RESET_COOLDOWN_SECONDS = "120"
+SMTP_HOST = ""
+SMTP_PORT = "587"
+SMTP_USER = ""
+SMTP_PASSWORD = ""
+SMTP_FROM = "no-reply@kiur.edu"
+SMTP_FROM_NAME = "Kiur"
+
+# Set independently after the first deployment:
+# npx wrangler secret put JWT_SECRET --config wrangler.staging.toml

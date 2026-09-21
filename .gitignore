@@ -3,6 +3,7 @@ node_modules/
 
 # Build and deployment artifacts
 dist/
+dist-staging/
 .wrangler/
 coverage/
 *.log
