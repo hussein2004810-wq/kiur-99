@@ -15,6 +15,21 @@ export const csrfProtectionMiddleware: MiddlewareHandler<AppEnv> = async (c, nex
   if (MUTATION_METHODS.has(method)) {
     const origin = c.req.header('Origin');
     const secFetchSite = c.req.header('Sec-Fetch-Site');
+    const hasSessionCookie = /(?:^|;\s*)nabd_session=/.test(c.req.header('Cookie') ?? '');
+
+    // A browser uses Origin or Sec-Fetch-Site for a state-changing request.
+    // If a session cookie is present but both are absent, do not let an
+    // ambiguous request exercise cookie-backed authentication. Bearer-token
+    // API clients are unaffected because they do not rely on this cookie.
+    if (hasSessionCookie && !origin && !secFetchSite) {
+      recordAuditEvent({
+        event: 'SECURITY_CSRF_DENIAL',
+        status: 'DENIED',
+        ip: c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1',
+        details: { reason: 'Missing browser provenance for session cookie', path: c.req.path, method },
+      });
+      return c.json({ detail: 'تم رفض الطلب: مصدر المتصفح غير متحقق' }, 403);
+    }
 
     // 1. Explicit cross-site rejection for sensitive mutations
     if (secFetchSite === 'cross-site') {

@@ -481,6 +481,7 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       const res = await apiRequest(app, 'POST', '/auth/session/restore', {
         headers: {
           Cookie: `nabd_session=${forgedToken}`,
+          Origin: 'http://localhost',
         },
       }, ctx);
 

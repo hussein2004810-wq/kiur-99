@@ -64,6 +64,21 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
       expect(data.detail).toContain('Untrusted Origin Rejected');
     });
 
+    it('security.http.cookie-mutation-without-browser-provenance: rejects an ambiguous session-cookie mutation', async () => {
+      const res = await app.request('/auth/session/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'nabd_session=untrusted-session-token',
+        },
+        body: '{}',
+      }, ctx.bindings);
+
+      expect(res.status).toBe(403);
+      const data = await res.json();
+      expect(data.detail).toContain('مصدر المتصفح غير متحقق');
+    });
+
     it('allows mutation from approved origin', async () => {
       const res = await app.request('/auth/login', {
         method: 'POST',
