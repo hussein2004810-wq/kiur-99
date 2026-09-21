@@ -113,6 +113,37 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
       expect(res.headers.get('Content-Security-Policy')).toContain("form-action 'self'");
     });
 
+    it('security.headers.spa-assets: serves both SPA entry points through the Worker Assets binding when available', async () => {
+      const requestedPaths: string[] = [];
+      const bindings = {
+        ...ctx.bindings,
+        ASSETS: {
+          fetch: async (request: Request) => {
+            const path = new URL(request.url).pathname;
+            requestedPaths.push(path);
+            return new Response(`asset:${path}`, {
+              headers: { 'Content-Type': 'text/plain', ETag: '"asset-version"' },
+            });
+          },
+        },
+      };
+
+      const [studentRes, adminRes] = await Promise.all([
+        app.request('/', {}, bindings),
+        app.request('/admin/', {}, bindings),
+      ]);
+
+      expect(requestedPaths.sort()).toEqual([
+        '/nabd-admin-dashboard.html',
+        '/nabd-home-quiz-prototype.html',
+      ]);
+      expect(await studentRes.text()).toBe('asset:/nabd-home-quiz-prototype.html');
+      expect(await adminRes.text()).toBe('asset:/nabd-admin-dashboard.html');
+      expect(studentRes.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
+      expect(adminRes.headers.get('Cache-Control')).toBe('no-cache');
+      expect(studentRes.headers.get('Content-Security-Policy')).toContain("default-src 'self'");
+    });
+
     it('security.headers.hsts: attaches HSTS when DEBUG=false', async () => {
       const prodBindings = { ...ctx.bindings, DEBUG: 'false' };
       const res = await app.request('/health', {}, prodBindings);
