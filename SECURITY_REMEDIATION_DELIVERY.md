@@ -45,6 +45,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `af57bae` makes an unset production CORS allowlist reject cross-origin requests rather than defaulting to localhost.
 - `a998ba8` adds browser isolation and privacy headers while retaining Google Identity popup compatibility.
 - `6eef79b` rejects state-changing requests that carry the session cookie but provide neither `Origin` nor `Sec-Fetch-Site` browser provenance.
+- `a4accb2` replaces OAuth redirect JWT fragments with origin-bound, hashed, 60-second, one-time handoff codes.
 
 ## Implemented controls
 
@@ -60,6 +61,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - Debug behavior is deny-by-default: a missing `DEBUG` value does not enable development login or development-only response data.  Password-reset tokens are returned only with explicit `DEBUG=true`, and the session-cookie helper defaults to `Secure`.
 - If production has no `CORS_ORIGINS` configuration, the CORS middleware allows no configured cross-origin caller instead of falling back to localhost.  Responses also use `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin-allow-popups`, `Cross-Origin-Resource-Policy: same-origin`, and `Origin-Agent-Cluster: ?1`; the popup-compatible COOP value is intentional for Google Identity.
 - Cookie-backed state changes that provide neither `Origin` nor `Sec-Fetch-Site` are denied.  This closes an ambiguous browser-request path while leaving bearer-token API clients unaffected.
+- The Google OAuth callback never places an access token in its redirect fragment.  It stores only a hash of a one-time handoff code bound to the target frontend origin and active session; `/auth/oauth/handoff` rate-limits the browser exchange, verifies the origin and session state, and atomically consumes the code before issuing a JWT.
 - The CSP permits only the Google Identity script origin required by the SPA, removes the unused jsDelivr allowlist, and restricts form submissions to same-origin destinations.
 - Admin media uploads now fail closed before body parsing when R2 is absent, verify magic bytes rather than trusting the declared filename or MIME type, generate server-owned object names, and remove the R2 object if media-record persistence fails.
 - Every new image, booklet, and lecture-video object now receives a server-generated filename with the extension detected from its verified bytes.  Media reads use a fixed extension-to-MIME allowlist and serve unrecognized legacy names as `application/octet-stream`.
@@ -101,7 +103,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 
 1. Generate and store a new 32+ character JWT secret in the deployment secret store, revoke existing sessions, and remove every historical exposed secret from deployment history/configuration.
 2. Set exact production `CORS_ORIGINS` values and all production mail/OAuth values.  Empty/wildcard CORS is intentionally rejected in production; SMTP or the selected transactional-mail provider must be configured before public password registration is enabled, because unverified accounts now correctly receive no session.
-3. Back up the remote D1 database, apply migrations 0005 through 0007, and confirm indexes with the production D1 tooling.
+3. Back up the remote D1 database, apply migrations 0005 through 0008, and confirm indexes with the production D1 tooling.  Migration 0008 is required before Google OAuth redirects can complete on a deployed Worker.
 4. Run Gitleaks and CI from the remote provider, then run the supplied k6 test on isolated staging at 600 and 1,000 distinct entitled users.  Keep the results before claiming concurrency readiness.
 5. Choose and budget for the video architecture before enabling large uploads or promising HLS/ABR playback.  Cloudflare Stream and a self-hosted transcoding pipeline are external product/operational decisions, not safe local code defaults.
 6. Configure a real private R2 binding only after its bucket and access policy are approved.  The local Worker dry run currently exposes no R2 binding, so video/file upload must not be enabled in production as-is.
