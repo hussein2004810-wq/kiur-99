@@ -64,6 +64,15 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(login.status).toBe(403);
     });
 
+    it('rejects passwords outside the shared 10-to-128-character policy', async () => {
+      for (const password of ['Short123!', 'a'.repeat(129)]) {
+        const res = await apiRequest(app, 'POST', '/auth/register', {
+          body: { email: `policy-${password.length}@nabd.app`, full_name: 'اختبار السياسة', password },
+        }, ctx);
+        expect(res.status).toBe(400);
+      }
+    });
+
     it('does not create an unactivatable password account in production when mail is unavailable', async () => {
       const res = await apiRequest(app, 'POST', '/auth/register', {
         body: {

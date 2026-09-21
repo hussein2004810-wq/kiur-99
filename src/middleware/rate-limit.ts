@@ -76,6 +76,8 @@ export function rateLimiter(options: RateLimitOptions): MiddlewareHandler<AppEnv
 export const loginRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:login' });
 export const registerRateLimiter = rateLimiter({ max: 5, windowSeconds: 600, keyPrefix: 'rl:register' });
 export const forgotPasswordRateLimiter = rateLimiter({ max: 3, windowSeconds: 600, keyPrefix: 'rl:forgot-pw' });
+export const resetPasswordRateLimiter = rateLimiter({ max: 5, windowSeconds: 600, keyPrefix: 'rl:reset-pw' });
+export const verifyEmailRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:verify-email' });
 export const twoFaVerifyRateLimiter = rateLimiter({ max: 5, windowSeconds: 300, keyPrefix: 'rl:2fa-verify' });
 export const examAttemptRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:exam-start' });
 export const resendVerificationRateLimiter = rateLimiter({ max: 3, windowSeconds: 3600, keyPrefix: 'rl:resend-verif' });

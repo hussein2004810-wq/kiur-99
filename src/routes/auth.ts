@@ -36,6 +36,8 @@ import {
   loginRateLimiter,
   registerRateLimiter,
   forgotPasswordRateLimiter,
+  resetPasswordRateLimiter,
+  verifyEmailRateLimiter,
   twoFaVerifyRateLimiter,
   resendVerificationRateLimiter,
   firebaseAuthRateLimiter,
@@ -55,6 +57,8 @@ const PASSWORD_RESET_TTL_MINUTES = 30;
 const PASSWORD_RESET_COOLDOWN_SECONDS = 60;
 const EMAIL_VERIFICATION_TTL_HOURS = 24;
 const GOOGLE_GIS_FLOW_COOKIE = 'kiur_google_gis_flow';
+const MIN_PASSWORD_LENGTH = 10;
+const MAX_PASSWORD_LENGTH = 128;
 
 // ─────────────────────────────────────────── helpers ────────────────────────
 
@@ -62,6 +66,16 @@ function domainAllowed(email: string, allowedDomains: string): boolean {
   if (!allowedDomains) return true;
   const domains = allowedDomains.split(',').map((d) => d.trim().toLowerCase());
   return domains.some((d) => email.toLowerCase().endsWith('@' + d));
+}
+
+function passwordPolicyError(password: unknown): string | null {
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+    return `كلمة المرور يجب أن تكون ${MIN_PASSWORD_LENGTH} أحرف على الأقل`;
+  }
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return `كلمة المرور يجب ألا تتجاوز ${MAX_PASSWORD_LENGTH} حرفًا`;
+  }
+  return null;
 }
 
 function isVerifiedGoogleEmail(value: unknown): boolean {
@@ -610,7 +624,8 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) return c.json({ detail: 'صيغة البريد الإلكتروني غير صالحة' }, 400);
   if (!domainAllowed(email, c.env.ALLOWED_UNIVERSITY_DOMAINS ?? '')) return c.json({ detail: 'الرجاء التسجيل ببريدك الجامعي الرسمي' }, 403);
-  if (password.length < 6) return c.json({ detail: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, 400);
+  const passwordError = passwordPolicyError(password);
+  if (passwordError) return c.json({ detail: passwordError }, 400);
 
   const mailerConfig = { smtpHost: c.env.SMTP_HOST, smtpUser: c.env.SMTP_USER, smtpPassword: c.env.SMTP_PASSWORD, smtpFrom: c.env.SMTP_FROM, smtpFromName: c.env.SMTP_FROM_NAME };
   if ((c.env.DEBUG ?? 'true') !== 'true' && !emailConfigured(mailerConfig)) {
@@ -682,7 +697,7 @@ authRouter.post('/register', registerRateLimiter, async (c) => {
 
 // ─────────────────────────────────────────── Email Verification (Stage A2) ──
 
-authRouter.post('/verify-email', async (c) => {
+authRouter.post('/verify-email', verifyEmailRateLimiter, async (c) => {
   const body = await c.req.json<{ token?: string }>().catch(() => ({} as Record<string, string>));
   const token = (body?.token ?? '').trim();
   if (!token) return c.json({ detail: 'رمز التوثيق مطلوب' }, 400);
@@ -1788,9 +1803,8 @@ authRouter.post('/change-password', requireAuth, async (c) => {
   if (!oldPassword || !body.new_password) {
     return c.json({ detail: 'كلمة المرور القديمة والجديدة مطلوبتان' }, 400);
   }
-  if (body.new_password.length < 6) {
-    return c.json({ detail: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, 400);
-  }
+  const passwordError = passwordPolicyError(body.new_password);
+  if (passwordError) return c.json({ detail: passwordError }, 400);
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
   if (user?.password_hash && !(await verifyPassword(oldPassword, user.password_hash))) {
@@ -1878,14 +1892,13 @@ authRouter.post('/forgot-password', forgotPasswordRateLimiter, async (c) => {
   });
 });
 
-authRouter.post('/reset-password', async (c) => {
+authRouter.post('/reset-password', resetPasswordRateLimiter, async (c) => {
   const body = await c.req.json<{ token: string; new_password: string }>().catch(() => ({} as any));
   if (!body || !body.token || !body.new_password) {
     return c.json({ detail: 'الرمز وكلمة المرور الجديدة مطلوبان' }, 400);
   }
-  if (body.new_password.length < 6) {
-    return c.json({ detail: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, 400);
-  }
+  const passwordError = passwordPolicyError(body.new_password);
+  if (passwordError) return c.json({ detail: passwordError }, 400);
 
   const token = (body.token ?? '').trim();
   const db = drizzle(c.env.DB, { schema });

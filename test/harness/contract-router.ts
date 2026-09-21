@@ -83,8 +83,8 @@ export function createContractRouter(): Hono<{ Bindings: any; Variables: any }> 
     if (!body || !body.email || !body.full_name || !body.password) {
       return c.json({ detail: 'بيانات التسجيل غير مكتملة' }, 400);
     }
-    if (body.password.length < 6) {
-      return c.json({ detail: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, 400);
+    if (body.password.length < 10 || body.password.length > 128) {
+      return c.json({ detail: 'كلمة المرور يجب أن تكون بين 10 و128 حرفًا' }, 400);
     }
     if (!body.email.includes('@') || !body.email.includes('.')) {
       return c.json({ detail: 'صيغة البريد الإلكتروني غير صحيحة' }, 400);
@@ -261,8 +261,8 @@ export function createContractRouter(): Hono<{ Bindings: any; Variables: any }> 
     if (!body || !body.old_password || !body.new_password) {
       return c.json({ detail: 'كلمة المرور القديمة والجديدة مطلوبتان' }, 400);
     }
-    if (body.new_password.length < 6) {
-      return c.json({ detail: 'كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل' }, 400);
+    if (body.new_password.length < 10 || body.new_password.length > 128) {
+      return c.json({ detail: 'كلمة المرور الجديدة يجب أن تكون بين 10 و128 حرفًا' }, 400);
     }
 
     const valid = verifyPassword(body.old_password, user.password_hash);
@@ -315,8 +315,8 @@ export function createContractRouter(): Hono<{ Bindings: any; Variables: any }> 
     if (!body || !body.token || !body.new_password) {
       return c.json({ detail: 'الرمز وكلمة المرور الجديدة مطلوبان' }, 400);
     }
-    if (body.new_password.length < 6) {
-      return c.json({ detail: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, 400);
+    if (body.new_password.length < 10 || body.new_password.length > 128) {
+      return c.json({ detail: 'كلمة المرور يجب أن تكون بين 10 و128 حرفًا' }, 400);
     }
 
     const crypto = await import('node:crypto');
