@@ -1885,10 +1885,11 @@ authRouter.post('/forgot-password', forgotPasswordRateLimiter, async (c) => {
     details: { email },
   });
 
+  const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   return c.json({
     ok: true,
     message: 'إذا كان هذا البريد مسجّلاً لدينا، فقد أُرسل إليه رابط لإعادة التعيين.',
-    debug_token: rawToken,
+    ...(isDebug ? { debug_token: rawToken } : {}),
   });
 });
 

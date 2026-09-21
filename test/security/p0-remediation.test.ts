@@ -86,6 +86,21 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(authSource).not.toContain("DEBUG ?? 'true'");
     });
 
+    it('never returns a password-reset token when DEBUG is false', async () => {
+      const res = await app.request('/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'student@nabd.app' }),
+      }, {
+        ...ctx.bindings,
+        DEBUG: 'false',
+        JWT_SECRET: 'valid-secure-production-secret-with-at-least-32-characters!',
+        CORS_ORIGINS: 'https://app.kiur.edu.iq',
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).debug_token).toBeUndefined();
+    });
+
     it('does not create an unactivatable password account in production when mail is unavailable', async () => {
       const res = await apiRequest(app, 'POST', '/auth/register', {
         body: {

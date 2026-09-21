@@ -159,7 +159,7 @@ export function setSessionCookie(
   response: Response,
   token: string,
   expiresMinutes = 30,
-  isDebug = true
+  isDebug = false
 ): void {
   const maxAge = expiresMinutes * 60;
   const secure = isDebug ? '' : '; Secure';
@@ -169,7 +169,7 @@ export function setSessionCookie(
   );
 }
 
-export function clearSessionCookie(response: Response, isDebug = true): void {
+export function clearSessionCookie(response: Response, isDebug = false): void {
   const secure = isDebug ? '' : '; Secure';
   response.headers.append(
     'Set-Cookie',
