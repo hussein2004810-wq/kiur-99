@@ -469,7 +469,26 @@ authRouter.post('/oauth/handoff', oauthHandoffRateLimiter, async (c) => {
 
 // ─────────────────────────────────────────── Firebase Google Sign-In (Stage A1) ──
 
+authRouter.get('/firebase/status', (c) => {
+  const projectId = c.env.FIREBASE_AUTH_PROJECT_ID?.trim();
+  const apiKey = c.env.FIREBASE_WEB_API_KEY?.trim();
+  const authDomain = c.env.FIREBASE_AUTH_DOMAIN?.trim() || (projectId ? `${projectId}.firebaseapp.com` : '');
+  const enabled = Boolean(projectId && apiKey && authDomain);
+
+  // Firebase web configuration is intentionally public. Trust is established
+  // only by the signed ID token verified on /firebase/verify below.
+  return c.json({
+    enabled,
+    config: enabled ? { apiKey, authDomain, projectId } : null,
+  });
+});
+
 authRouter.post('/firebase/flow', firebaseAuthRateLimiter, async (c) => {
+  const projectId = c.env.FIREBASE_AUTH_PROJECT_ID?.trim();
+  const apiKey = c.env.FIREBASE_WEB_API_KEY?.trim();
+  if (!projectId || !apiKey) {
+    return c.json({ detail: 'خدمة المصادقة عبر Google/Firebase غير مهيأة على الخادم' }, 503);
+  }
   const isDebug = (c.env.DEBUG ?? 'false') === 'true';
   const nonce = crypto.randomUUID().replace(/-/g, '');
   const secure = isDebug ? '' : '; Secure';
@@ -481,8 +500,7 @@ authRouter.post('/firebase/flow', firebaseAuthRateLimiter, async (c) => {
 
   return c.json({
     flow_nonce: nonce,
-    project_id: c.env.FIREBASE_AUTH_PROJECT_ID ?? '',
-    api_key_configured: Boolean(c.env.FIREBASE_WEB_API_KEY),
+    project_id: projectId,
   });
 });
 

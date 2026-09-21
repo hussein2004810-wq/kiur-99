@@ -2,14 +2,14 @@ import crypto from 'node:crypto';
 
 // PBKDF2-HMAC-SHA256 matching Python backend:
 // salt = secrets.token_hex(16) -> 32 hex chars
-// pbkdf2_hmac('sha256', password, bytes.fromhex(salt), 200000)
+// pbkdf2_hmac('sha256', password, bytes.fromhex(salt), 100000)
 // stored: salt$digest
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
   const digest = crypto.pbkdf2Sync(
     password,
     Buffer.from(salt, 'hex'),
-    200000,
+    100000,
     32,
     'sha256'
   ).toString('hex');
@@ -22,7 +22,7 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   const check = crypto.pbkdf2Sync(
     password,
     Buffer.from(salt, 'hex'),
-    200000,
+    100000,
     32,
     'sha256'
   ).toString('hex');

@@ -29,6 +29,7 @@ export interface AppBindings {
   SMTP_FROM_NAME?: string;
   FIREBASE_AUTH_PROJECT_ID?: string;
   FIREBASE_WEB_API_KEY?: string;
+  FIREBASE_AUTH_DOMAIN?: string;
   ASSETS?: Fetcher;
 }
 

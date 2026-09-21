@@ -3481,9 +3481,7 @@
         <div class="social-account-container">
           <span class="title" data-i18n="orWith">Or Sign in with</span>
           <div class="social-accounts">
-            <button class="social-button google" type="button" id="googleBtn" onclick="startGoogleSignIn()" title="Sign in with Google" aria-label="Sign in with Google">
-              <svg viewBox="0 0 512 512" class="svg" aria-hidden="true"><path d="M113.47,309.408L95.648,375.94l-65.139,1.378C11.042,341.211,0,299.9,0,256c0-42.451,10.324-82.483,28.624-117.732h0.014l57.992,10.632l25.404,57.644c-5.317,15.501-8.215,32.141-8.215,49.456C103.821,274.792,107.225,292.797,113.47,309.408z" fill="#FBBB00"/><path d="M507.527,208.176C510.467,223.662,512,239.655,512,256c0,18.328-1.927,36.206-5.598,53.451c-12.462,58.683-45.025,109.925-90.134,146.187l-0.014-0.014l-73.044-3.727l-10.338-64.535c29.932-17.554,53.324-45.025,65.646-77.911h-136.89V208.176h138.887L507.527,208.176L507.527,208.176z" fill="#518EF8"/><path d="M416.253,455.624l0.014,0.014C372.396,490.901,316.666,512,256,512c-97.491,0-182.252-54.491-225.491-134.681l82.961-67.91c21.619,57.698,77.278,98.771,142.53,98.771c28.047,0,54.323-7.582,76.87-20.818L416.253,455.624z" fill="#28B446"/><path d="M419.404,58.936l-82.933,67.896c-23.335-14.586-50.919-23.012-80.471-23.012c-66.729,0-123.429,42.957-143.965,102.724l-83.397-68.276h-0.014C71.23,56.123,157.06,0,256,0C318.115,0,375.068,22.126,419.404,58.936z" fill="#F14336"/></svg>
-            </button>
+            <div id="googleBtn" aria-live="polite" aria-label="تسجيل الدخول عبر Google"></div>
           </div>
         </div>
 
@@ -7075,6 +7073,8 @@
 
   // ---------- Google Sign-In (Official Google Identity Services + Zero-Config Global Chooser) ----------
   let googleClientId = null;
+  let googleIdentityReady = false;
+  let googleIdentitySetup = null;
   const GOOGLE_AVATAR_COLORS = ['#1a73e8', '#0b8043', '#c5221f', '#e37400', '#8e24aa', '#12B1D1', '#0097a7'];
 
   function getGoogleSavedAccounts(){
@@ -7220,69 +7220,31 @@
     if (oneTap) oneTap.style.display = 'none';
   }
 
-  async function initGoogleIdentityServices(){
-    try {
-      const res = await fetch(API_BASE_URL + '/auth/google/status').catch(() => null);
-      if (res && res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data && data.enabled && data.client_id) {
-          googleClientId = data.client_id;
-          if (window.google && window.google.accounts && window.google.accounts.id) {
-            const flowRes = await fetch(API_BASE_URL + '/auth/google/flow', {
-              method: 'POST', credentials: 'include',
-            });
-            const flow = flowRes.ok ? await flowRes.json().catch(() => null) : null;
-            if (!flow?.flow_nonce) return;
-            google.accounts.id.initialize({
-              client_id: googleClientId,
-              callback: handleGoogleCredentialResponse,
-              nonce: flow.flow_nonce,
-              auto_select: false,
-              cancel_on_tap_outside: true,
-            });
-            google.accounts.id.prompt();
-            return;
-          }
-        }
-      }
-    } catch (e) {}
-
-    // Do not offer a local-account fallback: only Google's signed response is
-    // valid evidence of ownership.
+  function setGoogleButtonMessage(message){
+    const mount = document.getElementById('googleBtn');
+    if (mount) mount.innerHTML = `<span class="item-meta" style="text-align:center;">${esc(message)}</span>`;
   }
 
-  async function startGoogleSignIn(){
-    // 1. If official Google Client ID is configured and working, open GIS popup
-    if (!googleClientId) {
-      try {
-        const res = await fetch(API_BASE_URL + '/auth/google/status').catch(() => null);
-        if (res && res.ok) {
-          const data = await res.json().catch(() => null);
-          if (data && data.enabled && data.client_id) googleClientId = data.client_id;
-        }
-      } catch (e) {}
-    }
+  let firebaseGoogleAuth = null;
+  let firebaseGoogleProvider = null;
+  let firebaseGooglePopup = null;
+  let firebaseGoogleRedirect = null;
+  let firebaseGoogleRedirectResult = null;
+  let firebaseRedirectChecked = false;
 
-    if (googleClientId && window.google && window.google.accounts && window.google.accounts.id) {
-      await initGoogleIdentityServices();
-      return;
-    }
-
-    showToast('تسجيل Google غير مهيأ حالياً. أعد المحاولة بعد إعداد Google Identity Services.', 'error');
-  }
-
-  async function handleGoogleCredentialResponse(response){
-    if (!response || !response.credential) return;
+  async function completeFirebaseGoogleSignIn(user){
+    if (!user) return;
     try {
       showToast('جارٍ تسجيل الدخول بحساب Google...');
-      const res = await fetch(API_BASE_URL + '/auth/google/verify', {
+      const idToken = await user.getIdToken();
+      const res = await fetch(API_BASE_URL + '/auth/firebase/verify', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential, next: 'student' }),
+        body: JSON.stringify({ idToken, device_label: navigator.userAgent.slice(0, 50) }),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.detail || 'فشل التحقق من حساب Google');
+      if (!res.ok || (!data.access_token && !data.requires_2fa)) throw new Error(data.detail || 'فشل التحقق من حساب Google');
       if (data.requires_2fa) {
         goToTotpVerify(data.pending_token);
         return;
@@ -7292,6 +7254,77 @@
       proceedAfterAuth();
     } catch (err) {
       showToast(err.message || 'تعذّر تسجيل الدخول عبر Google');
+    }
+  }
+
+  async function initGoogleIdentityServices(force = false){
+    if (googleIdentityReady && !force) return true;
+    if (googleIdentitySetup) return googleIdentitySetup;
+    googleIdentitySetup = (async () => {
+      const statusRes = await fetch(API_BASE_URL + '/auth/firebase/status').catch(() => null);
+      const status = statusRes?.ok ? await statusRes.json().catch(() => null) : null;
+      if (!status?.enabled || !status.config) {
+        setGoogleButtonMessage('تسجيل Google غير متاح حالياً');
+        return false;
+      }
+      setGoogleButtonMessage('جارٍ تهيئة Google…');
+      const [firebaseAppSdk, firebaseAuthSdk] = await Promise.all([
+        import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js'),
+        import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js'),
+      ]);
+      const appName = `kiur-${status.config.projectId}`;
+      const firebaseApp = firebaseAppSdk.getApps().find(app => app.name === appName)
+        || firebaseAppSdk.initializeApp(status.config, appName);
+      firebaseGoogleAuth = firebaseAuthSdk.getAuth(firebaseApp);
+      firebaseGoogleAuth.languageCode = 'ar';
+      firebaseGoogleProvider = new firebaseAuthSdk.GoogleAuthProvider();
+      firebaseGooglePopup = firebaseAuthSdk.signInWithPopup;
+      firebaseGoogleRedirect = firebaseAuthSdk.signInWithRedirect;
+      firebaseGoogleRedirectResult = firebaseAuthSdk.getRedirectResult;
+
+      const mount = document.getElementById('googleBtn');
+      if (!mount) return false;
+      mount.innerHTML = '<button class="social-button google" type="button" onclick="startGoogleSignIn()" aria-label="تسجيل الدخول عبر Google"><span aria-hidden="true" style="font-weight:800;font-size:1.2rem;">G</span><span style="margin-inline-start:.5rem;">المتابعة مع Google</span></button>';
+      googleIdentityReady = true;
+
+      if (!firebaseRedirectChecked) {
+        firebaseRedirectChecked = true;
+        const result = await firebaseGoogleRedirectResult(firebaseGoogleAuth);
+        if (result?.user) await completeFirebaseGoogleSignIn(result.user);
+      }
+      return true;
+    })().catch(error => {
+      googleIdentityReady = false;
+      setGoogleButtonMessage(error.message || 'تعذر تحميل تسجيل Google');
+      return false;
+    }).finally(() => { googleIdentitySetup = null; });
+    return googleIdentitySetup;
+  }
+
+  async function startGoogleSignIn(){
+    const ready = await initGoogleIdentityServices();
+    if (!ready || !firebaseGoogleAuth || !firebaseGoogleProvider) {
+      showToast('تسجيل Google غير مهيأ حالياً.', 'error');
+      return;
+    }
+    try {
+      const flowRes = await fetch(API_BASE_URL + '/auth/firebase/flow', { method: 'POST', credentials: 'include' });
+      if (!flowRes.ok) {
+        const data = await flowRes.json().catch(() => null);
+        throw new Error(data?.detail || 'تعذر إنشاء جلسة Google آمنة');
+      }
+      const useRedirect = matchMedia('(max-width: 768px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (useRedirect) {
+        await firebaseGoogleRedirect(firebaseGoogleAuth, firebaseGoogleProvider);
+        return;
+      }
+      const result = await firebaseGooglePopup(firebaseGoogleAuth, firebaseGoogleProvider);
+      await completeFirebaseGoogleSignIn(result.user);
+    } catch (err) {
+      const code = err?.code || '';
+      if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+        showToast(err?.message || 'تعذّر فتح تسجيل Google');
+      }
     }
   }
 
@@ -8367,6 +8400,77 @@
   let examIndex = 0;
   let examDurationSec = 0;
   let examTimerInt = null;
+  let examSyncTimer = null;
+  let examSubmitting = false;
+  let examFinishRequested = false;
+  const examAnswerOutbox = new Map();
+
+  function examOutboxKey(){
+    return examAttemptId && currentUser?.id ? `kiur:exam-outbox:${currentUser.id}:${examAttemptId}` : null;
+  }
+
+  function persistExamOutbox(){
+    const key = examOutboxKey();
+    if (!key) return;
+    try {
+      if (examAnswerOutbox.size) localStorage.setItem(key, JSON.stringify([...examAnswerOutbox.values()]));
+      else localStorage.removeItem(key);
+    } catch (e) { /* private mode/storage pressure must not block the exam */ }
+  }
+
+  function restoreExamOutbox(){
+    examAnswerOutbox.clear();
+    const key = examOutboxKey();
+    if (!key) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(saved)) return;
+      saved.forEach(answer => {
+        if (answer?.item_id && answer?.choice_id) examAnswerOutbox.set(answer.item_id, answer);
+      });
+    } catch (e) { localStorage.removeItem(key); }
+  }
+
+  function scheduleExamSync(delay = 1200){
+    clearTimeout(examSyncTimer);
+    examSyncTimer = setTimeout(() => { flushExamAnswerOutbox(); }, delay);
+  }
+
+  async function flushExamAnswerOutbox(){
+    if (!examAttemptId || !examAnswerOutbox.size) return true;
+    if (navigator.onLine === false) return false;
+    const queued = [...examAnswerOutbox.values()].slice(0, 20);
+    try {
+      await apiFetch(`/api/exams/attempts/${examAttemptId}/answers/batch`, {
+        method: 'POST', body: JSON.stringify({answers: queued}),
+      });
+      queued.forEach(answer => {
+        if (examAnswerOutbox.get(answer.item_id)?.choice_id === answer.choice_id) examAnswerOutbox.delete(answer.item_id);
+      });
+      persistExamOutbox();
+      return examAnswerOutbox.size ? flushExamAnswerOutbox() : true;
+    } catch (e) {
+      // Retain the latest answer per item locally; retries occur on reconnect,
+      // navigation, and explicit exam submission.
+      return false;
+    }
+  }
+
+  function queueExamAnswer(itemId, choiceId){
+    examAnswerOutbox.set(itemId, {item_id: itemId, choice_id: choiceId});
+    persistExamOutbox();
+    scheduleExamSync();
+  }
+
+  window.addEventListener('online', async () => {
+    showToast('عاد الاتصال — جارٍ حفظ الإجابات المعلّقة');
+    const synced = await flushExamAnswerOutbox();
+    if (synced && examFinishRequested) submitExam();
+  });
+  window.addEventListener('offline', () => {
+    if (examAttemptId) showToast('انقطع الاتصال — ستُحفظ إجاباتك على هذا الجهاز حتى يعود النت');
+  });
+  window.addEventListener('beforeunload', persistExamOutbox);
 
   async function startExam(examId){
     showView('view-exam');
@@ -8376,6 +8480,11 @@
       const data = await apiFetch('/api/exams/' + examId + '/start', {method: 'POST'});
       examAttemptId = data.attempt_id;
       examItems = data.questions;
+      restoreExamOutbox();
+      examAnswerOutbox.forEach(answer => {
+        const item = examItems.find(candidate => candidate.item_id === answer.item_id);
+        if (item) { item.your_choice_id = answer.choice_id; item.answered = true; }
+      });
       examIndex = examItems.findIndex(it => !it.answered);
       if (examIndex === -1) examIndex = 0;
       document.getElementById('examTitleBar').textContent = data.exam_title;
@@ -8424,11 +8533,7 @@
     it.your_choice_id = choiceId;
     it.answered = true;
     renderExamQuestion();
-    try {
-      await apiFetch(`/api/exams/attempts/${examAttemptId}/items/${it.item_id}/answer`, {
-        method: 'POST', body: JSON.stringify({choice_id: choiceId}),
-      });
-    } catch (e) { showToast(e.detail || t('answerSaveFailed')); }
+    queueExamAnswer(it.item_id, choiceId);
   }
 
   function changeExamQuestion(dir){
@@ -8439,14 +8544,25 @@
   }
 
   async function submitExam(){
-    clearInterval(examTimerInt);
+    if (examSubmitting) return;
+    examSubmitting = true;
+    clearTimeout(examSyncTimer);
+    const synced = await flushExamAnswerOutbox();
+    if (!synced) {
+      examFinishRequested = true;
+      examSubmitting = false;
+      showToast('لا يمكن إنهاء الامتحان قبل حفظ الإجابات؛ سيُستأنف تلقائياً عند عودة النت');
+      return;
+    }
     try {
       await apiFetch(`/api/exams/attempts/${examAttemptId}/finish`, {method: 'POST'});
       const result = await apiFetch(`/api/exams/attempts/${examAttemptId}/result`);
+      clearInterval(examTimerInt);
+      examFinishRequested = false;
       showExamResult(result);
     } catch (e) {
       showToast(e.detail || t('examFinishFailed'));
-    }
+    } finally { examSubmitting = false; }
   }
 
   function exitExam(){

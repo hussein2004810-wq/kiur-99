@@ -1,0 +1,11 @@
+{
+  "auth": {
+    "authorizedDomains": ["kiur-99.hussein2004810.workers.dev"],
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "KIUR",
+        "supportEmail": "hussein2004810@gmail.com"
+      }
+    }
+  }
+}

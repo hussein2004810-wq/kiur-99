@@ -49,6 +49,8 @@ export interface TestContext {
     JWT_SECRET: string;
     DEBUG: string;
     CORS_ORIGINS: string;
+    FIREBASE_AUTH_PROJECT_ID: string;
+    FIREBASE_WEB_API_KEY: string;
   };
   fixtures: TestFixtures;
   createAuthToken: (userId: string, role?: string, sessionId?: string) => string;
@@ -254,6 +256,8 @@ export async function createTestContext(): Promise<TestContext> {
       JWT_SECRET,
       DEBUG: 'true',
       CORS_ORIGINS: '*',
+      FIREBASE_AUTH_PROJECT_ID: 'kiur-medical-exams-2026',
+      FIREBASE_WEB_API_KEY: 'test-firebase-web-api-key',
     },
     fixtures: {
       sectionId,

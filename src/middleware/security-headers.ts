@@ -5,16 +5,17 @@ export const CSP_POLICY = [
   "default-src 'self'",
   // Inline application scripts are pinned by hash.  Legacy inline event
   // handlers remain isolated in script-src-attr until the UI migration ends.
-  "script-src 'self' https://accounts.google.com",
-  "script-src-elem 'self' 'sha256-0cwir9scgk8Tr207EpgU7MEuXqiutRFI9tGc33wBn4A=' 'sha256-696+bBrH8mwvpN1fRY0gAUWZjLAQcdS3yrPLkchKZ04=' https://accounts.google.com",
+  "script-src 'self' https://accounts.google.com https://www.gstatic.com",
+  "script-src-elem 'self' 'sha256-gVyg5iVzOR2Fh6a72pQlSVij/O7jVDrA1ZBZzhRCK8c=' https://accounts.google.com https://www.gstatic.com",
   "script-src-attr 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob: https://lh3.googleusercontent.com",
-  "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com",
+  "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com https://www.gstatic.com",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'self'",
+  "frame-src 'self' https://kiur-medical-exams-2026.firebaseapp.com https://accounts.google.com",
   "frame-ancestors 'none'",
 ].join('; ');
 

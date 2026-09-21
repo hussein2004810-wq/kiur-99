@@ -24,6 +24,7 @@ d1-backup-*.sql
 
 # Destructive staging-load-test inputs and generated results
 load-tests/staging-*.json
+load-tests/staging-seed.sql
 load-tests/*.summary.json
 
 # Operating System files

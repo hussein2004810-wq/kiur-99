@@ -4,10 +4,10 @@
  */
 
 // ──────────────────────────────────────────────────────────────────
-// Password hashing  (PBKDF2-HMAC-SHA256, 200k iterations)
+// Password hashing  (PBKDF2-HMAC-SHA256, 100k iterations)
 // Format: "<16-byte-hex-salt>$<32-byte-hex-digest>"
 // ──────────────────────────────────────────────────────────────────
-const PBKDF2_ITERATIONS = 200_000;
+const PBKDF2_ITERATIONS = 100_000;
 
 function hexToUint8(hex: string): Uint8Array {
   const arr = new Uint8Array(hex.length / 2);
@@ -28,21 +28,11 @@ export async function hashPassword(password: string): Promise<string> {
   const salt = uint8ToHex(saltBytes.buffer);
 
   const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits']
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
   );
   const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      hash: 'SHA-256',
-      salt: saltBytes,
-      iterations: PBKDF2_ITERATIONS,
-    },
-    keyMaterial,
-    256
+    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: PBKDF2_ITERATIONS },
+    keyMaterial, 256
   );
   return `${salt}$${uint8ToHex(derivedBits)}`;
 }
@@ -56,21 +46,11 @@ export async function verifyPassword(
   const saltBytes = hexToUint8(salt);
 
   const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits']
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
   );
   const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      hash: 'SHA-256',
-      salt: saltBytes,
-      iterations: PBKDF2_ITERATIONS,
-    },
-    keyMaterial,
-    256
+    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: PBKDF2_ITERATIONS },
+    keyMaterial, 256
   );
   const derivedHex = uint8ToHex(derivedBits);
 

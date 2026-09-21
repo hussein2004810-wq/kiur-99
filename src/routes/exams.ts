@@ -400,6 +400,60 @@ examsRouter.post('/attempts/:attempt_id/items/:item_id/answer', requireAuth, asy
   return c.json({ message: 'تم حفظ الإجابة بنجاح', ok: true, recorded: true });
 });
 
+// Batch answer endpoint for weak connections.  It accepts a small, bounded
+// outbox from the browser and commits all valid answer changes atomically.
+examsRouter.post('/attempts/:attempt_id/answers/batch', requireAuth, async (c) => {
+  const user = c.get('user')!;
+  const attemptId = c.req.param('attempt_id') ?? '';
+  const body = await c.req.json<{ answers?: Array<{ item_id?: string; choice_id?: string }> }>()
+    .catch((): { answers?: Array<{ item_id?: string; choice_id?: string }> } => ({}));
+  const answers = body.answers;
+  if (!attemptId || !Array.isArray(answers) || answers.length < 1 || answers.length > 20) {
+    return c.json({ detail: 'دفعة الإجابات يجب أن تحتوي بين 1 و20 إجابة' }, 400);
+  }
+  if (answers.some((answer) => !answer?.item_id || !answer?.choice_id)) {
+    return c.json({ detail: 'كل إجابة تحتاج رقم السؤال والخيار' }, 400);
+  }
+  const itemIds = new Set(answers.map((answer) => String(answer.item_id)));
+  if (itemIds.size !== answers.length) return c.json({ detail: 'لا تكرر السؤال في الدفعة نفسها' }, 400);
+
+  const attempt = await c.env.DB.prepare('SELECT * FROM exam_attempts WHERE id = ?').bind(attemptId).first<any>();
+  if (!attempt || attempt.user_id !== user.id) return c.json({ detail: 'محاولة الامتحان غير موجودة' }, 404);
+  if (attempt.finished_at) return c.json({ detail: 'تم إنهاء الامتحان بالفعل ولا يمكن تعديل الإجابات' }, 400);
+  const exam = await c.env.DB.prepare('SELECT * FROM exams WHERE id = ?').bind(attempt.exam_id).first<any>();
+  const dl = deadline(exam, attempt);
+  if (dl && new Date() > dl) {
+    await autoFinishD1(c.env.DB, String(attempt.id), dl);
+    return c.json({ detail: 'انتهى وقت الامتحان' }, 400);
+  }
+
+  const items = await c.env.DB.batch(answers.map((answer) =>
+    c.env.DB.prepare('SELECT * FROM exam_attempt_questions WHERE id = ? AND attempt_id = ?')
+      .bind(answer.item_id, attemptId)
+  ));
+  const updates: D1PreparedStatement[] = [];
+  for (let index = 0; index < answers.length; index++) {
+    const answer = answers[index];
+    const item = items[index].results?.[0] as any;
+    if (!item) return c.json({ detail: 'السؤال غير موجود بهذه المحاولة' }, 400);
+    const choice = snapshotChoice(item, String(answer.choice_id)) ?? await c.env.DB.prepare(
+      'SELECT * FROM choices WHERE id = ? AND question_id = ?'
+    ).bind(answer.choice_id, item.question_id).first<any>();
+    if (!choice) return c.json({ detail: 'الخيار المحدد لا ينتمي لهذا السؤال' }, 400);
+    updates.push(c.env.DB.prepare(
+      `UPDATE exam_attempt_questions SET choice_id = ?, is_correct = ?, answered_at = ?
+       WHERE id = ? AND attempt_id = ? AND EXISTS (
+         SELECT 1 FROM exam_attempts WHERE id = ? AND user_id = ? AND finished_at IS NULL
+       )`
+    ).bind(choice.id, choice.is_correct ? 1 : 0, new Date().toISOString(), item.id, attemptId, attemptId, user.id));
+  }
+  const written = await c.env.DB.batch(updates);
+  if (written.some((result) => !result.meta.changes)) {
+    return c.json({ detail: 'تم إنهاء الامتحان بالفعل ولا يمكن تعديل الإجابات' }, 400);
+  }
+  return c.json({ ok: true, saved: answers.length });
+});
+
 // Common handler for answering by question_id or item_id
 const handleAttemptAnswer = async (c: Context<AppEnv>) => {
   const user = c.get('user')!;
