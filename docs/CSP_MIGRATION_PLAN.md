@@ -13,11 +13,14 @@ deployment or any Cloudflare configuration change.
 
 ## Measured baseline (2026-09-21)
 
-| Surface | Inline script blocks | Inline event attributes | Inline style attributes |
-| --- | ---: | ---: | ---: |
-| `public/nabd-home-quiz-prototype.html` | 2 | 173 | 279 |
-| `public/nabd-admin-dashboard.html` | 1 | 154 | 361 |
-| Total | 3 | 327 | 640 |
+| Surface | Inline script blocks | External scripts | Inline event attributes | Inline style attributes |
+| --- | ---: | ---: | ---: | ---: |
+| `public/nabd-home-quiz-prototype.html` | 1 | 1 | 176 | 286 |
+| `public/nabd-admin-dashboard.html` | 1 | 0 | 155 | 381 |
+| Total | 2 | 1 | 331 | 667 |
+
+The external script on the student surface is the Google Identity loader; it is
+not an inline script and is already explicitly allowlisted by `script-src`.
 
 The dynamic handler arguments in both applications are now encoded with
 `jsArg`; this protects quoted inline-handler boundaries but is not a
