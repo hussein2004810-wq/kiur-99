@@ -21,6 +21,10 @@ coverage/
 *.db
 d1-backup-*.sql
 
+# Destructive staging-load-test inputs and generated results
+load-tests/staging-*.json
+load-tests/*.summary.json
+
 # Operating System files
 .DS_Store
 Thumbs.db

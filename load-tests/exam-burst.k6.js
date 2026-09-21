@@ -10,8 +10,8 @@ const examId = __ENV.KIUR_EXAM_ID || '';
 const tokens = JSON.parse(__ENV.KIUR_AUTH_TOKENS_JSON || '[]');
 const targetStudents = Number(__ENV.KIUR_TARGET_STUDENTS || 600);
 
-if (!baseUrl || !examId || !Array.isArray(tokens) || tokens.length < targetStudents) {
-  fail('Set KIUR_BASE_URL, KIUR_EXAM_ID, and KIUR_AUTH_TOKENS_JSON with one entitled staging token per simulated student.');
+if (__ENV.KIUR_CONFIRM_STAGING !== 'YES' || !baseUrl || !examId || !Array.isArray(tokens) || tokens.length < targetStudents) {
+  fail('Set KIUR_CONFIRM_STAGING=YES, KIUR_BASE_URL, KIUR_EXAM_ID, and KIUR_AUTH_TOKENS_JSON with one entitled staging token per simulated student.');
 }
 
 const startDuration = new Trend('exam_start_duration', true);

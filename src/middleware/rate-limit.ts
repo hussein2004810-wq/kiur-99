@@ -6,13 +6,38 @@ export interface RateLimitOptions {
   max: number;
   windowSeconds: number;
   keyPrefix: string;
+  /**
+   * Optional tighter limit for a request-specific identity.  This is useful
+   * before authentication exists (for example, an email address at login),
+   * where a low IP-only limit would block an entire university NAT.
+   */
+  identity?: {
+    max: number;
+    windowSeconds: number;
+    key: (c: Parameters<MiddlewareHandler<AppEnv>>[0]) => string | null | Promise<string | null>;
+  };
+}
+
+/**
+ * Produces a non-PII, stable bucket for password-based login attempts.
+ * The request is cloned so the route can still parse its own JSON body.
+ */
+async function loginEmailIdentity(c: Parameters<MiddlewareHandler<AppEnv>>[0]): Promise<string | null> {
+  if (!c.req.header('content-type')?.toLowerCase().includes('application/json')) return null;
+  const body = await c.req.raw.clone().json<{ email?: unknown }>().catch(() => null);
+  const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+  if (!email || email.length > 320) return null;
+
+  const bytes = new TextEncoder().encode(`login-email:${email}`);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 /**
  * Creates endpoint-specific rate limiting middleware (Stage 8).
  */
 export function rateLimiter(options: RateLimitOptions): MiddlewareHandler<AppEnv> {
-  const { max, windowSeconds, keyPrefix } = options;
+  const { max, windowSeconds, keyPrefix, identity } = options;
 
   return async (c, next) => {
     const now = Date.now();
@@ -28,35 +53,63 @@ export function rateLimiter(options: RateLimitOptions): MiddlewareHandler<AppEnv
     // abuse from one source, while account limits prevent a user escaping the
     // limit by changing IP addresses.  Unauthenticated routes use IP only.
     const accountId = c.get('user')?.id;
-    const keys = [`${keyPrefix}:ip:${ip}`];
-    if (accountId) keys.push(`${keyPrefix}:account:${accountId}`);
-    const newResetAt = now + windowSeconds * 1000;
-    const records = await Promise.all(keys.map((key) => c.env.DB.prepare(`
+    const limits: Array<{ key: string; max: number; windowSeconds: number }> = [
+      { key: `${keyPrefix}:ip:${ip}`, max, windowSeconds },
+    ];
+    if (accountId) limits.push({ key: `${keyPrefix}:account:${accountId}`, max, windowSeconds });
+
+    const identityKey = identity ? await identity.key(c) : null;
+    if (identityKey) {
+      limits.push({
+        key: `${keyPrefix}:identity:${identityKey}`,
+        max: identity!.max,
+        windowSeconds: identity!.windowSeconds,
+      });
+    }
+
+    const records = await Promise.all(limits.map((limit) => {
+      const newResetAt = now + limit.windowSeconds * 1000;
+      return c.env.DB.prepare(`
         INSERT INTO rate_limit_windows (key, count, reset_at) VALUES (?, 1, ?)
         ON CONFLICT(key) DO UPDATE SET
           count = CASE WHEN rate_limit_windows.reset_at <= ? THEN 1 ELSE rate_limit_windows.count + 1 END,
           reset_at = CASE WHEN rate_limit_windows.reset_at <= ? THEN excluded.reset_at ELSE rate_limit_windows.reset_at END
         RETURNING count, reset_at
-      `).bind(key, newResetAt, now, now).first<{ count: number; reset_at: number }>()));
+      `).bind(limit.key, newResetAt, now, now).first<{ count: number; reset_at: number }>();
+    }));
     if (records.some((record) => !record)) {
       return c.json({ detail: 'تعذر التحقق من حد الطلبات' }, 503);
     }
-    const count = Math.max(...records.map((record) => Number(record!.count)));
-    const resetAt = Math.max(...records.map((record) => Number(record!.reset_at)));
+    const evaluated = records.map((record, index) => ({
+      count: Number(record!.count),
+      resetAt: Number(record!.reset_at),
+      max: limits[index].max,
+    }));
+    const violations = evaluated.filter((record) => record.count > record.max);
+    const mostConstrained = evaluated.reduce((current, record) =>
+      record.max - record.count < current.max - current.count ? record : current
+    );
 
-    const remaining = Math.max(0, max - count);
-    const retryAfter = Math.max(1, Math.ceil((resetAt - now) / 1000));
+    const remaining = Math.max(0, mostConstrained.max - mostConstrained.count);
+    const retryAfter = Math.max(1, Math.ceil((Math.max(...(violations.length ? violations : evaluated).map((record) => record.resetAt)) - now) / 1000));
 
-    c.header('X-RateLimit-Limit', String(max));
+    c.header('X-RateLimit-Limit', String(mostConstrained.max));
     c.header('X-RateLimit-Remaining', String(remaining));
-    c.header('X-RateLimit-Reset', String(Math.ceil(resetAt / 1000)));
+    c.header('X-RateLimit-Reset', String(Math.ceil(mostConstrained.resetAt / 1000)));
 
-    if (count > max) {
+    if (violations.length) {
       recordAuditEvent({
         event: 'SECURITY_RATE_LIMITED',
         status: 'DENIED',
         ip,
-        details: { keyPrefix, limit: max, retryAfter, path: c.req.path, accountBound: Boolean(accountId) },
+        details: {
+          keyPrefix,
+          limit: Math.min(...violations.map((record) => record.max)),
+          retryAfter,
+          path: c.req.path,
+          accountBound: Boolean(accountId),
+          identityBound: Boolean(identityKey),
+        },
       });
       c.header('Retry-After', String(retryAfter));
       return c.json(
@@ -73,7 +126,15 @@ export function rateLimiter(options: RateLimitOptions): MiddlewareHandler<AppEnv
 }
 
 // Pre-configured rate limiters for abuse-prone endpoints
-export const loginRateLimiter = rateLimiter({ max: 10, windowSeconds: 60, keyPrefix: 'rl:login' });
+// A university lab commonly presents hundreds of students behind one public
+// IP. Keep a network-wide abuse ceiling while enforcing the tighter limit on
+// the attempted account itself, rather than locking out the whole lab.
+export const loginRateLimiter = rateLimiter({
+  max: 120,
+  windowSeconds: 60,
+  keyPrefix: 'rl:login',
+  identity: { max: 10, windowSeconds: 60, key: loginEmailIdentity },
+});
 export const registerRateLimiter = rateLimiter({ max: 5, windowSeconds: 600, keyPrefix: 'rl:register' });
 export const forgotPasswordRateLimiter = rateLimiter({ max: 3, windowSeconds: 600, keyPrefix: 'rl:forgot-pw' });
 export const resetPasswordRateLimiter = rateLimiter({ max: 5, windowSeconds: 600, keyPrefix: 'rl:reset-pw' });

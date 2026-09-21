@@ -137,6 +137,26 @@ describe('Stages 7 & 8: Request Body Limits and Rate Limiting', () => {
       expect(Number(retryAfterHeader)).toBeGreaterThan(0);
     });
 
+    it('security.abuse.login-rate-limit: does not lock out a university NAT when different accounts sign in', async () => {
+      for (let i = 0; i < 20; i++) {
+        const res = await app.request('/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'cf-connecting-ip': '192.0.2.99',
+          },
+          body: JSON.stringify({
+            email: `student-${i}@example.edu`,
+            password: 'WrongPassword123',
+          }),
+        }, ctx.bindings);
+
+        // Every credential is deliberately invalid, but the shared network
+        // must not receive a 429 merely because other students are signing in.
+        expect(res.status).toBe(401);
+      }
+    });
+
     it('security.abuse.forgot-pw-limit: enforces rate limit on password reset request', async () => {
       let hit429 = false;
 
