@@ -13,7 +13,7 @@ export const CSP_POLICY = [
   "img-src 'self' data: blob: https://lh3.googleusercontent.com",
   "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com",
   "object-src 'none'",
-  "base-uri 'self'",
+  "base-uri 'none'",
   "form-action 'self'",
   "frame-ancestors 'none'",
 ].join('; ');

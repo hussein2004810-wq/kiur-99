@@ -109,6 +109,7 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
       expect(res.headers.get('Content-Security-Policy')).toContain("object-src 'none'");
       expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
       expect(res.headers.get('Content-Security-Policy')).toContain("form-action 'self'");
+      expect(res.headers.get('Content-Security-Policy')).toContain("base-uri 'none'");
       expect(res.headers.get('Content-Security-Policy')).toContain('https://accounts.google.com');
       expect(res.headers.get('Content-Security-Policy')).toContain("script-src-attr 'unsafe-inline'");
       expect(res.headers.get('Content-Security-Policy')).not.toContain("script-src 'self' 'unsafe-inline'");
