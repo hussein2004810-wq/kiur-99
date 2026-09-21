@@ -23,8 +23,13 @@ export function applySecurityHeaders(headers: Headers, isDebug = false): void {
   }
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('X-Frame-Options', 'DENY');
-  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  headers.set('Referrer-Policy', 'no-referrer');
   headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  // Keep popup compatibility for Google Identity while isolating the opener
+  // relationship from unrelated cross-origin windows.
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+  headers.set('Origin-Agent-Cluster', '?1');
 
   if (!isDebug) {
     headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');

@@ -94,8 +94,11 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
       expect(res.headers.get('Content-Security-Policy')).not.toContain('cdn.jsdelivr.net');
       expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
       expect(res.headers.get('X-Frame-Options')).toBe('DENY');
-      expect(res.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
+      expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
       expect(res.headers.get('Permissions-Policy')).toContain('camera=()');
+      expect(res.headers.get('Cross-Origin-Opener-Policy')).toBe('same-origin-allow-popups');
+      expect(res.headers.get('Cross-Origin-Resource-Policy')).toBe('same-origin');
+      expect(res.headers.get('Origin-Agent-Cluster')).toBe('?1');
     });
 
     it('security.headers.errors: attaches security headers on 404 responses', async () => {
