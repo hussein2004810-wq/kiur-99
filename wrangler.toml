@@ -28,7 +28,6 @@ fallthrough = true
 DEBUG = "false"
 # Production JWT_SECRET must be configured securely via `wrangler secret put JWT_SECRET`.
 # Never store production secrets in plaintext in version control.
-JWT_SECRET = ""
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRES_MINUTES = "20160"
 BOOTSTRAP_ADMIN_EMAIL = "hussein2004810@gmail.com"

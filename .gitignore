@@ -19,6 +19,7 @@ coverage/
 *.sqlite
 *.sqlite3
 *.db
+d1-backup-*.sql
 
 # Operating System files
 .DS_Store
