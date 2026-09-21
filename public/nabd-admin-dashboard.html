@@ -1560,7 +1560,7 @@
       const data = await apiFetch('/auth/2fa/setup', {method: 'POST'});
       document.getElementById('totpSetupArea').innerHTML = `
         <div class="item-meta">افتح تطبيق المصادقة (Google Authenticator أو مشابه) واختر "إدخال المفتاح يدوياً"، ثم أدخل هذا المفتاح:</div>
-        <div class="mono" style="direction:ltr; text-align:center; font-size:.95rem; font-weight:700; padding:10px; margin:8px 0; background:var(--glass-bg-strong); border-radius:var(--radius-sm); letter-spacing:2px;">${data.secret}</div>
+        <div class="mono" style="direction:ltr; text-align:center; font-size:.95rem; font-weight:700; padding:10px; margin:8px 0; background:var(--glass-bg-strong); border-radius:var(--radius-sm); letter-spacing:2px;">${esc(data.secret)}</div>
         <div class="form-field" style="margin-top:8px;"><input id="totpEnableCode" type="text" placeholder="أدخل الرمز المكوّن من 6 أرقام من التطبيق" /></div>
         <button class="btn" style="width:100%; justify-content:center;" onclick="confirmTotpEnable()">تفعيل</button>
         <div id="totpMsg" style="display:none; font-size:.78rem; margin-top:8px; text-align:center;"></div>
