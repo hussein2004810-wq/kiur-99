@@ -1768,7 +1768,9 @@
   // ---------- Helpers ----------
   function fmtIQD(n){ return (n||0).toLocaleString('en-US') + ' د.ع'; }
   function fmtDate(iso){ if(!iso) return '—'; return new Date(iso).toLocaleDateString('ar-IQ', {day:'numeric', month:'short'}); }
-  function initialsOf(name){ return (name||'').trim().split(' ').map(w=>w[0]).slice(0,2).join(''); }
+  // A malicious display name can be crafted so its initials themselves form
+  // markup.  This helper feeds innerHTML avatar templates, so encode it here.
+  function initialsOf(name){ return esc((name||'').trim().split(' ').map(w=>w[0]).slice(0,2).join('')); }
   function roleBadge(role){
     const map = {admin:'أدمن', student:'طالب', professor:'أستاذ', reseller:'مندوب'};
     return `<span class="badge badge-${role}">${map[role]||role}</span>`;
@@ -3714,7 +3716,7 @@
       } catch (e) {}
     }
     document.getElementById('weaknessBars').innerHTML = weak.map(([label,pct]) => `
-      <div class="weak-row"><span class="weak-label">${label}</span><div class="weak-track"><div class="weak-fill" style="width:${pct}%"></div></div><span class="weak-pct">${pct}%</span></div>
+      <div class="weak-row"><span class="weak-label">${esc(label)}</span><div class="weak-track"><div class="weak-fill" style="width:${pct}%"></div></div><span class="weak-pct">${pct}%</span></div>
     `).join('');
   }
 

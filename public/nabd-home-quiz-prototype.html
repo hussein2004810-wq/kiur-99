@@ -5206,7 +5206,10 @@
 
   function initials(name){
     const clean = name.replace('د. ', '');
-    return clean.split(' ').map(w => w[0]).slice(0, 2).join('');
+    // The initials are still derived from a stored display name and are
+    // interpolated into avatar markup, so they need the same HTML boundary
+    // encoding as the full name.
+    return esc(clean.split(' ').map(w => w[0]).slice(0, 2).join(''));
   }
 
   // Subject chips are derived from whichever professors actually exist,

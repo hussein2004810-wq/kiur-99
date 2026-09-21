@@ -478,9 +478,12 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(homeHtml).toContain('bsQuickStart(${jsArg(sub.id)}, ${jsArg(sub.name)})');
       expect(homeHtml).toContain('openProfessor(${jsArg(p.id)})');
       expect(homeHtml).toContain('recordRecentView(\'booklet\',${jsArg(b.id)})');
+      expect(homeHtml).toContain("return esc(clean.split(' ').map(w => w[0]).slice(0, 2).join(''));");
       expect(homeHtml).not.toContain("startExam('${e.id}')");
       expect(homeHtml).not.toContain("body: JSON.stringify({ email, name, next: 'student' })");
       expect(adminHtml).toContain('function jsArg(value)');
+      expect(adminHtml).toContain("function initialsOf(name){ return esc((name||'').trim().split(' ').map(w=>w[0]).slice(0,2).join('')); }");
+      expect(adminHtml).toContain('<span class="weak-label">${esc(label)}</span>');
       expect(adminHtml).toContain('deleteUniversity(${jsArg(u.id)}, ${jsArg(u.name)})');
 
       // URL values need a separate allowlist: entity escaping does not stop
