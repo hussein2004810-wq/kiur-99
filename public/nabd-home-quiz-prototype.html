@@ -7223,9 +7223,15 @@
         if (data && data.enabled && data.client_id) {
           googleClientId = data.client_id;
           if (window.google && window.google.accounts && window.google.accounts.id) {
+            const flowRes = await fetch(API_BASE_URL + '/auth/google/flow', {
+              method: 'POST', credentials: 'include',
+            });
+            const flow = flowRes.ok ? await flowRes.json().catch(() => null) : null;
+            if (!flow?.flow_nonce) return;
             google.accounts.id.initialize({
               client_id: googleClientId,
               callback: handleGoogleCredentialResponse,
+              nonce: flow.flow_nonce,
               auto_select: false,
               cancel_on_tap_outside: true,
             });
@@ -7253,12 +7259,8 @@
     }
 
     if (googleClientId && window.google && window.google.accounts && window.google.accounts.id) {
-      try {
-        google.accounts.id.prompt();
-        return;
-      } catch (err) {
-        console.warn('Google Identity Services prompt failed:', err);
-      }
+      await initGoogleIdentityServices();
+      return;
     }
 
     showToast('تسجيل Google غير مهيأ حالياً. أعد المحاولة بعد إعداد Google Identity Services.', 'error');

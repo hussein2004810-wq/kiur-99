@@ -31,6 +31,7 @@ const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
 export async function verifyGoogleIdentityCredential(
   credential: string,
   audience: string,
+  expectedNonce: string,
 ): Promise<GoogleIdentityUser> {
   if (!credential || typeof credential !== 'string') {
     throw new GoogleIdentityError('MISSING_GOOGLE_CREDENTIAL', 'رمز Google ID مفقود أو غير صالح', 400);
@@ -49,6 +50,9 @@ export async function verifyGoogleIdentityCredential(
     // timeless credential cannot establish a KIUR session.
     if (typeof payload.iat !== 'number' || typeof payload.exp !== 'number') {
       throw new GoogleIdentityError('GOOGLE_TOKEN_TIME_CLAIMS_REQUIRED', 'رمز Google لا يحتوي مدة صلاحية صالحة');
+    }
+    if (!expectedNonce || payload.nonce !== expectedNonce) {
+      throw new GoogleIdentityError('GOOGLE_TOKEN_NONCE_MISMATCH', 'جلسة Google غير صالحة أو منتهية الصلاحية', 403);
     }
 
     const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';

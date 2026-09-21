@@ -142,7 +142,29 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       }
     });
 
+    it('rejects a Google credential with no browser-bound GIS flow nonce before consulting JWKS', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch');
+      try {
+        const res = await apiRequest(app, 'POST', '/auth/google/verify', {
+          body: { credential: 'not-used-without-flow-cookie' },
+        }, {
+          ...ctx,
+          bindings: { ...ctx.bindings, GOOGLE_CLIENT_ID: 'kiur-client-id.apps.googleusercontent.com' },
+        });
+
+        expect(res.status).toBe(403);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        fetchMock.mockRestore();
+      }
+    });
+
     it('rejects a cryptographically valid Google ID token issued for another OAuth client', async () => {
+      const googleBindings = { ...ctx.bindings, GOOGLE_CLIENT_ID: 'kiur-client-id.apps.googleusercontent.com' };
+      const flowRes = await app.request('/auth/google/flow', { method: 'POST' }, googleBindings);
+      expect(flowRes.status).toBe(200);
+      const flowCookie = flowRes.headers.get('set-cookie')?.split(';')[0] || '';
+      const flow = await flowRes.json<{ flow_nonce: string }>();
       const { publicKey, privateKey } = await generateKeyPair('RS256');
       const jwk = await exportJWK(publicKey);
       Object.assign(jwk, { kid: 'google-test-key-wrong-audience', use: 'sig', alg: 'RS256' });
@@ -150,6 +172,7 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
         email: 'wrong-audience@nabd.app',
         name: 'رمز لجمهور آخر',
         email_verified: true,
+        nonce: flow.flow_nonce,
       })
         .setProtectedHeader({ alg: 'RS256', kid: jwk.kid })
         .setSubject('google_wrong_audience')
@@ -162,10 +185,11 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
 
       try {
         const res = await apiRequest(app, 'POST', '/auth/google/verify', {
+          headers: { Cookie: flowCookie },
           body: { credential },
         }, {
           ...ctx,
-          bindings: { ...ctx.bindings, GOOGLE_CLIENT_ID: 'kiur-client-id.apps.googleusercontent.com' },
+          bindings: googleBindings,
         });
 
         expect(res.status).toBe(401);
@@ -180,6 +204,7 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
         expect(verifierSource).toContain('createRemoteJWKSet');
         expect(verifierSource).toContain("algorithms: ['RS256']");
         expect(verifierSource).toContain('maxTokenAge');
+        expect(verifierSource).toContain('payload.nonce !== expectedNonce');
       } finally {
         fetchMock.mockRestore();
       }

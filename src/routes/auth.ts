@@ -53,6 +53,7 @@ const ADMIN_DASHBOARD_ROLES = new Set(['admin', 'professor', 'reseller']);
 const PASSWORD_RESET_TTL_MINUTES = 30;
 const PASSWORD_RESET_COOLDOWN_SECONDS = 60;
 const EMAIL_VERIFICATION_TTL_HOURS = 24;
+const GOOGLE_GIS_FLOW_COOKIE = 'kiur_google_gis_flow';
 
 // ─────────────────────────────────────────── helpers ────────────────────────
 
@@ -175,6 +176,22 @@ authRouter.post('/google/login', async (c) => {
   return c.json({ detail: 'طريقة تسجيل الدخول غير مدعومة؛ يجب استخدام مصادقة Google الرسمية' }, 405);
 });
 
+authRouter.post('/google/flow', async (c) => {
+  const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
+  if (!clientId || clientId.includes('your-client-id')) {
+    return c.json({ detail: 'خدمة المصادقة عبر Google غير مهيأة على الخادم' }, 503);
+  }
+
+  const nonce = crypto.randomUUID().replace(/-/g, '');
+  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const secure = isDebug ? '' : '; Secure';
+  c.header(
+    'Set-Cookie',
+    `${GOOGLE_GIS_FLOW_COOKIE}=${nonce}; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=300${secure}`,
+  );
+  return c.json({ flow_nonce: nonce, client_id: clientId });
+});
+
 authRouter.post('/google/verify', async (c) => {
   const body = await c.req.json<{ credential?: string; access_token?: string; next?: string }>().catch(() => ({} as any));
   const credential = body.credential;
@@ -189,13 +206,28 @@ authRouter.post('/google/verify', async (c) => {
     return c.json({ detail: 'خدمة المصادقة عبر Google غير مهيأة على الخادم' }, 503);
   }
 
+  const cookieHeader = c.req.header('Cookie') ?? '';
+  const nonceMatch = cookieHeader.match(new RegExp(`(?:^|; )${GOOGLE_GIS_FLOW_COOKIE}=([^;]+)`));
+  const flowNonce = nonceMatch ? nonceMatch[1] : '';
+  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
+  const secure = isDebug ? '' : '; Secure';
+  // Consume the browser-bound nonce before token validation so a credential
+  // cannot be replayed after any verification outcome.
+  c.header(
+    'Set-Cookie',
+    `${GOOGLE_GIS_FLOW_COOKIE}=; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=0${secure}`,
+  );
+  if (!flowNonce) {
+    return c.json({ detail: 'جلسة Google غير صالحة أو منتهية الصلاحية' }, 403);
+  }
+
   let email = '';
   let name = '';
   let sub = '';
   let picture = '';
 
   try {
-    const identity = await verifyGoogleIdentityCredential(credential, expectedAud);
+    const identity = await verifyGoogleIdentityCredential(credential, expectedAud, flowNonce);
     email = identity.email;
     name = identity.name ?? '';
     sub = identity.subject;
@@ -246,8 +278,6 @@ authRouter.post('/google/verify', async (c) => {
 
   const jwtSecret = c.env.JWT_SECRET;
   const expiresMinutes = parseInt(c.env.JWT_EXPIRES_MINUTES ?? '20160');
-  const isDebug = (c.env.DEBUG ?? 'true') === 'true';
-
   if (user.totp_enabled) {
     const pending = await create2faPendingToken(user.id, jwtSecret);
     return c.json({ ok: true, requires_2fa: true, pending_token: pending });
