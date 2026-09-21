@@ -25,7 +25,9 @@ export function resolveAllowedOrigin(
   }
 
   // Configured allowed origins
-  const rawOrigins = env?.CORS_ORIGINS || 'http://localhost:5500,http://127.0.0.1:5500,http://localhost:8787,http://127.0.0.1:8787';
+  const rawOrigins = env?.CORS_ORIGINS ?? (isDebug
+    ? 'http://localhost:5500,http://127.0.0.1:5500,http://localhost:8787,http://127.0.0.1:8787'
+    : '');
   const allowedList = rawOrigins
     .split(',')
     .map((s) => s.trim().toLowerCase())
@@ -60,7 +62,6 @@ export const corsMiddleware: MiddlewareHandler<AppEnv> = (c, next) => {
       'Content-Range',
       'ETag',
       'Accept-Ranges',
-      'Set-Cookie',
     ],
     credentials: true,
     maxAge: 86400,

@@ -6,6 +6,7 @@ import { apiRequest } from '../harness/app';
 import mainApp from '../../src/index';
 import { hashResetToken } from '../../src/services/crypto';
 import { emailConfigured } from '../../src/services/mailer';
+import { resolveAllowedOrigin } from '../../src/middleware/cors';
 
 describe('P0 Security Vulnerability Remediation Suite', () => {
   let ctx: TestContext;
@@ -99,6 +100,11 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       });
       expect(res.status).toBe(200);
       expect((await res.json()).debug_token).toBeUndefined();
+    });
+
+    it('fails closed for localhost CORS origins when production origins are unset', () => {
+      expect(resolveAllowedOrigin('http://localhost:8787', { DEBUG: 'false', CORS_ORIGINS: '' } as any)).toBeNull();
+      expect(resolveAllowedOrigin('http://localhost:8787', { DEBUG: 'true', CORS_ORIGINS: '' } as any)).toBe('http://localhost:8787');
     });
 
     it('does not create an unactivatable password account in production when mail is unavailable', async () => {
