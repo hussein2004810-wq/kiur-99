@@ -6,7 +6,7 @@ export const CSP_POLICY = [
   // Inline application scripts are pinned by hash.  Legacy inline event
   // handlers remain isolated in script-src-attr until the UI migration ends.
   "script-src 'self' https://accounts.google.com https://www.gstatic.com",
-  "script-src-elem 'self' 'sha256-gVyg5iVzOR2Fh6a72pQlSVij/O7jVDrA1ZBZzhRCK8c=' https://accounts.google.com https://www.gstatic.com",
+  "script-src-elem 'self' 'sha256-gVyg5iVzOR2Fh6a72pQlSVij/O7jVDrA1ZBZzhRCK8c=' 'sha256-nyhetoyH5KeInV38xkLNgyZ3+n+xq6X1K9kZq5hg+LA=' https://accounts.google.com https://www.gstatic.com",
   "script-src-attr 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",

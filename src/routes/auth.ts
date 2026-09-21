@@ -505,7 +505,7 @@ authRouter.post('/firebase/flow', firebaseAuthRateLimiter, async (c) => {
 });
 
 authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
-  const body = await c.req.json<{ idToken?: string; id_token?: string; nonce?: string; device_label?: string }>().catch(() => ({} as Record<string, string>));
+  const body = await c.req.json<{ idToken?: string; id_token?: string; nonce?: string; device_label?: string; next?: string }>().catch(() => ({} as Record<string, string>));
   const idToken = body?.idToken || (body as any)?.id_token;
   if (!idToken) {
     return c.json({ detail: 'رمز Firebase ID token مفقود' }, 400);
@@ -610,6 +610,23 @@ authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
       details: { reason: 'banned' },
     });
     return c.json({ detail: 'هذا الحساب محظور' }, 403);
+  }
+
+  // The administrator dashboard is a separate sign-in surface. Never issue a
+  // session there for a student merely because that student owns a valid
+  // Google account.
+  const requiresStaffRole = body.next === 'admin';
+  if (requiresStaffRole && !['admin', 'professor', 'reseller'].includes(user.role)) {
+    await recordAccountEvent(db, {
+      userId: user.id,
+      email: user.email,
+      eventType: 'login_failure',
+      outcome: 'failure',
+      ip,
+      userAgent,
+      details: { reason: 'staff_role_required', provider: 'firebase_google' },
+    });
+    return c.json({ detail: 'هذا الحساب لا يملك صلاحية الدخول إلى لوحة الإدارة' }, 403);
   }
 
   // Handle 2FA if enabled

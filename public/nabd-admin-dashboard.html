@@ -1160,6 +1160,12 @@
   let currentUser = null;
   let currentRole = 'admin';
   let liveMode = false; // true once a real dev-login/OAuth session exists
+  let firebaseAdminAuth = null;
+  let firebaseAdminProvider = null;
+  let firebaseAdminPopup = null;
+  let firebaseAdminRedirect = null;
+  let firebaseAdminRedirectResult = null;
+  let firebaseAdminSetup = null;
 
   // If we just landed back from /auth/google/callback — a real Google OAuth
   // round trip for this dashboard — the backend hands the result off via a
@@ -1443,26 +1449,71 @@
     });
   }
 
+  async function initAdminFirebaseGoogle(){
+    if (firebaseAdminAuth) return true;
+    if (firebaseAdminSetup) return firebaseAdminSetup;
+    firebaseAdminSetup = (async () => {
+      const res = await fetch(API_BASE_URL + '/auth/firebase/status');
+      const status = res.ok ? await res.json() : null;
+      if (!status?.enabled || !status.config) throw new Error('تسجيل Google غير مهيأ حالياً');
+      const [firebaseAppSdk, firebaseAuthSdk] = await Promise.all([
+        import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js'),
+        import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js'),
+      ]);
+      const appName = `kiur-admin-${status.config.projectId}`;
+      const firebaseApp = firebaseAppSdk.getApps().find(app => app.name === appName)
+        || firebaseAppSdk.initializeApp(status.config, appName);
+      firebaseAdminAuth = firebaseAuthSdk.getAuth(firebaseApp);
+      firebaseAdminAuth.languageCode = 'ar';
+      firebaseAdminProvider = new firebaseAuthSdk.GoogleAuthProvider();
+      firebaseAdminPopup = firebaseAuthSdk.signInWithPopup;
+      firebaseAdminRedirect = firebaseAuthSdk.signInWithRedirect;
+      firebaseAdminRedirectResult = firebaseAuthSdk.getRedirectResult;
+      return true;
+    })().finally(() => { firebaseAdminSetup = null; });
+    return firebaseAdminSetup;
+  }
+
+  async function completeAdminFirebaseSignIn(user){
+    const idToken = await user.getIdToken();
+    const res = await fetch(API_BASE_URL + '/auth/firebase/verify', {
+      method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({idToken, next: 'admin', device_label: navigator.userAgent.slice(0, 50)}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || (!data.access_token && !data.requires_2fa)) throw new Error(data.detail || 'تعذر التحقق من حساب Google');
+    if (data.requires_2fa){
+      promptTotpVerify(data.pending_token, result => finishGoogleSignIn(result.access_token, result.user));
+      return;
+    }
+    finishGoogleSignIn(data.access_token, data.user);
+  }
+
   async function startAdminGoogleSignIn(){
     const btn = document.getElementById('adminGoogleBtn');
     const label = document.getElementById('adminGoogleBtnLabel');
     btn.disabled = true;
     label.textContent = 'جارٍ التحقق من حساب Google...';
     try {
-      const res = await fetch(API_BASE_URL + '/health');
-      if (!res.ok) throw new Error();
+      await initAdminFirebaseGoogle();
+      const flow = await fetch(API_BASE_URL + '/auth/firebase/flow', {method: 'POST', credentials: 'include'});
+      if (!flow.ok) {
+        const data = await flow.json().catch(() => null);
+        throw new Error(data?.detail || 'تعذر إنشاء جلسة Google آمنة');
+      }
+      const useRedirect = matchMedia('(max-width: 768px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (useRedirect) {
+        await firebaseAdminRedirect(firebaseAdminAuth, firebaseAdminProvider);
+        return;
+      }
+      const result = await firebaseAdminPopup(firebaseAdminAuth, firebaseAdminProvider);
+      await completeAdminFirebaseSignIn(result.user);
     } catch (e) {
+      if (e?.code === 'auth/popup-closed-by-user' || e?.code === 'auth/cancelled-popup-request') return;
       btn.disabled = false;
       label.textContent = 'الدخول عبر Google';
-      showToast('تعذّر الاتصال بالخادم — تأكد أنه يعمل ثم أعد المحاولة، أو استخدم البريد وكلمة المرور', 'error');
-      return;
+      showToast(e?.message || 'تعذّر تسجيل الدخول عبر Google', 'error');
     }
-    // Hands off to the backend, which redirects to Google, then back to
-    // this exact page with #access_token=... (or a 2FA/rejection outcome —
-    // see captureGoogleRedirect above) once the visitor is back.
-    // ?next=admin is what tells the callback to send them back HERE
-    // instead of the student app.
-    window.location.href = API_BASE_URL + '/auth/google/login?next=admin';
   }
 
   // Reached once after landing back from Google with a real token — either
@@ -1470,10 +1521,13 @@
   // already refused anything but an admin/professor/reseller account before
   // handing out a token at all, so there's no role check to repeat here.
   async function finishGoogleSignIn(token, user){
+    if (!roles[user?.role]){
+      throw new Error('هذا الحساب لا يملك صلاحية الدخول إلى لوحة الإدارة');
+    }
     authToken = token;
     currentUser = user;
     liveMode = true;
-    enterShell(roles[user.role] ? user.role : 'admin');
+    enterShell(user.role);
   }
 
   async function submitPasswordLogin(){
@@ -4874,7 +4928,20 @@
   } else if (googleSignInError === 'role'){
     showToast('هذا الحساب من نوع "طالب" — لوحة التحكم هذه للأدمن/الدكتور/المندوب فقط', 'error');
   } else {
-    bootSession();
+    (async () => {
+      try {
+        if (await initAdminFirebaseGoogle()) {
+          const result = await firebaseAdminRedirectResult(firebaseAdminAuth);
+          if (result?.user) {
+            await completeAdminFirebaseSignIn(result.user);
+            return;
+          }
+        }
+      } catch (e) {
+        showToast(e?.message || 'تعذّر إكمال تسجيل Google', 'error');
+      }
+      bootSession();
+    })();
   }
 </script>
 </body>
