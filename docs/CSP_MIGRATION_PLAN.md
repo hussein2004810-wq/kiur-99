@@ -5,8 +5,10 @@
 The Worker applies its security headers globally in
 `src/middleware/security-headers.ts`, before the public SPA routes are served
 from `src/routes/static.ts`.  The current policy deliberately retains
-`'unsafe-inline'` in `script-src` and `style-src` because removing it today
-would break the served applications.
+`'unsafe-inline'` in `script-src-attr` and `style-src` because removing it
+today would break the served applications.  The actual inline `<script>`
+elements are now hash-pinned through `script-src-elem`; injected script tags
+are no longer covered by an unrestricted script allowance.
 
 This is a local implementation plan.  It does not authorize a production
 deployment or any Cloudflare configuration change.

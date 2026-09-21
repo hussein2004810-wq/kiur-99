@@ -48,6 +48,7 @@ Status: local remediation complete for the implemented Worker code.  Nothing in 
 - `a4accb2` replaces OAuth redirect JWT fragments with origin-bound, hashed, 60-second, one-time handoff codes.
 - This working-tree follow-up extends the same unapplied `0008` migration so OAuth accounts with 2FA also receive only a handoff code in the redirect fragment.
 - The course lecture-completion endpoint now requires a valid authenticated user and the same server-side course entitlement used for protected video/material access.
+- CSP now pins the two served inline application scripts with SHA-256 hashes through `script-src-elem`; `script-src-attr` remains the explicit temporary boundary for legacy inline event handlers, and a regression test derives the hashes from the served SPA files.
 
 ## Implemented controls
 

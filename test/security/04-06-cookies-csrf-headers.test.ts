@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createTestContext, type TestContext } from '../harness/test-context';
 import { apiRequest } from '../harness/app';
 import app from '../../src/index';
+import { CSP_POLICY } from '../../src/middleware/security-headers';
 
 describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
   let ctx: TestContext;
@@ -106,6 +110,8 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
       expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
       expect(res.headers.get('Content-Security-Policy')).toContain("form-action 'self'");
       expect(res.headers.get('Content-Security-Policy')).toContain('https://accounts.google.com');
+      expect(res.headers.get('Content-Security-Policy')).toContain("script-src-attr 'unsafe-inline'");
+      expect(res.headers.get('Content-Security-Policy')).not.toContain("script-src 'self' 'unsafe-inline'");
       expect(res.headers.get('Content-Security-Policy')).not.toContain('cdn.jsdelivr.net');
       expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
       expect(res.headers.get('X-Frame-Options')).toBe('DENY');
@@ -114,6 +120,18 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
       expect(res.headers.get('Cross-Origin-Opener-Policy')).toBe('same-origin-allow-popups');
       expect(res.headers.get('Cross-Origin-Resource-Policy')).toBe('same-origin');
       expect(res.headers.get('Origin-Agent-Cluster')).toBe('?1');
+    });
+
+    it('security.headers.inline-script-hashes: allows only the served SPA inline scripts', () => {
+      for (const file of ['public/nabd-home-quiz-prototype.html', 'public/nabd-admin-dashboard.html']) {
+        const html = readFileSync(resolve(process.cwd(), file), 'utf8');
+        const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)];
+        for (const script of scripts) {
+          if (!script[1]) continue; // external script tag
+          const hash = createHash('sha256').update(script[1], 'utf8').digest('base64');
+          expect(CSP_POLICY).toContain(`'sha256-${hash}'`);
+        }
+      }
     });
 
     it('security.headers.errors: attaches security headers on 404 responses', async () => {
