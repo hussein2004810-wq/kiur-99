@@ -4604,7 +4604,7 @@
       nameEl.textContent = currentUser.full_name || t('navAccount');
       avatarEl.innerHTML = safeMediaUrl(currentUser.photo_url)
         ? `<img src="${esc(safeMediaUrl(currentUser.photo_url))}" alt="${esc(currentUser.full_name)}" />`
-        : (currentUser.full_name || '').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('');
+        : initials(currentUser.full_name || '');
     } else {
       nameEl.textContent = t('navAccount');
       avatarEl.textContent = '—';
@@ -6127,7 +6127,7 @@
     if (editNameEl) editNameEl.textContent = u.full_name || '—';
     const avatarHtml = safeMediaUrl(u.photo_url)
       ? `<img src="${esc(safeMediaUrl(u.photo_url))}" alt="${esc(u.full_name)}" style="width:100%; height:100%; object-fit:cover;" />`
-      : (u.full_name || '').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('');
+      : initials(u.full_name || '');
     const avatarEl = document.getElementById('accAvatar');
     if (avatarEl) avatarEl.innerHTML = avatarHtml;
     const editAvatarEl = document.getElementById('accEditAvatar');
@@ -8297,7 +8297,7 @@
       const rows = await apiFetch('/api/students/search?q=' + encodeURIComponent(q));
       resultsEl.innerHTML = rows.map(s => `
         <div class="item-card glass" style="cursor:pointer;" onclick="openStudentProfile(${jsArg(s.id)})">
-          <div class="item-icon" style="background:var(--accent-2); color:#fff; font-weight:700; overflow:hidden;">${safeMediaUrl(s.photo_url) ? `<img src="${esc(safeMediaUrl(s.photo_url))}" style="width:100%; height:100%; object-fit:cover;" />` : (s.full_name||'').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('')}</div>
+          <div class="item-icon" style="background:var(--accent-2); color:#fff; font-weight:700; overflow:hidden;">${safeMediaUrl(s.photo_url) ? `<img src="${esc(safeMediaUrl(s.photo_url))}" style="width:100%; height:100%; object-fit:cover;" />` : initials(s.full_name || '')}</div>
           <div class="item-body">
             <div class="item-title">${esc(s.full_name)}</div>
             ${s.caption ? `<div class="item-meta">${esc(s.caption)}</div>` : ''}
@@ -8321,7 +8321,7 @@
       const p = await apiFetch('/api/students/' + id + '/profile');
       document.getElementById('spAvatar').innerHTML = safeMediaUrl(p.photo_url)
         ? `<img src="${esc(safeMediaUrl(p.photo_url))}" style="width:100%; height:100%; object-fit:cover;" />`
-        : (p.full_name || '').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('');
+        : initials(p.full_name || '');
       document.getElementById('spName').textContent = p.full_name;
       document.getElementById('spCaption').textContent = p.caption || '';
       document.getElementById('spRank').textContent = p.rank ? ('#' + p.rank + ' / ' + p.total_ranked) : '—';

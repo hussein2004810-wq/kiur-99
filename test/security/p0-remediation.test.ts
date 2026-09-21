@@ -533,6 +533,9 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       expect(homeHtml).toContain('openProfessor(${jsArg(p.id)})');
       expect(homeHtml).toContain('recordRecentView(\'booklet\',${jsArg(b.id)})');
       expect(homeHtml).toContain("return esc(clean.split(' ').map(w => w[0]).slice(0, 2).join(''));");
+      expect(homeHtml).toContain("initials(currentUser.full_name || '')");
+      expect(homeHtml).toContain("initials(s.full_name || '')");
+      expect(homeHtml).toContain("initials(p.full_name || '')");
       expect(homeHtml).toContain('order.granted_activation_codes.map(c => `<div class="mono" style="font-size:.85rem;">${esc(c)}</div>`).join(\'\')');
       expect(homeHtml).toContain('<span class="mono">${esc(order.id)}</span>');
       expect(homeHtml).toContain('${esc(PRODUCT_TYPE_BADGE[p.type] || p.type)}');
