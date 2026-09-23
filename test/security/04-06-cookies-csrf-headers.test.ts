@@ -159,7 +159,11 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
             const path = new URL(request.url).pathname;
             requestedPaths.push(path);
             return new Response(`asset:${path}`, {
-              headers: { 'Content-Type': 'text/plain', ETag: '"asset-version"' },
+              headers: {
+                'Content-Type': 'text/html',
+                'Content-Security-Policy': "default-src 'none'; script-src 'self'",
+                ETag: '"asset-version"',
+              },
             });
           },
         },
@@ -179,6 +183,8 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
       expect(studentRes.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
       expect(adminRes.headers.get('Cache-Control')).toBe('no-cache');
       expect(studentRes.headers.get('Content-Security-Policy')).toContain("default-src 'self'");
+      expect(adminRes.headers.get('Content-Security-Policy')).toContain('https://www.gstatic.com');
+      expect(studentRes.headers.get('ETag')).toBeNull();
     });
 
     it('security.headers.hsts: attaches HSTS when DEBUG=false', async () => {

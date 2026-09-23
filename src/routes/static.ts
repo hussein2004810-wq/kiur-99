@@ -8,6 +8,18 @@ const SPA_HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
 };
 
+function copySpaResponse(response: Response): Response {
+  // Cloudflare Assets returns HTML with its own default CSP. That policy
+  // overrides the Worker middleware's nonce/hash policy and blocks the app's
+  // inline JavaScript, leaving the whole SPA visibly rendered but inert.
+  // Keep the security headers from the Worker and only transfer asset headers
+  // needed for the document body and cache behavior.
+  const headers = new Headers(SPA_HEADERS);
+  const contentLanguage = response.headers.get('Content-Language');
+  if (contentLanguage) headers.set('Content-Language', contentLanguage);
+  return new Response(response.body, { status: response.status, headers });
+}
+
 export function registerStaticRoutes(app: Hono<AppEnv>) {
   // 1. Health Probe
   app.get('/health', (c) => c.json({ status: 'ok' }));
@@ -32,10 +44,7 @@ export function registerStaticRoutes(app: Hono<AppEnv>) {
       url.pathname = '/nabd-home-quiz-prototype.html';
       const res = await c.env.ASSETS.fetch(new Request(url.toString(), c.req.raw));
       if (res.ok) {
-        const headers = new Headers(res.headers);
-        headers.set('Cache-Control', 'no-cache');
-        headers.set('Content-Type', 'text/html; charset=utf-8');
-        return new Response(res.body, { status: res.status, headers });
+        return copySpaResponse(res);
       }
     }
     return c.html(homeHtml, 200, SPA_HEADERS);
@@ -48,10 +57,7 @@ export function registerStaticRoutes(app: Hono<AppEnv>) {
       url.pathname = '/nabd-admin-dashboard.html';
       const res = await c.env.ASSETS.fetch(new Request(url.toString(), c.req.raw));
       if (res.ok) {
-        const headers = new Headers(res.headers);
-        headers.set('Cache-Control', 'no-cache');
-        headers.set('Content-Type', 'text/html; charset=utf-8');
-        return new Response(res.body, { status: res.status, headers });
+        return copySpaResponse(res);
       }
     }
     return c.html(adminHtml, 200, SPA_HEADERS);
