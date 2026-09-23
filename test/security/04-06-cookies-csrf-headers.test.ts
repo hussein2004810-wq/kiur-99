@@ -129,7 +129,10 @@ describe('Stages 4, 5 & 6: Cookies, CSRF, CORS and Security Headers', () => {
         const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)];
         for (const script of scripts) {
           if (!script[1]) continue; // external script tag
-          const hash = createHash('sha256').update(script[1], 'utf8').digest('base64');
+          // The HTML parser normalizes CRLF/CR to LF before CSP hashes are
+          // checked against an inline script's text content.
+          const normalizedScript = script[1].replace(/\r\n?/g, '\n');
+          const hash = createHash('sha256').update(normalizedScript, 'utf8').digest('base64');
           expect(CSP_POLICY).toContain(`'sha256-${hash}'`);
         }
       }
