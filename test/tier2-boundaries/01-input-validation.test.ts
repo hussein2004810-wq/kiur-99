@@ -36,13 +36,13 @@ describe('Tier 2: Boundary 1 - Input Validation & Malformed Payloads', () => {
     expect(res.status).toBe(400);
   });
 
-  it('B1.4 should return 400 on register with password shorter than 6 characters', async () => {
+  it('B1.4 should return 400 on register with password shorter than 10 characters', async () => {
     const res = await apiRequest(app, 'POST', '/auth/register', {
       body: { email: 'val2@test.com', full_name: 'علي', password: '123' },
     }, ctx);
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.detail).toContain('6');
+    expect(data.detail).toContain('10');
   });
 
   it('B1.5 should return 400 on register with malformed email missing @', async () => {

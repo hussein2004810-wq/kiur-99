@@ -1,0 +1,36 @@
+--- a/src/routes/questions.ts
++++ b/src/routes/questions.ts
+@@ -6,1 +6,1 @@
+-import { eq, desc, and, inArray, like } from 'drizzle-orm';
++import { eq, desc, and, inArray, like, sql } from 'drizzle-orm';
+@@ -65,1 +65,1 @@
+-  const candidates = await db.select().from(schema.questions).limit(25);
++  const candidates = await db.select().from(schema.questions).orderBy(sql`RANDOM()`).limit(25);
+--- a/src/routes/activation.ts
++++ b/src/routes/activation.ts
+@@ -95,12 +95,22 @@
+   if (code.status === 'active') {
+     const attempts = (fullUser.failed_redeem_attempts ?? 0) + 1;
+-    await db.update(schema.users).set({ failed_redeem_attempts: attempts }).where(eq(schema.users.id, user.id));
++    let lockUntil: string | null = null;
++    if (attempts >= MAX_FAILED_REDEEMS) {
++      lockUntil = new Date(Date.now() + REDEEM_LOCKOUT_MINUTES * 60000).toISOString();
++      await db.update(schema.users).set({ failed_redeem_attempts: 0, redeem_locked_until: lockUntil }).where(eq(schema.users.id, user.id));
++    } else {
++      await db.update(schema.users).set({ failed_redeem_attempts: attempts }).where(eq(schema.users.id, user.id));
++    }
++
+     recordAuditEvent({
+       event: 'ACTIVATION_CODE_FAILED',
+       status: 'FAILURE',
+       actorId: user.id,
+       targetId: code.id,
+-      details: { reason: 'already_active' },
++      details: { reason: 'already_active', attempts },
+     });
++
++    if (attempts >= MAX_FAILED_REDEEMS) {
++      return c.json({ detail: 'تم قفل تفعيل الأكواد مؤقتاً لكثرة المحاولات الخاطئة' }, 429);
++    }
+     return c.json({ detail: 'هذا الكود مستخدم بالفعل أو منتهي الصلاحية' }, 400);
+   }

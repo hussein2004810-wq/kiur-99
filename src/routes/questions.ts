@@ -3,7 +3,7 @@
  */
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, desc, and, inArray, like } from 'drizzle-orm';
+import { eq, desc, and, inArray, like, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAuth } from '../middleware/auth';
@@ -62,7 +62,7 @@ questionsRouter.get('/', async (c) => {
 questionsRouter.get('/daily', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
-  const candidates = await db.select().from(schema.questions).limit(25);
+  const candidates = await db.select().from(schema.questions).orderBy(sql`RANDOM()`).limit(25);
   const questions = (await Promise.all(candidates.map(async (q) =>
     (await canReadQuestion(db, user, q)) ? q : null
   ))).filter(Boolean).slice(0, 5) as typeof candidates;

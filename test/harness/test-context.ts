@@ -51,6 +51,7 @@ export interface TestContext {
     CORS_ORIGINS: string;
     FIREBASE_AUTH_PROJECT_ID: string;
     FIREBASE_WEB_API_KEY: string;
+    FIREBASE_WEB_APP_ID: string;
   };
   fixtures: TestFixtures;
   createAuthToken: (userId: string, role?: string, sessionId?: string) => string;
@@ -258,6 +259,7 @@ export async function createTestContext(): Promise<TestContext> {
       CORS_ORIGINS: '*',
       FIREBASE_AUTH_PROJECT_ID: 'kiur-medical-exams-2026',
       FIREBASE_WEB_API_KEY: 'test-firebase-web-api-key',
+      FIREBASE_WEB_APP_ID: '1:506494163234:web:d4dd14edad2d7000adad7b',
     },
     fixtures: {
       sectionId,

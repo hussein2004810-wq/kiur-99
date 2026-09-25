@@ -18,7 +18,7 @@ describe('Legacy Feature Port & Operational Gap Suite', () => {
 
   // ────────────────── A1. Firebase Google Flow & Verification ──────────────────
   describe('A1: Firebase Google Flow & Verification', () => {
-    it('exposes Firebase web configuration only when both project and API key are configured', async () => {
+    it('exposes complete Firebase web configuration only when its required app identifiers are configured', async () => {
       const res = await apiRequest(app, 'GET', '/auth/firebase/status', {}, ctx);
       expect(res.status).toBe(200);
       await expect(res.json()).resolves.toMatchObject({
@@ -27,6 +27,7 @@ describe('Legacy Feature Port & Operational Gap Suite', () => {
           projectId: 'kiur-medical-exams-2026',
           apiKey: 'test-firebase-web-api-key',
           authDomain: 'kiur-medical-exams-2026.firebaseapp.com',
+          appId: '1:506494163234:web:d4dd14edad2d7000adad7b',
         },
       });
     });

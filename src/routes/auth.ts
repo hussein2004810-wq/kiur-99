@@ -9,7 +9,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, ne, inArray, desc, isNotNull, isNull, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
-import { requireAuth, startNewSession } from '../middleware/auth';
+import { requireAuth, startNewSession, authenticateToken } from '../middleware/auth';
 import {
   hashPassword,
   verifyPassword,
@@ -48,6 +48,7 @@ import { recordAuditEvent } from '../services/audit';
 import { verifyFirebaseGoogleToken, FirebaseAuthError } from '../services/firebase';
 import { verifyGoogleIdentityCredential, GoogleIdentityError } from '../services/google-identity';
 import { recordAccountEvent } from '../services/account-events';
+import { claimBootstrapAdmin } from '../services/bootstrap-admin';
 
 export const authRouter = new Hono<AppEnv>();
 
@@ -263,6 +264,12 @@ authRouter.post('/google/verify', googleIdentityRateLimiter, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   let user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
   if (user) {
+    if (user.google_sub && user.google_sub !== sub) {
+      return c.json({ detail: 'هذا الحساب مرتبط بحساب Google مختلف مسبقاً' }, 409);
+    }
+    if (user.role !== 'student' && !user.google_sub) {
+      return c.json({ detail: 'الحسابات ذات الصلاحيات المرتفعة لا تقبل الربط التلقائي عبر Google. يرجى تسجيل الدخول بكلمة المرور والمصادقة الثنائية.' }, 403);
+    }
     const patch: Partial<typeof schema.users.$inferInsert> = {};
     if (!user.google_sub && sub) patch.google_sub = sub;
     if (!user.photo_url && picture) patch.photo_url = picture;
@@ -376,6 +383,12 @@ authRouter.get('/google/callback', async (c) => {
   // Find or create user
   let user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
   if (user) {
+    if (user.google_sub && user.google_sub !== sub) {
+      return c.redirect(`${redirectBase}#google_error=conflict`);
+    }
+    if (user.role !== 'student' && !user.google_sub) {
+      return c.redirect(`${redirectBase}#google_error=staff_link_required`);
+    }
     const patch: Partial<typeof schema.users.$inferInsert> = {};
     if (!user.google_sub) patch.google_sub = sub;
     if (!user.email_verified_at) patch.email_verified_at = new Date().toISOString();
@@ -473,13 +486,14 @@ authRouter.get('/firebase/status', (c) => {
   const projectId = c.env.FIREBASE_AUTH_PROJECT_ID?.trim();
   const apiKey = c.env.FIREBASE_WEB_API_KEY?.trim();
   const authDomain = c.env.FIREBASE_AUTH_DOMAIN?.trim() || (projectId ? `${projectId}.firebaseapp.com` : '');
-  const enabled = Boolean(projectId && apiKey && authDomain);
+  const appId = c.env.FIREBASE_WEB_APP_ID?.trim();
+  const enabled = Boolean(projectId && apiKey && authDomain && appId);
 
   // Firebase web configuration is intentionally public. Trust is established
   // only by the signed ID token verified on /firebase/verify below.
   return c.json({
     enabled,
-    config: enabled ? { apiKey, authDomain, projectId } : null,
+    config: enabled ? { apiKey, authDomain, projectId, appId } : null,
   });
 });
 
@@ -540,6 +554,10 @@ authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
     return c.json({ detail: 'فشل التحقق من هوية Google' }, 500);
   }
 
+  if (!domainAllowed(fbUser.email, c.env.ALLOWED_UNIVERSITY_DOMAINS ?? '')) {
+    return c.json({ detail: 'نطاق البريد الإلكتروني غير مسموح به في النظام' }, 403);
+  }
+
   const db = drizzle(c.env.DB, { schema });
   const ip = c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '127.0.0.1';
   const userAgent = c.req.header('user-agent');
@@ -559,15 +577,53 @@ authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
       .get();
 
     if (user) {
+      // 1. Conflict Check: Reject if account is already linked to a different Firebase UID
+      if (user.firebase_uid && user.firebase_uid !== fbUser.uid) {
+        await recordAccountEvent(db, {
+          userId: user.id,
+          email: user.email,
+          eventType: 'login_failure',
+          outcome: 'failure',
+          ip,
+          userAgent,
+          details: { reason: 'firebase_uid_conflict', provider: 'firebase_google' },
+        });
+        return c.json({ detail: 'هذا الحساب مرتبط بحساب Google/Firebase آخر مسبقاً' }, 409);
+      }
+
+      // 2. Elevated Role Check: Never silently auto-link unlinked elevated accounts
+      // (Unless it is the bootstrap admin claim for BOOTSTRAP_ADMIN_EMAIL)
+      const isBootstrapCandidate = Boolean(
+        c.env.BOOTSTRAP_ADMIN_EMAIL &&
+        fbUser.email.trim().toLowerCase() === c.env.BOOTSTRAP_ADMIN_EMAIL.trim().toLowerCase()
+      );
+
+      if (user.role !== 'student' && !user.firebase_uid && !isBootstrapCandidate) {
+        await recordAccountEvent(db, {
+          userId: user.id,
+          email: user.email,
+          eventType: 'login_failure',
+          outcome: 'failure',
+          ip,
+          userAgent,
+          details: { reason: 'elevated_role_link_rejected', provider: 'firebase_google' },
+        });
+        return c.json({ detail: 'الحسابات ذات الصلاحيات المرتفعة لا تقبل الربط التلقائي عبر تسجيل الدخول الخارجي. يرجى استخدام كلمة المرور والمصادقة الثنائية.' }, 403);
+      }
+
       // Link existing user
+      const patch: Partial<typeof schema.users.$inferInsert> = {
+        firebase_uid: fbUser.uid,
+        email_verified_at: user.email_verified_at || new Date().toISOString(),
+      };
+      if (!user.photo_url && fbUser.photoUrl) {
+        patch.photo_url = fbUser.photoUrl;
+      }
       await db
         .update(schema.users)
-        .set({
-          firebase_uid: fbUser.uid,
-          email_verified_at: user.email_verified_at || new Date().toISOString(),
-        })
+        .set(patch)
         .where(eq(schema.users.id, user.id));
-      user.firebase_uid = fbUser.uid;
+      user = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).get();
     }
   }
 
@@ -596,6 +652,28 @@ authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
       ip,
       userAgent,
       details: { provider: 'firebase_google' },
+    });
+  }
+
+  // Only the explicitly configured, Firebase-verified owner can claim the
+  // first admin role. The conditional DB update closes the bootstrap forever
+  // once an administrator exists, including under concurrent sign-ins.
+  const claimedBootstrapAdmin = await claimBootstrapAdmin(
+    c.env.DB,
+    user.id,
+    fbUser.email,
+    c.env.BOOTSTRAP_ADMIN_EMAIL,
+  );
+  if (claimedBootstrapAdmin) {
+    user = (await db.select().from(schema.users).where(eq(schema.users.id, user.id)).get())!;
+    recordAuditEvent({
+      event: 'ADMIN_ROLE_CHANGED',
+      status: 'SUCCESS',
+      actorId: user.id,
+      targetId: user.id,
+      ip,
+      userAgent,
+      details: { from: 'student', to: 'admin', reason: 'bootstrap_email_first_admin' },
     });
   }
 
@@ -992,6 +1070,12 @@ authRouter.post('/logout', requireAuth, async (c) => {
 authRouter.post('/2fa/setup', requireAuth, async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const user = c.get('user')!;
+  const dbUser = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).get();
+  if (dbUser?.totp_enabled) {
+    return c.json({
+      detail: 'المصادقة الثنائية مفعلة بالفعل على هذا الحساب. يجب تعطيلها أولاً عبر رمز التحقق الحالي قبل إعادة الإعداد.',
+    }, 400);
+  }
   const secret = await generateTotpSecret();
   await db.update(schema.users).set({ totp_secret: secret }).where(eq(schema.users.id, user.id));
   const uri = `otpauth://totp/Nabd:${user.email}?secret=${secret}&issuer=Nabd`;
@@ -1014,17 +1098,22 @@ authRouter.post('/2fa/verify', twoFaVerifyRateLimiter, async (c) => {
   // Case 1: Authenticated user enabling 2FA on their own account
   if (authHeader && authHeader.startsWith('Bearer ') && !body.pending_token) {
     const token = authHeader.substring(7).trim();
-    const payload = await decodeAccessToken(token, jwtSecret);
-    if (!payload?.sub) return c.json({ detail: 'رمز الوصول غير صالح' }, 401);
+    const authResult = await authenticateToken(db, token, jwtSecret);
+    if (!authResult.success) {
+      return c.json({ detail: authResult.detail }, authResult.status);
+    }
+    const dbUser = await db.select().from(schema.users).where(eq(schema.users.id, authResult.user.id)).get();
+    if (!dbUser) return c.json({ detail: 'المستخدم غير موجود' }, 404);
+    if (dbUser.totp_enabled) {
+      return c.json({ detail: 'المصادقة الثنائية مفعلة بالفعل على هذا الحساب' }, 400);
+    }
+    if (!dbUser.totp_secret) return c.json({ detail: 'لم يتم تهيئة المصادقة الثنائية' }, 400);
 
-    const user = await db.select().from(schema.users).where(eq(schema.users.id, payload.sub)).get();
-    if (!user || !user.totp_secret) return c.json({ detail: 'لم يتم تهيئة المصادقة الثنائية' }, 400);
-
-    const valid = await verifyTotp(user.totp_secret, body.code);
+    const valid = await verifyTotp(dbUser.totp_secret, body.code);
     if (!valid) return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
 
-    await db.update(schema.users).set({ totp_enabled: true }).where(eq(schema.users.id, user.id));
-    recordAuditEvent({ event: 'AUTH_2FA_ENABLED', status: 'SUCCESS', actorId: user.id });
+    await db.update(schema.users).set({ totp_enabled: true }).where(eq(schema.users.id, dbUser.id));
+    recordAuditEvent({ event: 'AUTH_2FA_ENABLED', status: 'SUCCESS', actorId: dbUser.id });
     return c.json({ ok: true, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
   }
 
@@ -1119,6 +1208,7 @@ authRouter.post('/2fa/enable', requireAuth, async (c) => {
   if (!body || !body.code) return c.json({ detail: 'رمز التحقق مطلوب' }, 400);
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
+  if (user?.totp_enabled) return c.json({ detail: 'المصادقة الثنائية مفعلة بالفعل على هذا الحساب' }, 400);
   if (!user?.totp_secret) return c.json({ detail: 'لم يتم تهيئة المصادقة الثنائية' }, 400);
   if (!(await verifyTotp(user.totp_secret, body.code))) return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
 

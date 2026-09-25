@@ -94,14 +94,25 @@ activationRouter.post('/redeem', redeemRateLimiter, async (c) => {
 
   if (code.status === 'active') {
     const attempts = (fullUser.failed_redeem_attempts ?? 0) + 1;
-    await db.update(schema.users).set({ failed_redeem_attempts: attempts }).where(eq(schema.users.id, user.id));
+    let lockUntil: string | null = null;
+    if (attempts >= MAX_FAILED_REDEEMS) {
+      lockUntil = new Date(Date.now() + REDEEM_LOCKOUT_MINUTES * 60000).toISOString();
+      await db.update(schema.users).set({ failed_redeem_attempts: 0, redeem_locked_until: lockUntil }).where(eq(schema.users.id, user.id));
+    } else {
+      await db.update(schema.users).set({ failed_redeem_attempts: attempts }).where(eq(schema.users.id, user.id));
+    }
+
     recordAuditEvent({
       event: 'ACTIVATION_CODE_FAILED',
       status: 'FAILURE',
       actorId: user.id,
       targetId: code.id,
-      details: { reason: 'already_active' },
+      details: { reason: 'already_active', attempts },
     });
+
+    if (attempts >= MAX_FAILED_REDEEMS) {
+      return c.json({ detail: 'تم قفل تفعيل الأكواد مؤقتاً لكثرة المحاولات الخاطئة' }, 429);
+    }
     return c.json({ detail: 'هذا الكود مستخدم بالفعل أو منتهي الصلاحية' }, 400);
   }
 

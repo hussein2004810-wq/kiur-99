@@ -3,3 +3,5 @@
 JWT_SECRET=dev-secret-change-me-to-a-very-long-and-secure-random-token-nabd-2026
 GOOGLE_CLIENT_SECRET=
 SMTP_PASSWORD=
+# Firebase Web App ID is public client configuration, not a secret.
+FIREBASE_WEB_APP_ID=1:506494163234:web:d4dd14edad2d7000adad7b

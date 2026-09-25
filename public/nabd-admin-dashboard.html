@@ -1495,24 +1495,39 @@
     btn.disabled = true;
     label.textContent = 'جارٍ التحقق من حساب Google...';
     try {
-      await initAdminFirebaseGoogle();
+      if (!firebaseAdminAuth) await initAdminFirebaseGoogle();
+      // Invoke the popup from the click handler before any network await.
+      let result;
+      try {
+        result = await firebaseAdminPopup(firebaseAdminAuth, firebaseAdminProvider);
+      } catch (popupError) {
+        // Avoid redirect fallback: this Cloudflare-hosted app does not proxy
+        // Firebase's auth helper on its own origin, so partitioned browser
+        // storage can discard the result when Google redirects back.
+        throw popupError;
+      }
       const flow = await fetch(API_BASE_URL + '/auth/firebase/flow', {method: 'POST', credentials: 'include'});
       if (!flow.ok) {
         const data = await flow.json().catch(() => null);
         throw new Error(data?.detail || 'تعذر إنشاء جلسة Google آمنة');
       }
-      const useRedirect = matchMedia('(max-width: 768px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (useRedirect) {
-        await firebaseAdminRedirect(firebaseAdminAuth, firebaseAdminProvider);
-        return;
-      }
-      const result = await firebaseAdminPopup(firebaseAdminAuth, firebaseAdminProvider);
       await completeAdminFirebaseSignIn(result.user);
     } catch (e) {
       if (e?.code === 'auth/popup-closed-by-user' || e?.code === 'auth/cancelled-popup-request') return;
+      const serverMessage = e?.customData?._tokenResponse?.error?.message;
+      console.error('[firebase-google-admin] sign-in failed', JSON.stringify({
+        code: e?.code || 'unknown',
+        serverMessage: typeof serverMessage === 'string' ? serverMessage.slice(0, 180) : undefined,
+      }));
       btn.disabled = false;
       label.textContent = 'الدخول عبر Google';
-      showToast(e?.message || 'تعذّر تسجيل الدخول عبر Google', 'error');
+      const code = e?.code || '';
+      const message = code === 'auth/popup-blocked'
+        ? 'المتصفح حظر نافذة Google. اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد المحاولة.'
+        : code === 'auth/internal-error'
+          ? 'تعذّر فتح مصادقة Google داخل النافذة. جرّب تحديث الصفحة أو متصفحاً آخر.'
+          : (e?.message || `تعذّر تسجيل الدخول عبر Google (${code || 'خطأ غير معروف'})`);
+      showToast(message, 'error');
     }
   }
 
@@ -4931,14 +4946,23 @@
     (async () => {
       try {
         if (await initAdminFirebaseGoogle()) {
-          const result = await firebaseAdminRedirectResult(firebaseAdminAuth);
-          if (result?.user) {
-            await completeAdminFirebaseSignIn(result.user);
-            return;
+          try {
+            const result = await firebaseAdminRedirectResult(firebaseAdminAuth);
+            if (result?.user) {
+              await completeAdminFirebaseSignIn(result.user);
+              return;
+            }
+          } catch (e) {
+            console.error('[firebase-google-admin] redirect-result probe failed', e?.code || 'unknown');
+            if (e?.code === 'auth/unauthorized-domain') {
+              showToast('نطاق الموقع غير مضاف إلى النطاقات المسموحة في Firebase', 'error');
+            } else {
+              showToast('عاد Google لكن تعذّر إكمال تسجيل الدخول. حدّث الصفحة ثم حاول مرة أخرى.', 'error');
+            }
           }
         }
       } catch (e) {
-        showToast(e?.message || 'تعذّر إكمال تسجيل Google', 'error');
+        // Firebase module initialization is retried when the sign-in button is pressed.
       }
       bootSession();
     })();

@@ -30,6 +30,8 @@ DEBUG = "false"
 # Never store production secrets in plaintext in version control.
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRES_MINUTES = "20160"
+# In real production, BOOTSTRAP_ADMIN_EMAIL must be migrated to a Cloudflare secret
+# via `wrangler secret put BOOTSTRAP_ADMIN_EMAIL` rather than committed in plaintext.
 BOOTSTRAP_ADMIN_EMAIL = "hussein2004810@gmail.com"
 # The public Worker serves both the SPA and API on this same origin.  Keep CORS
 # explicit in production; add custom domains here when they are provisioned.
@@ -48,3 +50,5 @@ SMTP_USER = ""
 SMTP_PASSWORD = ""
 SMTP_FROM = "no-reply@kiur.edu"
 SMTP_FROM_NAME = "Kiur"
+# Public Firebase Web App identifier (required alongside API key and project ID).
+FIREBASE_WEB_APP_ID = "1:506494163234:web:d4dd14edad2d7000adad7b"

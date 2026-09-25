@@ -30,6 +30,7 @@ export interface AppBindings {
   FIREBASE_AUTH_PROJECT_ID?: string;
   FIREBASE_WEB_API_KEY?: string;
   FIREBASE_AUTH_DOMAIN?: string;
+  FIREBASE_WEB_APP_ID?: string;
   ASSETS?: Fetcher;
 }
 

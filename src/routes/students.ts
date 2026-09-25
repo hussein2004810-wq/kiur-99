@@ -41,8 +41,10 @@ async function canViewStudentProfile(
   return false;
 }
 
-// GET /api/students/leaderboard — public
-studentsRouter.get('/leaderboard', async (c) => {
+studentsRouter.use('*', requireAuth);
+
+// GET /api/students/leaderboard — protected
+studentsRouter.get('/leaderboard', requireAuth, async (c) => {
   const res = await c.env.DB.prepare(`
     SELECT u.id, u.full_name, COUNT(sa.id) as answers_count, SUM(sa.is_correct) as score
     FROM users u
@@ -55,8 +57,6 @@ studentsRouter.get('/leaderboard', async (c) => {
   const ranked = ((res.results ?? []) as any[]).map((r, i) => ({ ...r, rank: i + 1 }));
   return c.json(ranked);
 });
-
-studentsRouter.use('*', requireAuth);
 
 // GET /api/students — search with pagination and privacy protection
 studentsRouter.get('/', async (c) => {

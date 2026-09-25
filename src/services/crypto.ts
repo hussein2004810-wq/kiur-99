@@ -148,6 +148,11 @@ export async function verifyTotp(
   return false;
 }
 
+export async function generateTotpCode(secret: string): Promise<string> {
+  const current = Math.floor(Date.now() / 1000 / TOTP_PERIOD);
+  return await totpCodeAt(secret, current);
+}
+
 export async function generateTotpSecret(): Promise<string> {
   const bytes = crypto.getRandomValues(new Uint8Array(20));
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
