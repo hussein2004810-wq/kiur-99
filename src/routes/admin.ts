@@ -8,7 +8,8 @@ import { eq, inArray, desc, and, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppEnv } from '../types';
 import { requireAdmin, requireAuth } from '../middleware/auth';
-import { hashPassword } from '../services/crypto';
+import { verifyPassword, generateResetToken, hashResetToken } from '../services/crypto';
+import { emailConfigured, sendEmail } from '../services/mailer';
 import { createStorageService, safeUploadNameForDetectedType, mediaUrl, IMAGE_EXTS, PDF_EXTS, VIDEO_EXTS, MAX_UPLOAD_BYTES, MAX_DIRECT_UPLOAD_BYTES, validateFileSignature } from '../services/storage';
 import { recordAuditEvent } from '../services/audit';
 
@@ -182,6 +183,10 @@ adminRouter.post('/users', async (c) => {
   const body = await c.req.json<{ email: string; full_name: string; role: string; password?: string; subject_id?: string; title?: string }>();
 
   if (!VALID_ROLES.has(body.role)) return c.json({ detail: 'دور غير صالح' }, 400);
+  if (!body.email?.trim() || !body.full_name?.trim()) return c.json({ detail: 'الاسم والبريد مطلوبان' }, 400);
+  if (body.password) return c.json({ detail: 'أنشئ الحساب بدعوة بريدية ليحدد صاحبه كلمة المرور بنفسه' }, 400);
+  const mailerConfig = { smtpHost: c.env.SMTP_HOST, smtpUser: c.env.SMTP_USER, smtpPassword: c.env.SMTP_PASSWORD, smtpFrom: c.env.SMTP_FROM, smtpFromName: c.env.SMTP_FROM_NAME };
+  if (!emailConfigured(mailerConfig)) return c.json({ detail: 'خدمة البريد غير مهيأة لإرسال دعوات المستخدمين' }, 503);
   const existing = await db.select().from(schema.users).where(eq(schema.users.email, body.email.trim())).get();
   if (existing) return c.json({ detail: 'البريد الإلكتروني مستخدم مسبقاً' }, 400);
 
@@ -192,12 +197,15 @@ adminRouter.post('/users', async (c) => {
   }
 
   const userId = schema.genId();
+  const inviteToken = generateResetToken();
   await db.insert(schema.users).values({
     id: userId,
     email: body.email.trim(),
     full_name: body.full_name.trim(),
     role: body.role as 'student' | 'professor' | 'admin' | 'reseller',
-    password_hash: body.password ? await hashPassword(body.password) : null,
+    password_hash: null,
+    reset_token_hash: await hashResetToken(inviteToken),
+    reset_token_expires_at: new Date(Date.now() + 24 * 3600000).toISOString(),
   });
 
   if (body.role === 'professor') {
@@ -210,7 +218,15 @@ adminRouter.post('/users', async (c) => {
   }
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
-  return c.json(user ? adminUserOut(user) : null);
+  const link = `${new URL(c.req.url).origin}${body.role === 'student' ? '/' : '/admin'}#reset_token=${encodeURIComponent(inviteToken)}`;
+  const sent = await sendEmail(mailerConfig, body.email.trim(), 'دعوة إلى Kiur',
+    `مرحباً ${body.full_name.trim()}،\n\nدُعيت لإنشاء حساب في Kiur. افتح الرابط التالي واختر كلمة مرورك خلال 24 ساعة:\n${link}\n\nإذا لم تتوقع الدعوة فتجاهل هذه الرسالة.`);
+  if (!sent) {
+    if (body.role === 'professor') await db.delete(schema.professorProfiles).where(eq(schema.professorProfiles.user_id, userId));
+    await db.delete(schema.users).where(eq(schema.users.id, userId));
+    return c.json({ detail: 'تعذر إرسال الدعوة؛ لم يُنشأ الحساب. تحقق من إعداد خدمة البريد ثم أعد المحاولة.' }, 502);
+  }
+  return c.json(user ? { ...adminUserOut(user), invitation_sent: true } : null);
 });
 
 adminRouter.put('/users/:user_id', async (c) => {
@@ -221,12 +237,12 @@ adminRouter.put('/users/:user_id', async (c) => {
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
   if (!user) return c.json({ detail: 'المستخدم غير موجود' }, 404);
   if (!VALID_ROLES.has(body.role)) return c.json({ detail: 'دور غير صالح' }, 400);
+  if (body.password) return c.json({ detail: 'لا يستطيع المدير تعيين كلمة مرور المستخدم؛ استخدم مسار الاستعادة البريدي' }, 400);
 
   const dup = await db.select().from(schema.users).where(eq(schema.users.email, body.email.trim())).get();
   if (dup && dup.id !== userId) return c.json({ detail: 'البريد الإلكتروني مستخدم مسبقاً من حساب آخر' }, 400);
 
   const updates: Record<string, unknown> = { email: body.email.trim(), full_name: body.full_name.trim(), role: body.role };
-  if (body.password) updates.password_hash = await hashPassword(body.password);
   await db.update(schema.users).set(updates).where(eq(schema.users.id, userId));
 
   recordAuditEvent({
@@ -424,17 +440,34 @@ adminRouter.post('/users/:user_id/unban', async (c) => {
 adminRouter.post('/users/:user_id/2fa/reset', async (c) => {
   const db = drizzle(c.env.DB, { schema });
   const userId = c.req.param('user_id');
+  const actorId = c.get('user')!.id;
+  const body = await c.req.json<{ password?: string; confirm_email?: string; reason?: string }>().catch(() => ({} as any));
+  if (userId === actorId) return c.json({ detail: 'عطّل تحقق حسابك برمز المصادقة الحالي' }, 403);
+  const actor = await db.select().from(schema.users).where(eq(schema.users.id, actorId)).get();
+  if (!actor?.password_hash || !body?.password || !(await verifyPassword(body.password, actor.password_hash))) {
+    return c.json({ detail: 'كلمة مرور المدير مطلوبة لتأكيد الاستعادة' }, 403);
+  }
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
   if (!user) return c.json({ detail: 'المستخدم غير موجود' }, 404);
-  await db.update(schema.users).set({ totp_enabled: false, totp_secret: null }).where(eq(schema.users.id, userId));
+  if (body.confirm_email?.trim().toLowerCase() !== user.email.toLowerCase() || !body.reason?.trim()) {
+    return c.json({ detail: 'أكّد بريد صاحب الحساب واكتب سبب الاستعادة' }, 400);
+  }
+  await db.batch([
+    db.update(schema.users).set({ totp_enabled: false, totp_secret: null, totp_pending_secret: null }).where(eq(schema.users.id, userId)),
+    db.update(schema.userSessions).set({ is_active: false }).where(eq(schema.userSessions.user_id, userId)),
+  ]);
 
   recordAuditEvent({
     event: 'AUTH_2FA_DISABLED',
     status: 'SUCCESS',
-    actorId: c.get('user')?.id,
+    actorId,
     targetId: userId,
-    details: { resetByAdmin: true },
+    details: { resetByAdmin: true, reason: body.reason.trim().slice(0, 200) },
   });
+
+  const mailerConfig = { smtpHost: c.env.SMTP_HOST, smtpUser: c.env.SMTP_USER, smtpPassword: c.env.SMTP_PASSWORD, smtpFrom: c.env.SMTP_FROM, smtpFromName: c.env.SMTP_FROM_NAME };
+  if (emailConfigured(mailerConfig)) await sendEmail(mailerConfig, user.email, 'تمت إعادة تعيين التحقق بخطوتين في Kiur',
+    'تمت إعادة تعيين التحقق بخطوتين لحسابك بواسطة الإدارة وإغلاق جلساتك النشطة. سجّل الدخول وأعِد تفعيل التحقق بخطوتين. إذا لم تطلب ذلك فتواصل مع إدارة المنصة فوراً.');
 
   return c.json({ ok: true });
 });

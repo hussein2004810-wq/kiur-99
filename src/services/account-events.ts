@@ -7,6 +7,7 @@ export type AccountEventType =
   | 'login_success'
   | 'login_failure'
   | 'google_login'
+  | 'google_link'
   | 'logout'
   | 'logout_all'
   | 'session_revoked'

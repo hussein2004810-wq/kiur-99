@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   plugins: [
@@ -27,7 +28,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(path.dirname(fileURLToPath(import.meta.url)), "./src"),
     },
   },
 });

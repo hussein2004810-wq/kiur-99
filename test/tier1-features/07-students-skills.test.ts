@@ -139,7 +139,7 @@ describe('Tier 1: Feature 7 - Student Workspace, Skills & Stats', () => {
   });
 
   it('7.10 should return overall student leaderboard rankings via GET /api/students/leaderboard', async () => {
-    const res = await apiRequest(app, 'GET', '/api/students/leaderboard', {}, ctx);
+    const res = await apiRequest(app, 'GET', '/api/students/leaderboard', { token: ctx.fixtures.users.student.token }, ctx);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);

@@ -99,6 +99,7 @@ describe('Tier 1: Feature 1 - Auth & Session Management', () => {
     const sess = await ctx.createSession(ctx.fixtures.users.student.id, 'iPad Air');
     const res = await apiRequest(app, 'POST', '/auth/session/restore', {
       cookie: `nabd_session=${sess.id}`,
+      headers: { Origin: 'http://localhost' },
     }, ctx);
 
     expect(res.status).toBe(200);

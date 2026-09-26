@@ -341,8 +341,8 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
       }
     });
 
-    it('marks an existing password account verified only after a verified OAuth callback', async () => {
-      await ctx.db.prepare("INSERT INTO users (id, email, full_name, password_hash, role) VALUES ('usr_oauth_upgrade', 'oauth-upgrade@nabd.app', 'طالب OAuth', 'hash', 'student')").run();
+    it('marks an already linked account verified only after a verified OAuth callback', async () => {
+      await ctx.db.prepare("INSERT INTO users (id, email, full_name, password_hash, role, google_sub) VALUES ('usr_oauth_upgrade', 'oauth-upgrade@nabd.app', 'طالب OAuth', 'hash', 'student', 'google_verified_upgrade')").run();
       const fetchMock = vi.spyOn(globalThis, 'fetch')
         .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'google_access_token' }), { status: 200 }))
         .mockResolvedValueOnce(new Response(JSON.stringify({
@@ -391,7 +391,7 @@ describe('P0 Security Vulnerability Remediation Suite', () => {
     });
 
     it('keeps OAuth 2FA pending tokens out of the redirect fragment', async () => {
-      await ctx.db.prepare("INSERT INTO users (id, email, full_name, password_hash, role, email_verified_at, totp_enabled, totp_secret) VALUES ('usr_oauth_2fa', 'oauth-2fa@nabd.app', 'طالب OAuth 2FA', 'hash', 'student', ?, 1, 'JBSWY3DPEHPK3PXP')")
+      await ctx.db.prepare("INSERT INTO users (id, email, full_name, password_hash, role, email_verified_at, totp_enabled, totp_secret, google_sub) VALUES ('usr_oauth_2fa', 'oauth-2fa@nabd.app', 'طالب OAuth 2FA', 'hash', 'student', ?, 1, 'JBSWY3DPEHPK3PXP', 'google_oauth_2fa')")
         .bind(new Date().toISOString()).run();
       const fetchMock = vi.spyOn(globalThis, 'fetch')
         .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'google_access_token' }), { status: 200 }))

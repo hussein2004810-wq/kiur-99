@@ -3258,7 +3258,7 @@
           <span class="display" style="font-size:1.1rem; font-weight:700;">Kiur</span>
         </div>
         <div class="auth-title" data-i18n="resetTitle">كلمة مرور جديدة</div>
-        <div class="auth-sub" data-i18n="resetSub">اختر كلمة مرور جديدة لحسابك — 8 أحرف على الأقل.</div>
+        <div class="auth-sub" data-i18n="resetSub">اختر كلمة مرور جديدة لحسابك — 10 أحرف على الأقل.</div>
 
         <div class="form-field"><input id="resetPassword" type="password" placeholder="كلمة المرور الجديدة" data-i18n-placeholder="newPasswordPlaceholder" /></div>
         <div class="form-field"><input id="resetPasswordConfirm" type="password" placeholder="أعد كتابة كلمة المرور" data-i18n-placeholder="repeatPasswordPlaceholder" /></div>
@@ -3459,16 +3459,20 @@
         <div class="heading" id="authHeading" data-i18n="welcomeBack">Sign In</div>
         <form class="form" onsubmit="event.preventDefault(); submitEmailAuth();" novalidate>
           <div id="authNameField" style="display:none;">
-            <input class="input" id="authName" type="text" autocomplete="name" placeholder="Full Name" data-i18n-placeholder="fullName" />
+            <label for="authName">الاسم الكامل</label>
+            <input class="input" id="authName" type="text" autocomplete="name" placeholder="الاسم الكامل" data-i18n-placeholder="fullName" />
           </div>
-          <input class="input" id="authEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="E-mail" data-i18n-placeholder="enterEmail" required />
-          <input class="input" id="authPassword" type="password" autocomplete="current-password" placeholder="Password" data-i18n-placeholder="enterPassword" required />
+          <label for="authEmail">البريد الإلكتروني</label>
+          <input class="input" id="authEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="أدخل بريدك الإلكتروني" data-i18n-placeholder="enterEmail" required />
+          <label for="authPassword">كلمة المرور</label>
+          <input class="input" id="authPassword" type="password" autocomplete="current-password" placeholder="أدخل كلمة المرور" data-i18n-placeholder="enterPassword" required />
           
-          <span class="forgot-password">
-            <button type="button" onclick="goToForgotPassword()" data-i18n="forgotPassword">Forgot Password ?</button>
+          <span class="forgot-password" id="authForgotWrap">
+            <button type="button" onclick="goToForgotPassword()" data-i18n="forgotPassword">نسيت كلمة المرور؟</button>
           </span>
 
-          <div id="authFormMsg" class="signin-msg" style="display:none; margin-top:12px;"></div>
+          <div id="authFormMsg" class="signin-msg" role="status" aria-live="polite" style="display:none; margin-top:12px;"></div>
+          <button type="button" id="resendVerificationBtn" class="link-muted" style="display:none" onclick="resendAuthVerification()">إعادة إرسال رسالة التوثيق</button>
 
           <button class="login-button" type="submit" id="authSubmitBtn" data-i18n="login">Sign In</button>
         </form>
@@ -3479,107 +3483,12 @@
         </p>
 
         <div class="social-account-container">
-          <span class="title" data-i18n="orWith">Or Sign in with</span>
+          <span class="title" data-i18n="orWith">أو عبر</span>
           <div class="social-accounts">
             <div id="googleBtn" aria-live="polite" aria-label="تسجيل الدخول عبر Google"></div>
           </div>
         </div>
 
-        <span class="agreement" data-i18n="termsNotice">
-          <a href="#">Learn user licence agreement</a>
-        </span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ NATIVE GOOGLE ACCOUNT CHOOSER MODAL ============ -->
-  <div id="googleAccountChooserModal" class="google-modal-backdrop" style="display:none;" onclick="if(event.target === this) closeGoogleChooser()">
-    <div class="google-dialog-card" role="dialog" aria-modal="true" aria-labelledby="googleChooserTitle">
-      <button type="button" class="google-close-btn" onclick="closeGoogleChooser()" aria-label="إغلاق">
-        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-      </button>
-
-      <!-- VIEW A: List of Accounts (اختيار حساب) -->
-      <div id="googleChooserViewAccounts">
-        <div class="google-header">
-          <svg class="google-g-logo" viewBox="0 0 48 48" width="34" height="34">
-            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-          </svg>
-          <h2 id="googleChooserTitle" class="google-title">اختيار حساب</h2>
-          <p class="google-sub">للمتابعة إلى <strong style="color:#202124;">KIUR منصة نبض الطبية</strong></p>
-        </div>
-
-        <div class="google-accounts-list" id="googleAccountsList">
-          <!-- Populated dynamically via JS -->
-        </div>
-
-        <div class="google-action-row">
-          <button type="button" class="google-add-account-btn" onclick="showGoogleEmailInputView()">
-            <div class="google-add-icon">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-            </div>
-            <span>استخدام حساب Google آخر</span>
-          </button>
-        </div>
-
-        <div class="google-footer-notice">
-          ستشارك Google اسمك وعنوان بريدك الإلكتروني وصورة ملفك الشخصي مع منصة KIUR الطبية.
-        </div>
-      </div>
-
-      <!-- VIEW B: New Account / First-time Gmail Input (تسجيل الدخول) -->
-      <div id="googleChooserViewInput" style="display:none;">
-        <div class="google-header">
-          <svg class="google-g-logo" viewBox="0 0 48 48" width="34" height="34">
-            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-          </svg>
-          <h2 class="google-title">تسجيل الدخول</h2>
-          <p class="google-sub">باستخدام حسابك على Google</p>
-        </div>
-
-        <form onsubmit="submitGoogleNativeEmail(event)" class="google-input-form">
-          <div class="google-textfield">
-            <input type="email" id="googleCustomEmail" required placeholder=" " autocomplete="email" dir="ltr" />
-            <label for="googleCustomEmail">البريد الإلكتروني</label>
-          </div>
-          <div id="googleInputError" class="google-error-msg" style="display:none;"></div>
-
-          <div class="google-input-actions">
-            <button type="button" class="google-back-link" onclick="showGoogleAccountsListView()">رجوع للحسابات</button>
-            <button type="submit" class="google-next-btn" id="googleNextBtn">التالي</button>
-          </div>
-        </form>
-
-        <div class="google-footer-notice" style="margin-top:24px;">
-          سيتصل هذا الإجراء تلقائياً بحسابك الموثوق لتسجيل الدخول الفوري وتوثيق بياناتك في KIUR.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ NATIVE GOOGLE ONE TAP PROMPT (Floating Widget) ============ -->
-  <div id="googleNativeOneTap" class="google-onetap-wrap" style="display:none;">
-    <div class="google-onetap-box">
-      <div class="google-onetap-head">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <svg viewBox="0 0 48 48" width="18" height="18">
-            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-          </svg>
-          <span style="font-size:12px; font-weight:600; color:#5f6368;">تسجيل الدخول عبر Google</span>
-        </div>
-        <button type="button" class="google-onetap-close" onclick="dismissGoogleOneTap()" aria-label="إغلاق">×</button>
-      </div>
-      <div class="google-onetap-body" id="googleOneTapBody">
-        <!-- Avatar, Name, Email, and Button populated by JS -->
       </div>
     </div>
   </div>
@@ -3788,9 +3697,18 @@
             </div>
             <div class="glass" id="passwordChangeForm" style="display:none; padding:16px 18px;">
               <div class="form-field"><input id="currentPasswordInput" type="password" placeholder="كلمة المرور الحالية (اتركه فارغاً إن لم تحدد واحدة من قبل)" data-i18n-placeholder="currentPasswordPlaceholder" /></div>
-              <div class="form-field" style="margin-bottom:8px;"><input id="newPasswordInput" type="password" placeholder="كلمة المرور الجديدة (8 أحرف على الأقل)" data-i18n-placeholder="newPasswordPlaceholder" /></div>
+              <div class="form-field" style="margin-bottom:8px;"><input id="newPasswordInput" type="password" placeholder="كلمة المرور الجديدة (10 أحرف على الأقل)" data-i18n-placeholder="newPasswordPlaceholder" /></div>
               <button class="btn" style="width:100%; justify-content:center; padding:11px;" onclick="submitPasswordChange()" data-i18n="savePassword">حفظ كلمة المرور</button>
               <div id="passwordChangeMsg" style="font-size:.78rem; margin-top:8px; text-align:center;"></div>
+            </div>
+            <div class="item-card glass">
+              <div class="item-body">
+                <div class="item-title">ربط حساب Google</div>
+                <div class="item-meta">يجب أن يطابق بريد Google بريد حسابك.</div>
+                <label for="studentLinkPassword">كلمة مرور حساب Kiur</label>
+                <input id="studentLinkPassword" type="password" autocomplete="current-password" class="input" />
+              </div>
+              <button class="btn btn-ghost item-action" type="button" onclick="linkGoogleAccount()">ربط</button>
             </div>
             <div class="item-card glass">
               <div class="item-icon exam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3Z"/><path d="m9.5 12 2 2 4-4"/></svg></div>
@@ -4049,7 +3967,12 @@
   let pending2faToken = null;
   let pendingOauthHandoff = null;
   let pendingResetToken = null;
+  let pendingAuthNotice = null;
   (function captureRedirectToken(){
+    if (location.hash.includes('email_verified=1')) pendingAuthNotice = 'تم توثيق بريدك. يمكنك تسجيل الدخول الآن.';
+    else if (location.hash.includes('email_verification_failed=1')) pendingAuthNotice = 'رابط التوثيق غير صالح أو انتهت صلاحيته. أدخل بريدك ثم اطلب رسالة جديدة.';
+    else if (location.hash.includes('google_error=')) pendingAuthNotice = 'تعذر إكمال تسجيل Google. تحقق من الحساب أو سجّل الدخول بكلمة المرور.';
+    if (pendingAuthNotice) history.replaceState(null, '', location.pathname + location.search);
     const m = location.hash.match(/access_token=([^&]+)/);
     const mHandoff = location.hash.match(/oauth_handoff=([^&]+)/);
     const m2 = location.hash.match(/requires_2fa=1&pending_token=([^&]+)/);
@@ -4164,7 +4087,7 @@
       activation:'التفعيل', activationCodePlaceholder:'أدخل كود التفعيل — مثال: NBD-VIP-7X29', activateCode:'تفعيل الكود',
       security:'الأمان', currentDevice:'الجهاز النشط الحالي', changePassword:'كلمة المرور',
       currentPasswordPlaceholder:'كلمة المرور الحالية (اتركه فارغاً إن لم تحدد واحدة من قبل)',
-      newPasswordPlaceholder:'كلمة المرور الجديدة (8 أحرف على الأقل)', savePassword:'حفظ كلمة المرور',
+      newPasswordPlaceholder:'كلمة المرور الجديدة (10 أحرف على الأقل)', savePassword:'حفظ كلمة المرور',
       twoFactor:'التحقق بخطوتين', setup:'إعداد', myActivity:'نشاطي', logout:'تسجيل الخروج', captionPlaceholder:'اكتب كابشن قصير عن نفسك...',
       editProfile:'تعديل الملف الشخصي', changePhoto:'تغيير الصورة', addCaptionPrompt:'اضغط لإضافة كابشن...',
       toggleSidebar:'طي/فتح القائمة',
@@ -4176,9 +4099,9 @@
       enterEmailFirst:'اكتب بريدك الإلكتروني أولاً', sending:'جارٍ الإرسال...', saving:'جارٍ الحفظ...',
       resetLinkSent:'إذا كان هذا البريد مسجّلاً لدينا، فقد أُرسل إليه رابط لإعادة التعيين.',
       resetSendFailed:'تعذّر إرسال الرابط — حاول مرة أخرى',
-      resetTitle:'كلمة مرور جديدة', resetSub:'اختر كلمة مرور جديدة لحسابك — 8 أحرف على الأقل.',
+      resetTitle:'كلمة مرور جديدة', resetSub:'اختر كلمة مرور جديدة لحسابك — 10 أحرف على الأقل.',
       resetSaveBtn:'حفظ كلمة المرور', repeatPasswordPlaceholder:'أعد كتابة كلمة المرور',
-      passwordTooShort:'كلمة المرور يجب أن تكون 8 أحرف على الأقل', passwordsDoNotMatch:'كلمتا المرور غير متطابقتين',
+      passwordTooShort:'كلمة المرور يجب أن تكون 10 أحرف على الأقل', passwordsDoNotMatch:'كلمتا المرور غير متطابقتين',
       passwordResetDone:'تم تعيين كلمة المرور — سجّل الدخول بها الآن.',
       resetFailed:'انتهت صلاحية الرابط أو أنه غير صالح — اطلب رابطاً جديداً',
       lastChanged:'آخر تغيير',
@@ -4282,7 +4205,7 @@
       activation:'Activation', activationCodePlaceholder:'Enter activation code — e.g. NBD-VIP-7X29', activateCode:'Activate code',
       security:'Security', currentDevice:'Current active device', changePassword:'Password',
       currentPasswordPlaceholder:"Current password (leave empty if you haven't set one)",
-      newPasswordPlaceholder:'New password (at least 8 characters)', savePassword:'Save password',
+      newPasswordPlaceholder:'New password (at least 10 characters)', savePassword:'Save password',
       twoFactor:'Two-factor authentication', setup:'Set up', myActivity:'My activity', logout:'Log out', captionPlaceholder:'Write a short caption about yourself...',
       editProfile:'Edit profile', changePhoto:'Change photo', addCaptionPrompt:'Tap to add a caption...',
       toggleSidebar:'Toggle sidebar',
@@ -4293,9 +4216,9 @@
       enterEmailFirst:'Enter your email first', sending:'Sending...', saving:'Saving...',
       resetLinkSent:'If that address has an account, a reset link has been sent to it.',
       resetSendFailed:'Could not send the link — please try again',
-      resetTitle:'New password', resetSub:'Choose a new password for your account — at least 8 characters.',
+      resetTitle:'New password', resetSub:'Choose a new password for your account — at least 10 characters.',
       resetSaveBtn:'Save password', repeatPasswordPlaceholder:'Repeat the password',
-      passwordTooShort:'Password must be at least 8 characters', passwordsDoNotMatch:'The passwords do not match',
+      passwordTooShort:'Password must be at least 10 characters', passwordsDoNotMatch:'The passwords do not match',
       passwordResetDone:'Password set — sign in with it now.',
       resetFailed:'That link has expired or is invalid — request a new one',
       lastChanged:'last changed',
@@ -4399,7 +4322,7 @@
       activation:'چالاککردن', activationCodePlaceholder:'کۆدی چالاککردن بنووسە — نموونە: NBD-VIP-7X29', activateCode:'کۆد چالاک بکە',
       security:'ئاسایش', currentDevice:'ئامێری چالاکی ئێستا', changePassword:'وشەی نهێنی',
       currentPasswordPlaceholder:'وشەی نهێنی ئێستا (بەتاڵی بهێڵەرەوە ئەگەر پێشتر دانەناوە)',
-      newPasswordPlaceholder:'وشەی نهێنی نوێ (لانیکەم ٨ پیت)', savePassword:'وشەی نهێنی پاشەکەوت بکە',
+      newPasswordPlaceholder:'وشەی نهێنی نوێ (لانیکەم ١٠ پیت)', savePassword:'وشەی نهێنی پاشەکەوت بکە',
       twoFactor:'پشتڕاستکردنەوەی دوو هەنگاو', setup:'ڕێکخستن', myActivity:'چالاکیم', logout:'دەرچوون', captionPlaceholder:'کورتەیەک لەبارەی خۆت بنووسە...',
       editProfile:'دەستکاریکردنی پرۆفایل', changePhoto:'گۆڕینی وێنە', addCaptionPrompt:'کلیک بکە بۆ زیادکردنی کورتە...',
       toggleSidebar:'لار کردنی لیستە',
@@ -4410,9 +4333,9 @@
       enterEmailFirst:'سەرەتا ئیمەیلەکەت بنووسە', sending:'دەنێردرێت...', saving:'پاشەکەوت دەکرێت...',
       resetLinkSent:'ئەگەر ئەم ئیمەیلە هەژماری هەبێت، بەستەری ڕێکخستنەوەی بۆ نێردراوە.',
       resetSendFailed:'نەتوانرا بەستەرەکە بنێردرێت — دووبارە هەوڵ بدە',
-      resetTitle:'وشەی نهێنی نوێ', resetSub:'وشەیەکی نهێنی نوێ هەڵبژێرە — بەلایەنی کەمەوە ٨ پیت.',
+      resetTitle:'وشەی نهێنی نوێ', resetSub:'وشەیەکی نهێنی نوێ هەڵبژێرە — بەلایەنی کەمەوە ١٠ پیت.',
       resetSaveBtn:'وشەی نهێنی پاشەکەوت بکە', repeatPasswordPlaceholder:'دووبارە وشەی نهێنی بنووسە',
-      passwordTooShort:'وشەی نهێنی دەبێت بەلایەنی کەمەوە ٨ پیت بێت', passwordsDoNotMatch:'وشە نهێنییەکان وەک یەک نین',
+      passwordTooShort:'وشەی نهێنی دەبێت بەلایەنی کەمەوە ١٠ پیت بێت', passwordsDoNotMatch:'وشە نهێنییەکان وەک یەک نین',
       passwordResetDone:'وشەی نهێنی دانرا — ئێستا پێی بچۆ ژوورەوە.',
       resetFailed:'ئەم بەستەرە بەسەرچووە یان نادروستە — داوای یەکێکی نوێ بکە',
       lastChanged:'دوا گۆڕان',
@@ -7071,154 +6994,9 @@
   }
   function togglePasswordVisibility(){ /* no longer used — kept as no-op for backward compatibility */ }
 
-  // ---------- Google Sign-In (Official Google Identity Services + Zero-Config Global Chooser) ----------
-  let googleClientId = null;
+  // ---------- Google sign-in through Firebase ----------
   let googleIdentityReady = false;
   let googleIdentitySetup = null;
-  const GOOGLE_AVATAR_COLORS = ['#1a73e8', '#0b8043', '#c5221f', '#e37400', '#8e24aa', '#12B1D1', '#0097a7'];
-
-  function getGoogleSavedAccounts(){
-    try {
-      const raw = localStorage.getItem('kiur_google_accounts');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch(e) {}
-    return [];
-  }
-
-  function saveGoogleAccount(acc){
-    try {
-      let list = getGoogleSavedAccounts();
-      list = list.filter(a => a.email.toLowerCase() !== acc.email.toLowerCase());
-      list.unshift(acc);
-      if (list.length > 6) list = list.slice(0, 6);
-      localStorage.setItem('kiur_google_accounts', JSON.stringify(list));
-    } catch(e) {}
-  }
-
-  function removeGoogleSavedAccount(email, e){
-    if (e) e.stopPropagation();
-    try {
-      let list = getGoogleSavedAccounts();
-      list = list.filter(a => a.email.toLowerCase() !== email.toLowerCase());
-      localStorage.setItem('kiur_google_accounts', JSON.stringify(list));
-      renderGoogleAccountsList();
-    } catch(e) {}
-  }
-
-  function renderGoogleAccountsList(){
-    const listEl = document.getElementById('googleAccountsList');
-    if (!listEl) return;
-    const accounts = getGoogleSavedAccounts();
-    if (accounts.length === 0){
-      showGoogleEmailInputView();
-      return;
-    }
-
-    document.getElementById('googleChooserViewAccounts').style.display = 'block';
-    document.getElementById('googleChooserViewInput').style.display = 'none';
-
-    listEl.innerHTML = accounts.map(acc => `
-      <div class="google-acc-item" onclick="selectGoogleAccount(${jsArg(acc.email)}, ${jsArg(acc.name)}, ${jsArg(acc.color)})">
-        <div class="google-avatar-circle" style="background:${acc.color || '#1a73e8'};">${esc(acc.initial || (acc.name && acc.name[0]) || 'G')}</div>
-        <div class="google-acc-info">
-          <div class="google-acc-name">${esc(acc.name)}</div>
-          <div class="google-acc-email">${esc(acc.email)}</div>
-        </div>
-        <button type="button" class="google-acc-remove" onclick="removeGoogleSavedAccount(${jsArg(acc.email)}, event)" title="إزالة من هذا الجهاز" aria-label="إزالة">×</button>
-      </div>
-    `).join('');
-  }
-
-  function openGoogleAccountChooser(){
-    const modal = document.getElementById('googleAccountChooserModal');
-    if (!modal) return;
-    modal.style.display = 'flex';
-    document.body.classList.add('google-modal-open');
-
-    const accounts = getGoogleSavedAccounts();
-    if (accounts.length > 0) {
-      renderGoogleAccountsList();
-      showGoogleAccountsListView();
-    } else {
-      showGoogleEmailInputView();
-    }
-  }
-
-  function closeGoogleChooser(){
-    const modal = document.getElementById('googleAccountChooserModal');
-    if (!modal) return;
-    modal.style.display = 'none';
-    document.body.classList.remove('google-modal-open');
-  }
-
-  function showGoogleAccountsListView(){
-    const accounts = getGoogleSavedAccounts();
-    if (accounts.length === 0){
-      showGoogleEmailInputView();
-      return;
-    }
-    document.getElementById('googleChooserViewAccounts').style.display = 'block';
-    document.getElementById('googleChooserViewInput').style.display = 'none';
-    renderGoogleAccountsList();
-  }
-
-  function showGoogleEmailInputView(){
-    document.getElementById('googleChooserViewAccounts').style.display = 'none';
-    document.getElementById('googleChooserViewInput').style.display = 'block';
-    const input = document.getElementById('googleCustomEmail');
-    if (input) {
-      input.value = '';
-      setTimeout(() => input.focus(), 150);
-    }
-    const err = document.getElementById('googleInputError');
-    if (err) err.style.display = 'none';
-    const nextBtn = document.getElementById('googleNextBtn');
-    if (nextBtn) { nextBtn.disabled = false; nextBtn.textContent = 'التالي'; }
-  }
-
-  async function submitGoogleNativeEmail(e){
-    if (e) e.preventDefault();
-    const input = document.getElementById('googleCustomEmail');
-    const err = document.getElementById('googleInputError');
-    const nextBtn = document.getElementById('googleNextBtn');
-    const rawVal = (input?.value || '').trim().toLowerCase();
-
-    if (!rawVal || !rawVal.includes('@') || !rawVal.includes('.')){
-      if (err){
-        err.style.display = 'block';
-        err.textContent = 'أدخل عنوان بريد إلكتروني صالحاً لحساب Google (Gmail)';
-      }
-      return;
-    }
-
-    if (nextBtn) {
-      nextBtn.disabled = true;
-      nextBtn.textContent = 'جارٍ المتابعة...';
-    }
-    if (err) err.style.display = 'none';
-
-    const cleanName = rawVal.split('@')[0].replace(/[._-]/g, ' ');
-    const name = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
-    const initial = name.charAt(0).toUpperCase();
-    const color = GOOGLE_AVATAR_COLORS[Math.floor(Math.random() * GOOGLE_AVATAR_COLORS.length)];
-
-    saveGoogleAccount({ email: rawVal, name, initial, color });
-    await selectGoogleAccount(rawVal, name, color);
-  }
-
-  async function selectGoogleAccount(email, name, color){
-    // A remembered address is display-only; it is never proof of Google
-    // ownership.  The server accepts only a signed GIS ID credential.
-    await startGoogleSignIn();
-  }
-
-  function dismissGoogleOneTap(){
-    const oneTap = document.getElementById('googleNativeOneTap');
-    if (oneTap) oneTap.style.display = 'none';
-  }
 
   function setGoogleButtonMessage(message){
     const mount = document.getElementById('googleBtn');
@@ -7357,6 +7135,23 @@
     }
   }
 
+  async function linkGoogleAccount(){
+    const input = document.getElementById('studentLinkPassword');
+    const password = input.value;
+    if (!password) return showToast('أدخل كلمة مرور حسابك أولاً', 'error');
+    if (!googleIdentityReady) await initGoogleIdentityServices();
+    if (!firebaseGoogleAuth || !firebaseGoogleProvider) return showToast('تسجيل Google غير متاح حالياً', 'error');
+    try {
+      const result = await firebaseGooglePopup(firebaseGoogleAuth, firebaseGoogleProvider);
+      const id_token = await result.user.getIdToken();
+      await apiFetch('/auth/firebase/link', { method:'POST', body:JSON.stringify({id_token, password}) });
+      input.value = '';
+      showToast('تم ربط حساب Google بنجاح', 'success');
+    } catch (e) {
+      if (e.code !== 'auth/popup-closed-by-user') showToast(e.detail || e.message || 'تعذر ربط Google', 'error');
+    }
+  }
+
   async function verifyGoogleAccessToken(accessToken){
     // Retained only for compatibility with an old event hook; access tokens
     // are intentionally not accepted as application login credentials.
@@ -7372,6 +7167,8 @@
   function toggleAuthMode(){
     authMode = authMode === 'login' ? 'register' : 'login';
     document.getElementById('authNameField').style.display = authMode === 'register' ? 'block' : 'none';
+    document.getElementById('authForgotWrap').style.display = authMode === 'register' ? 'none' : '';
+    document.getElementById('authPassword').autocomplete = authMode === 'register' ? 'new-password' : 'current-password';
     const heading = document.getElementById('authHeading');
     if (heading) heading.textContent = authMode === 'register' ? (document.documentElement.lang === 'en' ? 'Sign Up' : 'إنشاء حساب') : (document.documentElement.lang === 'en' ? 'Sign In' : 'تسجيل الدخول');
     document.getElementById('authSubmitBtn').textContent = authMode === 'register' ? 'إنشاء الحساب' : 'تسجيل الدخول';
@@ -7379,6 +7176,7 @@
     document.getElementById('authToggleLink').textContent = authMode === 'register' ? 'سجّل دخولك' : 'أنشئ حساب';
     const msg = document.getElementById('authFormMsg');
     msg.style.display = 'none';
+    document.getElementById('resendVerificationBtn').style.display = 'none';
   }
 
   async function submitEmailAuth(){
@@ -7414,12 +7212,24 @@
         goToTotpVerify(data.pending_token);
         return;
       }
+      if (data.requires_email_verification){
+        authToken = null;
+        currentUser = null;
+        authMode = 'register';
+        toggleAuthMode();
+        msg.style.display = 'block';
+        msg.style.color = 'var(--ink)';
+        msg.textContent = 'أنشأنا حسابك. افتح رسالة التوثيق في بريدك ثم عد لتسجيل الدخول. الرابط صالح لمدة 24 ساعة.';
+        document.getElementById('resendVerificationBtn').style.display = 'block';
+        return;
+      }
+      if (!data.access_token || !data.user) throw new Error('لم تكتمل جلسة الدخول. أعد المحاولة.');
       authToken = data.access_token;
       currentUser = data.user;
       proceedAfterAuth();
     } catch (e) {
       msg.style.color = 'var(--danger)';
-      msg.textContent = e.detail || 'تعذّر تسجيل الدخول';
+      msg.textContent = e.detail || e.message || 'تعذّر تسجيل الدخول';
     }
   }
 
@@ -7795,7 +7605,7 @@
     const confirm = document.getElementById('resetPasswordConfirm').value;
     const msg = document.getElementById('resetMsg');
     msg.style.display = 'block';
-    if (pass.length < 8){
+    if (pass.length < 10){
       msg.style.color = 'var(--danger)';
       msg.textContent = t('passwordTooShort');
       return;
@@ -8438,6 +8248,33 @@
     return examAttemptId && currentUser?.id ? `kiur:exam-outbox:${currentUser.id}:${examAttemptId}` : null;
   }
 
+  async function resendAuthVerification(){
+    const button = document.getElementById('resendVerificationBtn');
+    const msg = document.getElementById('authFormMsg');
+    button.disabled = true;
+    try {
+      const data = await apiFetch('/auth/resend-verification', {method:'POST', body:JSON.stringify({email:document.getElementById('authEmail').value.trim()})});
+      msg.style.display = 'block';
+      msg.textContent = data.message || 'إن كان بريدك بانتظار التوثيق ستصلك رسالة جديدة.';
+      msg.style.color = 'var(--ink)';
+      let remaining = 60;
+      button.textContent = `إعادة الإرسال بعد ${remaining} ثانية`;
+      const timer = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0){
+          clearInterval(timer);
+          button.disabled = false;
+          button.textContent = 'إعادة إرسال رسالة التوثيق';
+        } else button.textContent = `إعادة الإرسال بعد ${remaining} ثانية`;
+      }, 1000);
+    } catch (e) {
+      msg.style.display = 'block';
+      msg.textContent = e.detail || 'تعذر إعادة الإرسال. حاول لاحقاً.';
+      msg.style.color = 'var(--danger)';
+      button.disabled = false;
+    }
+  }
+
   function persistExamOutbox(){
     const key = examOutboxKey();
     if (!key) return;
@@ -8666,7 +8503,11 @@
         currentUser = data.user;
         proceedAfterAuth();
       } catch (e) {
-        goToLanding();
+        goToLogin();
+        const msg = document.getElementById('authFormMsg');
+        msg.style.display = 'block';
+        msg.style.color = 'var(--danger)';
+        msg.textContent = e.detail || 'انتهت محاولة Google أو تعذر إكمالها. أعد المحاولة أو سجّل الدخول بالبريد.';
         initGoogleIdentityServices();
       }
       return;
@@ -8677,7 +8518,14 @@
       currentUser = data.user;
       proceedAfterAuth();
     } catch (e) {
-      goToLanding();  // no cookie, expired, or signed out on another device
+      if (pendingAuthNotice){
+        goToLogin();
+        const msg = document.getElementById('authFormMsg');
+        msg.style.display = 'block';
+        msg.style.color = pendingAuthNotice.startsWith('تم') ? 'var(--success)' : 'var(--danger)';
+        msg.textContent = pendingAuthNotice;
+        if (pendingAuthNotice.includes('التوثيق غير صالح')) document.getElementById('resendVerificationBtn').style.display = 'block';
+      } else goToLanding();  // no cookie, expired, or signed out on another device
       initGoogleIdentityServices();
     }
   }

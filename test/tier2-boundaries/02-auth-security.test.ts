@@ -148,6 +148,7 @@ describe('Tier 2: Boundary 2 - Authentication, Tokens & Security Boundaries', ()
   it('B2.15 should return 401 on session restore with non-existent session ID', async () => {
     const res = await apiRequest(app, 'POST', '/auth/session/restore', {
       cookie: 'nabd_session=ses_non_existent',
+      headers: { Origin: 'http://localhost' },
     }, ctx);
     expect(res.status).toBe(401);
   });
@@ -158,6 +159,7 @@ describe('Tier 2: Boundary 2 - Authentication, Tokens & Security Boundaries', ()
 
     const res = await apiRequest(app, 'POST', '/auth/session/restore', {
       cookie: `nabd_session=${sess.id}`,
+      headers: { Origin: 'http://localhost' },
     }, ctx);
     expect(res.status).toBe(401);
   });

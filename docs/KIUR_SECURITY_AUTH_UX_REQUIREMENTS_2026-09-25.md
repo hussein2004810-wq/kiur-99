@@ -55,3 +55,6 @@
 ## حدود الفحص والمراجع التشغيلية
 
 المراجعة ثابتة للشيفرة الحالية؛ لم أختبر مزود بريد أو حساب Google حقيقياً، ولم أفحص لوحة تحكم Cloudflare/Firebase، ولم أنفذ اختبار اختراق ديناميكياً أو ضغطاً. أعد اختبار النتائج عند تغير الملفات غير المحفوظة في commit. في إعداد Google، توضح وثائق Google ضرورة مطابقة `redirect_uri` بدقة والتحقق من `state`: [Google OAuth for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server). وتوضح وثائق Firebase إعداد نطاقات الدخول المصرح بها وسلوك popup/redirect: [Firebase Google Sign-In](https://firebase.google.com/docs/auth/web/google-signin). هذه مراجع إعداد، وليست إثباتاً لإعداد الإنتاج الحالي.
+# تحديث التنفيذ
+
+حالة الإصلاح الحالية موثقة في [تقرير التقدم 26 سبتمبر 2026](KIUR_REMEDIATION_PROGRESS_2026-09-26.md). الأدلة أعلاه تمثل وقت التدقيق الأول وقد تغير بعضها في الكود المحلي.

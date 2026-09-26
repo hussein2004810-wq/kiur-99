@@ -192,6 +192,7 @@ export const users = sqliteTable('users', {
   is_graduate: integer('is_graduate', { mode: 'boolean' }),
   is_banned: integer('is_banned', { mode: 'boolean' }).notNull().default(false),
   totp_secret: text('totp_secret'),
+  totp_pending_secret: text('totp_pending_secret'),
   totp_enabled: integer('totp_enabled', { mode: 'boolean' }).notNull().default(false),
   photo_url: text('photo_url'),
   caption: text('caption'),

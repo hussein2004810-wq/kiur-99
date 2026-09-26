@@ -267,11 +267,10 @@ authRouter.post('/google/verify', googleIdentityRateLimiter, async (c) => {
     if (user.google_sub && user.google_sub !== sub) {
       return c.json({ detail: 'هذا الحساب مرتبط بحساب Google مختلف مسبقاً' }, 409);
     }
-    if (user.role !== 'student' && !user.google_sub) {
-      return c.json({ detail: 'الحسابات ذات الصلاحيات المرتفعة لا تقبل الربط التلقائي عبر Google. يرجى تسجيل الدخول بكلمة المرور والمصادقة الثنائية.' }, 403);
+    if (!user.google_sub) {
+      return c.json({ detail: 'هذا البريد مرتبط بحساب قائم. سجّل الدخول إلى حسابك أولاً لربط Google من إعدادات الحساب.' }, 409);
     }
     const patch: Partial<typeof schema.users.$inferInsert> = {};
-    if (!user.google_sub && sub) patch.google_sub = sub;
     if (!user.photo_url && picture) patch.photo_url = picture;
     if (!user.email_verified_at) patch.email_verified_at = new Date().toISOString();
     if (Object.keys(patch).length > 0) {
@@ -386,11 +385,10 @@ authRouter.get('/google/callback', async (c) => {
     if (user.google_sub && user.google_sub !== sub) {
       return c.redirect(`${redirectBase}#google_error=conflict`);
     }
-    if (user.role !== 'student' && !user.google_sub) {
-      return c.redirect(`${redirectBase}#google_error=staff_link_required`);
+    if (!user.google_sub) {
+      return c.redirect(`${redirectBase}#google_error=link_required`);
     }
     const patch: Partial<typeof schema.users.$inferInsert> = {};
-    if (!user.google_sub) patch.google_sub = sub;
     if (!user.email_verified_at) patch.email_verified_at = new Date().toISOString();
     if (Object.keys(patch).length > 0) {
       await db.update(schema.users).set(patch).where(eq(schema.users.id, user.id));
@@ -518,6 +516,43 @@ authRouter.post('/firebase/flow', firebaseAuthRateLimiter, async (c) => {
   });
 });
 
+// Existing accounts require both an active KIUR session and their password
+// before a Google identity can be attached. The conditional update makes a
+// concurrent link attempt lose instead of replacing the first provider UID.
+authRouter.post('/firebase/link', requireAuth, firebaseAuthRateLimiter, async (c) => {
+  const body = await c.req.json<{ id_token?: string; password?: string }>().catch(() => ({} as any));
+  if (!body?.id_token || !body?.password) return c.json({ detail: 'رمز Google وكلمة مرور حسابك مطلوبان' }, 400);
+  const db = drizzle(c.env.DB, { schema });
+  const account = await db.select().from(schema.users).where(eq(schema.users.id, c.get('user')!.id)).get();
+  if (!account || account.is_banned || !account.email_verified_at) return c.json({ detail: 'الحساب غير متاح للربط' }, 403);
+  if (!account.password_hash || !(await verifyPassword(body.password, account.password_hash))) {
+    return c.json({ detail: 'كلمة مرور الحساب غير صحيحة' }, 403);
+  }
+  let identity;
+  try {
+    identity = await verifyFirebaseGoogleToken(c.env, body.id_token);
+  } catch (err) {
+    if (err instanceof FirebaseAuthError) return c.json({ detail: err.message }, err.statusCode as any);
+    return c.json({ detail: 'تعذر التحقق من هوية Google' }, 503);
+  }
+  if (identity.email.toLowerCase() !== account.email.toLowerCase()) {
+    return c.json({ detail: 'بريد Google لا يطابق بريد حسابك' }, 409);
+  }
+  if (account.firebase_uid && account.firebase_uid !== identity.uid) {
+    return c.json({ detail: 'الحساب مرتبط بهوية Google أخرى' }, 409);
+  }
+  if (account.firebase_uid === identity.uid) return c.json({ ok: true, already_linked: true });
+  try {
+    const result = await db.update(schema.users).set({ firebase_uid: identity.uid })
+      .where(and(eq(schema.users.id, account.id), isNull(schema.users.firebase_uid)));
+    if ((result.meta.changes ?? 0) !== 1) return c.json({ detail: 'تغير ارتباط الحساب. أعد تحميل الصفحة وتحقق من إعداداته.' }, 409);
+  } catch {
+    return c.json({ detail: 'هوية Google مرتبطة بحساب آخر' }, 409);
+  }
+  await recordAccountEvent(db, { userId: account.id, email: account.email, eventType: 'google_link', outcome: 'success' });
+  return c.json({ ok: true });
+});
+
 authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
   const body = await c.req.json<{ idToken?: string; id_token?: string; nonce?: string; device_label?: string; next?: string }>().catch(() => ({} as Record<string, string>));
   const idToken = body?.idToken || (body as any)?.id_token;
@@ -591,14 +626,8 @@ authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
         return c.json({ detail: 'هذا الحساب مرتبط بحساب Google/Firebase آخر مسبقاً' }, 409);
       }
 
-      // 2. Elevated Role Check: Never silently auto-link unlinked elevated accounts
-      // (Unless it is the bootstrap admin claim for BOOTSTRAP_ADMIN_EMAIL)
-      const isBootstrapCandidate = Boolean(
-        c.env.BOOTSTRAP_ADMIN_EMAIL &&
-        fbUser.email.trim().toLowerCase() === c.env.BOOTSTRAP_ADMIN_EMAIL.trim().toLowerCase()
-      );
-
-      if (user.role !== 'student' && !user.firebase_uid && !isBootstrapCandidate) {
+      // An email match alone never proves ownership of an existing account.
+      if (!user.firebase_uid) {
         await recordAccountEvent(db, {
           userId: user.id,
           email: user.email,
@@ -606,24 +635,10 @@ authRouter.post('/firebase/verify', firebaseAuthRateLimiter, async (c) => {
           outcome: 'failure',
           ip,
           userAgent,
-          details: { reason: 'elevated_role_link_rejected', provider: 'firebase_google' },
+          details: { reason: 'explicit_link_required', provider: 'firebase_google' },
         });
-        return c.json({ detail: 'الحسابات ذات الصلاحيات المرتفعة لا تقبل الربط التلقائي عبر تسجيل الدخول الخارجي. يرجى استخدام كلمة المرور والمصادقة الثنائية.' }, 403);
+        return c.json({ detail: 'هذا البريد مرتبط بحساب قائم. سجّل الدخول إلى حسابك أولاً لربط Google من إعدادات الحساب.' }, 409);
       }
-
-      // Link existing user
-      const patch: Partial<typeof schema.users.$inferInsert> = {
-        firebase_uid: fbUser.uid,
-        email_verified_at: user.email_verified_at || new Date().toISOString(),
-      };
-      if (!user.photo_url && fbUser.photoUrl) {
-        patch.photo_url = fbUser.photoUrl;
-      }
-      await db
-        .update(schema.users)
-        .set(patch)
-        .where(eq(schema.users.id, user.id));
-      user = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).get();
     }
   }
 
@@ -1077,7 +1092,7 @@ authRouter.post('/2fa/setup', requireAuth, async (c) => {
     }, 400);
   }
   const secret = await generateTotpSecret();
-  await db.update(schema.users).set({ totp_secret: secret }).where(eq(schema.users.id, user.id));
+  await db.update(schema.users).set({ totp_pending_secret: secret }).where(eq(schema.users.id, user.id));
   const uri = `otpauth://totp/Nabd:${user.email}?secret=${secret}&issuer=Nabd`;
   return c.json({
     secret,
@@ -1107,12 +1122,14 @@ authRouter.post('/2fa/verify', twoFaVerifyRateLimiter, async (c) => {
     if (dbUser.totp_enabled) {
       return c.json({ detail: 'المصادقة الثنائية مفعلة بالفعل على هذا الحساب' }, 400);
     }
-    if (!dbUser.totp_secret) return c.json({ detail: 'لم يتم تهيئة المصادقة الثنائية' }, 400);
+    if (!dbUser.totp_pending_secret) return c.json({ detail: 'لم يتم تهيئة المصادقة الثنائية' }, 400);
 
-    const valid = await verifyTotp(dbUser.totp_secret, body.code);
+    const valid = await verifyTotp(dbUser.totp_pending_secret, body.code);
     if (!valid) return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
 
-    await db.update(schema.users).set({ totp_enabled: true }).where(eq(schema.users.id, dbUser.id));
+    const enabled = await db.update(schema.users).set({ totp_secret: dbUser.totp_pending_secret, totp_pending_secret: null, totp_enabled: true })
+      .where(and(eq(schema.users.id, dbUser.id), eq(schema.users.totp_enabled, false), eq(schema.users.totp_pending_secret, dbUser.totp_pending_secret)));
+    if ((enabled.meta.changes ?? 0) !== 1) return c.json({ detail: 'تغيرت حالة الإعداد. ابدأ من جديد.' }, 409);
     recordAuditEvent({ event: 'AUTH_2FA_ENABLED', status: 'SUCCESS', actorId: dbUser.id });
     return c.json({ ok: true, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
   }
@@ -1209,10 +1226,12 @@ authRouter.post('/2fa/enable', requireAuth, async (c) => {
 
   const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
   if (user?.totp_enabled) return c.json({ detail: 'المصادقة الثنائية مفعلة بالفعل على هذا الحساب' }, 400);
-  if (!user?.totp_secret) return c.json({ detail: 'لم يتم تهيئة المصادقة الثنائية' }, 400);
-  if (!(await verifyTotp(user.totp_secret, body.code))) return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
+  if (!user?.totp_pending_secret) return c.json({ detail: 'لم يتم تهيئة المصادقة الثنائية' }, 400);
+  if (!(await verifyTotp(user.totp_pending_secret, body.code))) return c.json({ detail: 'رمز التحقق غير صحيح' }, 400);
 
-  await db.update(schema.users).set({ totp_enabled: true }).where(eq(schema.users.id, userId));
+  const result = await db.update(schema.users).set({ totp_secret: user.totp_pending_secret, totp_pending_secret: null, totp_enabled: true })
+    .where(and(eq(schema.users.id, userId), eq(schema.users.totp_enabled, false), eq(schema.users.totp_pending_secret, user.totp_pending_secret)));
+  if ((result.meta.changes ?? 0) !== 1) return c.json({ detail: 'تغيرت حالة الإعداد. ابدأ من جديد.' }, 409);
   recordAuditEvent({ event: 'AUTH_2FA_ENABLED', status: 'SUCCESS', actorId: userId });
   return c.json({ ok: true, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
 });
@@ -1227,7 +1246,7 @@ authRouter.post('/2fa/disable', requireAuth, async (c) => {
   if (!user?.totp_enabled) return c.json({ detail: 'المصادقة الثنائية غير مفعلة' }, 400);
   if (!(await verifyTotp(user.totp_secret ?? '', body.code))) return c.json({ detail: 'رمز التحقق غير صحيح' }, 403);
 
-  await db.update(schema.users).set({ totp_enabled: false, totp_secret: null }).where(eq(schema.users.id, userId));
+  await db.update(schema.users).set({ totp_enabled: false, totp_secret: null, totp_pending_secret: null }).where(eq(schema.users.id, userId));
   recordAuditEvent({ event: 'AUTH_2FA_DISABLED', status: 'SUCCESS', actorId: userId });
   return c.json({ ok: true, message: 'تم تعطيل المصادقة الثنائية بنجاح' });
 });
@@ -2098,6 +2117,7 @@ authRouter.post('/reset-password', resetPasswordRateLimiter, async (c) => {
   const newHash = await hashPassword(body.new_password);
   await db.update(schema.users).set({
     password_hash: newHash,
+    email_verified_at: !user.password_hash && !user.email_verified_at ? new Date().toISOString() : user.email_verified_at,
     password_changed_at: new Date().toISOString(),
     reset_token_hash: null,
     reset_token_expires_at: null,

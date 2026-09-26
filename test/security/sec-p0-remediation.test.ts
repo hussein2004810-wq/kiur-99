@@ -68,6 +68,10 @@ describe('P0 Security Remediation Suite (SEC-01, SEC-02, SEC-03)', () => {
     });
 
     it('POST /api/admin/users does not return password_hash in response', async () => {
+      (ctx.bindings as any).SMTP_HOST = 'resend';
+      (ctx.bindings as any).SMTP_PASSWORD = 'test-mail-key';
+      (ctx.bindings as any).SMTP_FROM = 'noreply@kiur.app';
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('{}', { status: 200 }));
       const res = await apiRequest(
         app,
         'POST',
@@ -78,7 +82,6 @@ describe('P0 Security Remediation Suite (SEC-01, SEC-02, SEC-03)', () => {
             email: 'new_student_p0@kiur.app',
             full_name: 'طالب فحص الحقول',
             role: 'student',
-            password: 'StrongPassword123!',
           },
         },
         ctx,
@@ -92,7 +95,7 @@ describe('P0 Security Remediation Suite (SEC-01, SEC-02, SEC-03)', () => {
       expect(data.email).toBe('new_student_p0@kiur.app');
     });
 
-    it('PUT /api/admin/users/:user_id does not return password_hash when changing password', async () => {
+    it('PUT /api/admin/users/:user_id does not return credential fields', async () => {
       const res = await apiRequest(
         app,
         'PUT',
@@ -103,7 +106,6 @@ describe('P0 Security Remediation Suite (SEC-01, SEC-02, SEC-03)', () => {
             email: ctx.fixtures.users.student.email,
             full_name: 'طالب معدل',
             role: 'student',
-            password: 'NewStrongPassword456!',
           },
         },
         ctx,
@@ -115,12 +117,66 @@ describe('P0 Security Remediation Suite (SEC-01, SEC-02, SEC-03)', () => {
       expect(data.totp_secret).toBeUndefined();
       expect(data.reset_token_hash).toBeUndefined();
     });
+
+    it('does not let an administrator set a permanent password for another user', async () => {
+      const res = await apiRequest(app, 'PUT', `/api/admin/users/${ctx.fixtures.users.student.id}`, {
+        token: ctx.fixtures.users.admin.token,
+        body: { email: ctx.fixtures.users.student.email, full_name: 'Student', role: 'student', password: 'NewStrongPassword456!' },
+      }, ctx);
+      expect(res.status).toBe(400);
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────
   // SEC-02: Identity Provider Binding & Conflict Prevention
   // ──────────────────────────────────────────────────────────────────────────
   describe('SEC-02: Identity binding conflict prevention & elevated role protection', () => {
+    it('rejects an unlinked student identity even when its verified email matches', async () => {
+      const flow = await apiRequest(app, 'POST', '/auth/firebase/flow', {}, ctx);
+      const cookie = flow.headers.get('set-cookie')?.split(';')[0] || '';
+      const { flow_nonce } = await flow.json();
+      vi.spyOn(firebaseService, 'verifyFirebaseGoogleToken').mockResolvedValueOnce({
+        uid: 'fb_new_owner', email: ctx.fixtures.users.student.email,
+        emailVerified: true, displayName: 'New owner', photoUrl: null,
+      });
+      const res = await apiRequest(app, 'POST', '/auth/firebase/verify', {
+        headers: { Cookie: cookie }, body: { idToken: 'signed.token', nonce: flow_nonce },
+      }, ctx);
+      expect(res.status).toBe(409);
+      expect(await ctx.db.prepare('SELECT firebase_uid FROM users WHERE id = ?')
+        .bind(ctx.fixtures.users.student.id).first('firebase_uid')).toBeNull();
+    });
+
+    it('links Firebase only after an active session and correct Kiur password', async () => {
+      const identity = { uid: 'fb_bound_after_proof', email: ctx.fixtures.users.student.email,
+        emailVerified: true, displayName: 'Student', photoUrl: null };
+      vi.spyOn(firebaseService, 'verifyFirebaseGoogleToken').mockResolvedValue(identity);
+      const wrong = await apiRequest(app, 'POST', '/auth/firebase/link', {
+        token: ctx.fixtures.users.student.token, body: { id_token: 'signed.token', password: 'wrong-password' },
+      }, ctx);
+      expect(wrong.status).toBe(403);
+      const linked = await apiRequest(app, 'POST', '/auth/firebase/link', {
+        token: ctx.fixtures.users.student.token, body: { id_token: 'signed.token', password: 'Nabd@2026' },
+      }, ctx);
+      expect(linked.status).toBe(200);
+      expect(await ctx.db.prepare('SELECT firebase_uid FROM users WHERE id = ?')
+        .bind(ctx.fixtures.users.student.id).first('firebase_uid')).toBe(identity.uid);
+    });
+
+    it('lets only one concurrent Google identity bind to an account', async () => {
+      vi.spyOn(firebaseService, 'verifyFirebaseGoogleToken').mockImplementation(async (_env, token) => ({
+        uid: token === 'first' ? 'fb_race_first' : 'fb_race_second',
+        email: ctx.fixtures.users.student.email, emailVerified: true, displayName: 'Student', photoUrl: null,
+      }));
+      const attempt = (id_token: string) => apiRequest(app, 'POST', '/auth/firebase/link', {
+        token: ctx.fixtures.users.student.token, body: { id_token, password: 'Nabd@2026' },
+      }, ctx);
+      const results = await Promise.all([attempt('first'), attempt('second')]);
+      expect(results.map(r => r.status).sort()).toEqual([200, 409]);
+      const bound = await ctx.db.prepare('SELECT firebase_uid FROM users WHERE id = ?')
+        .bind(ctx.fixtures.users.student.id).first('firebase_uid');
+      expect(['fb_race_first', 'fb_race_second']).toContain(bound);
+    });
     it('rejects Firebase login with 409 Conflict if account is already bound to a different firebase_uid', async () => {
       // 1. Student account already bound to a specific UID
       const originalUid = 'fb_student_original_uid';
@@ -191,9 +247,9 @@ describe('P0 Security Remediation Suite (SEC-01, SEC-02, SEC-03)', () => {
         ctx,
       );
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(409);
       const data = await res.json();
-      expect(data.detail).toContain('الحسابات ذات الصلاحيات المرتفعة لا تقبل الربط التلقائي');
+      expect(data.detail).toContain('سجّل الدخول إلى حسابك أولاً');
 
       // Ensure the admin account was NOT linked
       const checkUser = await ctx.db.prepare('SELECT firebase_uid FROM users WHERE id = ?')
@@ -293,9 +349,9 @@ describe('P0 Security Remediation Suite (SEC-01, SEC-02, SEC-03)', () => {
         ctx,
       );
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(409);
       const data = await res.json();
-      expect(data.detail).toContain('الحسابات ذات الصلاحيات المرتفعة لا تقبل الربط التلقائي');
+      expect(data.detail).toContain('سجّل الدخول إلى حسابك أولاً');
     });
   });
 
@@ -303,6 +359,47 @@ describe('P0 Security Remediation Suite (SEC-01, SEC-02, SEC-03)', () => {
   // SEC-03: Active 2FA Secret Protection & Full Session Verification
   // ──────────────────────────────────────────────────────────────────────────
   describe('SEC-03: Active 2FA secret protection & session verification', () => {
+    it('stores setup in a pending seed until a valid code enables it', async () => {
+      const setup = await apiRequest(app, 'POST', '/auth/2fa/setup', {
+        token: ctx.fixtures.users.student.token,
+      }, ctx);
+      expect(setup.status).toBe(200);
+      const { secret } = await setup.json();
+      const before = await ctx.db.prepare('SELECT totp_secret, totp_pending_secret, totp_enabled FROM users WHERE id = ?')
+        .bind(ctx.fixtures.users.student.id).first<any>();
+      expect(before.totp_secret).toBeNull();
+      expect(before.totp_pending_secret).toBe(secret);
+      expect(before.totp_enabled).toBe(0);
+      const code = await generateTotpCode(secret);
+      const enabled = await apiRequest(app, 'POST', '/auth/2fa/enable', {
+        token: ctx.fixtures.users.student.token, body: { code },
+      }, ctx);
+      expect(enabled.status).toBe(200);
+      const after = await ctx.db.prepare('SELECT totp_secret, totp_pending_secret, totp_enabled FROM users WHERE id = ?')
+        .bind(ctx.fixtures.users.student.id).first<any>();
+      expect(after.totp_secret).toBe(secret);
+      expect(after.totp_pending_secret).toBeNull();
+      expect(after.totp_enabled).toBe(1);
+    });
+
+    it('requires the admin password and target email for manual 2FA recovery', async () => {
+      await ctx.db.prepare('UPDATE users SET totp_secret = ?, totp_enabled = 1 WHERE id = ?')
+        .bind('JBSWY3DPEHPK3PXP', ctx.fixtures.users.student.id).run();
+      const denied = await apiRequest(app, 'POST', `/api/admin/users/${ctx.fixtures.users.student.id}/2fa/reset`, {
+        token: ctx.fixtures.users.admin.token, body: { confirm_email: ctx.fixtures.users.student.email, reason: 'Device lost', password: 'wrong' },
+      }, ctx);
+      expect(denied.status).toBe(403);
+      const recovered = await apiRequest(app, 'POST', `/api/admin/users/${ctx.fixtures.users.student.id}/2fa/reset`, {
+        token: ctx.fixtures.users.admin.token, body: { confirm_email: ctx.fixtures.users.student.email, reason: 'Device lost', password: 'Nabd@2026' },
+      }, ctx);
+      expect(recovered.status).toBe(200);
+      const user = await ctx.db.prepare('SELECT totp_secret, totp_enabled FROM users WHERE id = ?')
+        .bind(ctx.fixtures.users.student.id).first<any>();
+      expect(user.totp_secret).toBeNull();
+      expect(user.totp_enabled).toBe(0);
+      expect(await ctx.db.prepare('SELECT is_active FROM user_sessions WHERE id = ?')
+        .bind(ctx.fixtures.users.student.sessionId).first('is_active')).toBe(0);
+    });
     it('POST /auth/2fa/setup rejects with 400 when 2FA is already active, preserving existing totp_secret', async () => {
       const activeSecret = 'ACTIVE_SECRET_JBSWY3DPEHPK3PXP';
       await ctx.db.prepare('UPDATE users SET totp_secret = ?, totp_enabled = 1 WHERE id = ?')

@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS users (
     is_graduate INTEGER,
     is_banned INTEGER NOT NULL DEFAULT 0,
     totp_secret TEXT,
+    totp_pending_secret TEXT,
     totp_enabled INTEGER NOT NULL DEFAULT 0,
     photo_url TEXT,
     caption TEXT,
